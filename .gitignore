@@ -52,8 +52,8 @@ dev/
 local/
 
 .docs/
-*.md
 !README.md
+*e.md
 !LICENSE
 !skills/**/*.md
 .claude/
