@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { cslToZoteroItem, zoteroItemToCsl } from "./csl-to-zotero.js";
 import { CslItemData } from "../types/csl-types.js";
+import { ITEM_TYPE_FIELDS, ZoteroItemType } from "./zotero-item-types.js";
 
 describe("cslToZoteroItem", () => {
   it("converts article-journal to journalArticle", () => {
@@ -108,10 +109,53 @@ describe("cslToZoteroItem", () => {
     }
   });
 
+  it("maps non-standard CrossRef/DataCite types correctly", () => {
+    const testCases: Array<{ cslType: string; expectedZoteroType: string }> = [
+      { cslType: "journal-article", expectedZoteroType: "journalArticle" },
+      { cslType: "book-chapter", expectedZoteroType: "bookSection" },
+      { cslType: "proceedings-article", expectedZoteroType: "conferencePaper" },
+      { cslType: "posted-content", expectedZoteroType: "preprint" },
+      { cslType: "dissertation", expectedZoteroType: "thesis" },
+      { cslType: "monograph", expectedZoteroType: "book" },
+      { cslType: "reference-entry", expectedZoteroType: "encyclopediaArticle" },
+      { cslType: "edited-book", expectedZoteroType: "book" },
+      { cslType: "book-part", expectedZoteroType: "bookSection" },
+      { cslType: "proceedings", expectedZoteroType: "book" },
+      { cslType: "report-series", expectedZoteroType: "report" },
+    ];
+
+    for (const { cslType, expectedZoteroType } of testCases) {
+      const result = cslToZoteroItem({ type: cslType });
+      expect(result.itemType, `${cslType} should map to ${expectedZoteroType}`).toBe(expectedZoteroType);
+    }
+  });
+
+  it("maps book-chapter container-title to bookTitle", () => {
+    const result = cslToZoteroItem({
+      type: "book-chapter",
+      title: "A Chapter",
+      "container-title": "The Book",
+    });
+    expect(result.itemType).toBe("bookSection");
+    expect(result.bookTitle).toBe("The Book");
+    expect(result).not.toHaveProperty("publicationTitle");
+  });
+
+  it("maps proceedings-article container-title to proceedingsTitle", () => {
+    const result = cslToZoteroItem({
+      type: "proceedings-article",
+      title: "A Paper",
+      "container-title": "Conference 2024",
+    });
+    expect(result.itemType).toBe("conferencePaper");
+    expect(result.proceedingsTitle).toBe("Conference 2024");
+    expect(result).not.toHaveProperty("publicationTitle");
+  });
+
   it("handles ISBN and ISSN as arrays (DOI resolver can return arrays)", () => {
     const csl: CslItemData = {
-      type: "article-journal",
-      title: "Array ISSN Paper",
+      type: "book",
+      title: "Array ISBN Book",
       ISSN: ["1234-5678", "8765-4321"] as unknown as string,
       ISBN: ["978-0-123456-78-9"] as unknown as string,
     };
@@ -123,8 +167,8 @@ describe("cslToZoteroItem", () => {
 
   it("handles ISBN and ISSN as strings (normal case)", () => {
     const csl: CslItemData = {
-      type: "article-journal",
-      title: "String ISSN Paper",
+      type: "book",
+      title: "String ISBN Book",
       ISSN: "1234-5678",
       ISBN: "978-0-123456-78-9",
     };
@@ -153,6 +197,191 @@ describe("cslToZoteroItem", () => {
     expect(result.numPages).toBe("350");
     expect(result.series).toBe("Test Series");
     expect(result.language).toBe("en");
+  });
+
+  describe("container-title mapping", () => {
+    it("maps container-title to bookTitle for bookSection", () => {
+      const result = cslToZoteroItem({
+        type: "chapter",
+        title: "A Chapter",
+        "container-title": "The Parent Book",
+      });
+      expect(result.itemType).toBe("bookSection");
+      expect(result.bookTitle).toBe("The Parent Book");
+      expect(result).not.toHaveProperty("publicationTitle");
+    });
+
+    it("maps container-title to proceedingsTitle for conferencePaper", () => {
+      const result = cslToZoteroItem({
+        type: "paper-conference",
+        title: "A Paper",
+        "container-title": "Conf Proceedings 2024",
+      });
+      expect(result.itemType).toBe("conferencePaper");
+      expect(result.proceedingsTitle).toBe("Conf Proceedings 2024");
+      expect(result).not.toHaveProperty("publicationTitle");
+    });
+
+    it("maps container-title to blogTitle for blogPost", () => {
+      const result = cslToZoteroItem({
+        type: "post-weblog",
+        title: "A Post",
+        "container-title": "My Blog",
+      });
+      expect(result.blogTitle).toBe("My Blog");
+    });
+
+    it("maps container-title to encyclopediaTitle for encyclopediaArticle", () => {
+      const result = cslToZoteroItem({
+        type: "entry-encyclopedia",
+        title: "An Entry",
+        "container-title": "Encyclopedia Britannica",
+      });
+      expect(result.encyclopediaTitle).toBe("Encyclopedia Britannica");
+    });
+
+    it("maps container-title to dictionaryTitle for dictionaryEntry", () => {
+      const result = cslToZoteroItem({
+        type: "entry-dictionary",
+        title: "A Word",
+        "container-title": "Oxford Dictionary",
+      });
+      expect(result.dictionaryTitle).toBe("Oxford Dictionary");
+    });
+
+    it("maps container-title to programTitle for tvBroadcast", () => {
+      const result = cslToZoteroItem({
+        type: "broadcast",
+        title: "An Episode",
+        "container-title": "The Show",
+      });
+      expect(result.programTitle).toBe("The Show");
+    });
+
+    it("maps container-title to websiteTitle for webpage", () => {
+      const result = cslToZoteroItem({
+        type: "webpage",
+        title: "A Page",
+        "container-title": "Example.com",
+      });
+      expect(result.websiteTitle).toBe("Example.com");
+    });
+
+    it("does not add container-title field for types without mapping (book)", () => {
+      const result = cslToZoteroItem({
+        type: "book",
+        title: "A Book",
+        "container-title": "Should Be Ignored",
+      });
+      expect(result).not.toHaveProperty("publicationTitle");
+      expect(result).not.toHaveProperty("bookTitle");
+    });
+  });
+
+  describe("field filtering by item type", () => {
+    it("excludes publicationTitle from book output", () => {
+      const result = cslToZoteroItem({
+        type: "book",
+        title: "A Book",
+      });
+      expect(result).not.toHaveProperty("publicationTitle");
+    });
+
+    it("excludes ISBN from journalArticle output", () => {
+      const result = cslToZoteroItem({
+        type: "article-journal",
+        title: "A Paper",
+        ISBN: "978-0-123456-78-9",
+      });
+      expect(result).not.toHaveProperty("ISBN");
+    });
+
+    it("includes ISBN for book (valid field)", () => {
+      const result = cslToZoteroItem({
+        type: "book",
+        title: "A Book",
+        ISBN: "978-0-123456-78-9",
+      });
+      expect(result.ISBN).toBe("978-0-123456-78-9");
+    });
+
+    it("excludes volume and issue from book output", () => {
+      const result = cslToZoteroItem({
+        type: "book",
+        title: "A Book",
+        volume: "1",
+        issue: "2",
+      });
+      expect(result.volume).toBe("1"); // volume is valid for book
+      expect(result).not.toHaveProperty("issue"); // issue is NOT valid for book
+    });
+
+    it("all returned data fields are valid for the item type", () => {
+      const csl: CslItemData = {
+        type: "article-journal",
+        title: "Comprehensive Paper",
+        author: [{ family: "Smith", given: "John" }],
+        DOI: "10.1234/test",
+        "container-title": "Test Journal",
+        volume: "42",
+        issue: "3",
+        page: "100-120",
+        publisher: "Publisher",
+        "publisher-place": "Place",
+        URL: "https://example.com",
+        abstract: "Abstract text",
+        ISBN: "978-0-123456-78-9",
+        ISSN: "1234-5678",
+        edition: "2nd",
+        "number-of-pages": "350",
+        "collection-title": "Series",
+        language: "en",
+      };
+
+      const result = cslToZoteroItem(csl);
+      const validFields = ITEM_TYPE_FIELDS["journalArticle"];
+      const structuralFields = new Set(["itemType", "creators", "collections", "tags"]);
+
+      for (const key of Object.keys(result)) {
+        if (!structuralFields.has(key)) {
+          expect(validFields.has(key), `field "${key}" should be valid for journalArticle`).toBe(true);
+        }
+      }
+    });
+
+    it("filters fields for multiple item types correctly", () => {
+      const types: Array<{ cslType: string; zoteroType: ZoteroItemType }> = [
+        { cslType: "book", zoteroType: "book" },
+        { cslType: "thesis", zoteroType: "thesis" },
+        { cslType: "report", zoteroType: "report" },
+        { cslType: "patent", zoteroType: "patent" },
+        { cslType: "webpage", zoteroType: "webpage" },
+      ];
+
+      for (const { cslType, zoteroType } of types) {
+        const result = cslToZoteroItem({
+          type: cslType,
+          title: "Test",
+          ISBN: "978-0-123456-78-9",
+          ISSN: "1234-5678",
+          volume: "1",
+          issue: "2",
+          page: "10-20",
+        });
+
+        const validFields = ITEM_TYPE_FIELDS[zoteroType];
+        const structuralFields = new Set(["itemType", "creators", "collections", "tags"]);
+
+        for (const key of Object.keys(result)) {
+          if (!structuralFields.has(key)) {
+            expect(
+              validFields.has(key),
+              `field "${key}" should be valid for ${zoteroType}`
+            ).toBe(true);
+          }
+        }
+      }
+    });
   });
 });
 

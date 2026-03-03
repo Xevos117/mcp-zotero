@@ -132,7 +132,7 @@ claude mcp add-json "zotero" '{"command":"npx","args":["tsx","src/server.ts"],"e
 | `get_collections` | List all collections (folders) with keys, names, and parent relationships |
 | `get_collection_items` | Get items in a specific collection with keys, titles, authors, dates |
 | `search_library` | Search by query, or list items sorted by field (date, title, etc.) |
-| `get_items_details` | Batch metadata retrieval for multiple items in a single call |
+| `get_items_details` | Batch metadata retrieval for multiple items — returns all type-specific fields (bookTitle, proceedingsTitle, university, etc.) |
 | `get_item_fulltext` | Get full-text content of a PDF attachment via Zotero's fulltext index |
 
 ### Adding content
@@ -165,7 +165,7 @@ claude mcp add-json "zotero" '{"command":"npx","args":["tsx","src/server.ts"],"e
 ```bash
 npm install
 npm run build          # Compile TypeScript
-npm test               # Run tests (vitest, 382 tests)
+npm test               # Run tests (vitest, 404 tests)
 npx tsx src/server.ts  # Run directly without building
 ```
 

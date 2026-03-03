@@ -222,7 +222,7 @@ Citations should be integral to the writing process, not a post-hoc decoration.
 4. If the user requested PDF upload, present a table of paywalled sources they
    may want to upload manually (see `zotero-mcp-integrations` skill)
 5. Validate the document
-6. Present to user with clear instructions for any post-processing (e.g., Zotero Refresh)
+6. Present to user with clear instructions for any post-processing (e.g., Zotero → Add/Edit Bibliography, then Zotero → Refresh)
 
 **Exit criteria**: Downloadable document with working citations.
 

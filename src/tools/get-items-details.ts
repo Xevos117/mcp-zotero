@@ -7,7 +7,7 @@ import { logger } from "../utils/logger.js";
 export const toolConfig = {
   name: "get_items_details",
   description:
-    "Get metadata for multiple Zotero items in a single call. Accepts an array of item keys and returns a map of key → metadata. Use this instead of calling get_item_details multiple times. Returns title, authors, date, DOI, item type, publication title, and URL for each item. Set include_abstract to include abstracts (excluded by default to keep responses lightweight).",
+    "Get metadata for multiple Zotero items in a single call. Accepts an array of item keys and returns a map of key → metadata. Use this instead of calling get_item_details multiple times. Returns all type-specific fields (e.g. bookTitle for bookSection, proceedingsTitle for conferencePaper, university for thesis). Set include_abstract to include abstracts (excluded by default to keep responses lightweight).",
   inputSchema: {
     item_keys: z
       .array(z.string())
@@ -26,16 +26,12 @@ export const toolConfig = {
 
 const GetItemsDetailsSchema = z.object(toolConfig.inputSchema);
 
-interface ItemMetadata {
-  title: string;
-  authors: string;
-  date: string;
-  doi: string | null;
-  itemType: string;
-  publicationTitle: string | null;
-  url: string | null;
-  abstractNote?: string;
-}
+/** Fields excluded from the response (structural/internal, not bibliographic metadata). */
+const SKIP_FIELDS = new Set([
+  "key", "version", "dateAdded", "dateModified",
+  "collections", "tags", "relations", "creators",
+  "abstractNote",
+]);
 
 export async function handleGetItemsDetails(
   zoteroApi: ZoteroApiInterface,
@@ -64,22 +60,31 @@ export async function handleGetItemsDetails(
 
     const itemList = Array.isArray(items) ? items : [items];
 
-    const result: Record<string, ItemMetadata> = {};
+    const result: Record<string, Record<string, unknown>> = {};
     for (const item of itemList) {
       const key = item.key;
       if (!key) continue;
-      result[key] = {
+
+      const entry: Record<string, unknown> = {
+        itemType: item.itemType || "document",
         title: item.title || "Untitled",
         authors: formatCreators(item.creators),
-        date: item.date || "No date",
-        doi: item.DOI || null,
-        itemType: item.itemType || "document",
-        publicationTitle: item.publicationTitle || null,
-        url: item.url || null,
       };
-      if (include_abstract && item.abstractNote) {
-        result[key].abstractNote = item.abstractNote;
+
+      // Include all non-empty bibliographic fields from the Zotero response
+      const raw = item as Record<string, unknown>;
+      for (const [field, value] of Object.entries(raw)) {
+        if (SKIP_FIELDS.has(field)) continue;
+        if (field in entry) continue;
+        if (value === undefined || value === null || value === "" || value === false) continue;
+        entry[field] = value;
       }
+
+      if (include_abstract && item.abstractNote) {
+        entry.abstractNote = item.abstractNote;
+      }
+
+      result[key] = entry;
     }
 
     return {

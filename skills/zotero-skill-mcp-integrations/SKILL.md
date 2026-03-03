@@ -23,7 +23,7 @@ If Claude does NOT have access to this skill, the injection cannot happen in the
 2. Present the file to the user for download
 3. Tell the user: **"I generated the document with citation placeholders. To complete the injection, save the file on your PC, tell me the full path, and I'll use the `inject_citations` MCP tool to finalize it."**
 4. Once the user provides the path, call the MCP tool `inject_citations`
-5. Remind the user to do **Zotero → Refresh** in Word
+5. Remind the user to do **Zotero → Add/Edit Bibliography** first, then **Zotero → Refresh** in Word
 
 ## Dependencies
 
@@ -292,4 +292,8 @@ The script outputs JSON to stdout:
 
 Copy the output .docx to `/mnt/user-data/outputs/` and present it. **Always** remind the user:
 
-> Open the file in Microsoft Word with the Zotero plugin installed, then click **Zotero → Refresh** to finalize citations and generate the bibliography.
+> Open the file in Microsoft Word with the Zotero plugin installed, then:
+> 1. Click **Zotero → Add/Edit Bibliography** to insert the bibliography at the end of the document
+> 2. Click **Zotero → Refresh** to finalize all citations and update the bibliography
+>
+> **Important:** Refresh alone is not enough — you must first add the bibliography via Add/Edit Bibliography, otherwise it will not appear in the document.

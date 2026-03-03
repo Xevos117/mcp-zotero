@@ -81,6 +81,40 @@ describe("get_collections", () => {
     expect(parsed.error).toBe("No collections found");
     expect(parsed.suggestion).toBeDefined();
   });
+
+  it("filters out trashed collections by default", async () => {
+    const trashedCollection = { key: "COL002", name: "Old Stuff", deleted: true };
+    const { mock } = createZoteroApiMock([collectionFixture, trashedCollection]);
+    const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].key).toBe("COL001");
+  });
+
+  it("includes trashed collections when include_trashed is true", async () => {
+    const trashedCollection = { key: "COL002", name: "Old Stuff", deleted: true };
+    const { mock } = createZoteroApiMock([collectionFixture, trashedCollection]);
+    const result = await handleToolCall(
+      "get_collections",
+      { include_trashed: true },
+      mock,
+      TEST_USER_ID
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed).toHaveLength(2);
+  });
+
+  it("returns error when all collections are trashed", async () => {
+    const trashedOnly = { key: "COL002", name: "Trashed", deleted: true };
+    const { mock } = createZoteroApiMock([trashedOnly]);
+    const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.error).toBe("No collections found");
+    expect(parsed.suggestion).toContain("include_trashed");
+  });
 });
 
 // ─── get_collection_items ───────────────────────────────────────
@@ -206,13 +240,13 @@ describe("get_items_details", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed["ABC12345"].title).toBe("Deep Learning for Natural Language Processing");
     expect(parsed["ABC12345"].authors).toBe("John Smith, Jane Doe");
-    expect(parsed["ABC12345"].doi).toBe("10.1234/example.2024.001");
+    expect(parsed["ABC12345"].DOI).toBe("10.1234/example.2024.001");
     expect(parsed["ABC12345"].itemType).toBe("journalArticle");
     expect(parsed["ABC12345"].publicationTitle).toBe("Journal of Machine Learning");
     expect(parsed["ABC12345"].url).toBe("https://example.com/paper");
     expect(parsed["MIN00001"].title).toBe("Untitled");
     expect(parsed["MIN00001"].authors).toBe("No authors listed");
-    expect(parsed["MIN00001"].doi).toBeNull();
+    expect(parsed["MIN00001"]).not.toHaveProperty("DOI");
   });
 
   it("passes itemKey query param to API", async () => {
@@ -252,6 +286,50 @@ describe("get_items_details", () => {
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed["ABC12345"].abstractNote).toBe(fullItemFixture.abstractNote);
+  });
+
+  it("includes type-specific fields from Zotero response", async () => {
+    const bookSectionFixture = {
+      key: "BS00001",
+      itemType: "bookSection",
+      title: "A Chapter",
+      bookTitle: "The Book",
+      publisher: "Publisher",
+      pages: "10-20",
+      creators: [{ firstName: "Alice", lastName: "Bob", creatorType: "author" }],
+    };
+    const { mock } = createZoteroApiMock([bookSectionFixture]);
+    const result = await handleToolCall(
+      "get_items_details",
+      { item_keys: ["BS00001"] },
+      mock,
+      TEST_USER_ID
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed["BS00001"].bookTitle).toBe("The Book");
+    expect(parsed["BS00001"].pages).toBe("10-20");
+    expect(parsed["BS00001"].publisher).toBe("Publisher");
+  });
+
+  it("excludes structural fields (key, version, collections, tags, creators)", async () => {
+    const { mock } = createZoteroApiMock([fullItemFixture]);
+    const result = await handleToolCall(
+      "get_items_details",
+      { item_keys: ["ABC12345"] },
+      mock,
+      TEST_USER_ID
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed["ABC12345"]).not.toHaveProperty("key");
+    expect(parsed["ABC12345"]).not.toHaveProperty("version");
+    expect(parsed["ABC12345"]).not.toHaveProperty("collections");
+    expect(parsed["ABC12345"]).not.toHaveProperty("tags");
+    expect(parsed["ABC12345"]).not.toHaveProperty("creators");
+    expect(parsed["ABC12345"]).not.toHaveProperty("dateAdded");
+    // authors is the formatted version of creators
+    expect(parsed["ABC12345"].authors).toBe("John Smith, Jane Doe");
   });
 
   it("returns error for empty item_keys array", async () => {

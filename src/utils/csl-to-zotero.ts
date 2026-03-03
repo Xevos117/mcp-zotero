@@ -1,7 +1,9 @@
 import { CslItemData, CslName } from "../types/csl-types.js";
 import { ZoteroItemData } from "../types/zotero-types.js";
+import { ITEM_TYPE_FIELDS, ZoteroItemType } from "./zotero-item-types.js";
 
 const CSL_TO_ZOTERO_TYPE: Record<string, string> = {
+  // Standard CSL types
   "article": "journalArticle",
   "article-journal": "journalArticle",
   "article-magazine": "magazineArticle",
@@ -37,6 +39,23 @@ const CSL_TO_ZOTERO_TYPE: Record<string, string> = {
   "standard": "standard",
   "thesis": "thesis",
   "webpage": "webpage",
+  // Non-standard types returned by CrossRef/DataCite DOI content negotiation
+  "journal-article": "journalArticle",
+  "book-chapter": "bookSection",
+  "proceedings-article": "conferencePaper",
+  "posted-content": "preprint",
+  "dissertation": "thesis",
+  "monograph": "book",
+  "reference-entry": "encyclopediaArticle",
+  "component": "document",
+  "peer-review": "journalArticle",
+  "edited-book": "book",
+  "reference-book": "book",
+  "book-series": "book",
+  "book-part": "bookSection",
+  "proceedings": "book",
+  "journal": "journalArticle",
+  "report-series": "report",
 };
 
 const ZOTERO_TO_CSL_TYPE: Record<string, string> = {
@@ -79,43 +98,45 @@ const ZOTERO_TO_CSL_TYPE: Record<string, string> = {
   instantMessage: "personal_communication",
 };
 
-interface ZoteroItemPayload {
-  itemType: string;
-  title: string;
-  creators: Array<{
-    firstName: string;
-    lastName: string;
-    creatorType: string;
-  }>;
-  date: string;
-  DOI: string;
-  publicationTitle: string;
-  volume: string;
-  issue: string;
-  pages: string;
-  publisher: string;
-  place: string;
-  url: string;
-  abstractNote: string;
-  ISBN: string;
-  ISSN: string;
-  edition: string;
-  numPages: string;
-  series: string;
-  language: string;
-  collections: string[];
-  tags: Array<{ tag: string }>;
-}
+/**
+ * Maps CSL `container-title` to the correct Zotero field name per item type.
+ * Types not listed here have no container-title equivalent.
+ */
+const CONTAINER_TITLE_FIELD: Partial<Record<ZoteroItemType, string>> = {
+  journalArticle: "publicationTitle",
+  magazineArticle: "publicationTitle",
+  newspaperArticle: "publicationTitle",
+  bookSection: "bookTitle",
+  dictionaryEntry: "dictionaryTitle",
+  conferencePaper: "proceedingsTitle",
+  blogPost: "blogTitle",
+  encyclopediaArticle: "encyclopediaTitle",
+  forumPost: "forumTitle",
+  webpage: "websiteTitle",
+  radioBroadcast: "programTitle",
+  tvBroadcast: "programTitle",
+  podcast: "programTitle",
+};
 
 export interface CslToZoteroOptions {
   collectionKey?: string;
   tags?: string[];
 }
 
+export interface CslToZoteroResult {
+  itemType: string;
+  creators: Array<{ firstName: string; lastName: string; creatorType: string }>;
+  collections: string[];
+  tags: Array<{ tag: string }>;
+  [field: string]: unknown;
+}
+
 export function cslToZoteroItem(
   csl: CslItemData,
   options?: CslToZoteroOptions
-): ZoteroItemPayload {
+): CslToZoteroResult {
+  const itemType = (CSL_TO_ZOTERO_TYPE[csl.type] ?? "journalArticle") as ZoteroItemType;
+
   const creators = (csl.author ?? []).map((a) => ({
     firstName: a.given ?? "",
     lastName: a.family ?? a.literal ?? "",
@@ -132,13 +153,11 @@ export function cslToZoteroItem(
 
   const tags = (options?.tags ?? []).map((t) => ({ tag: t }));
 
-  return {
-    itemType: CSL_TO_ZOTERO_TYPE[csl.type] ?? "journalArticle",
+  // Build candidate fields (CSL → Zotero field names)
+  const candidates: Record<string, string> = {
     title: csl.title ?? "",
-    creators,
     date,
     DOI: csl.DOI ?? "",
-    publicationTitle: csl["container-title"] ?? "",
     volume: csl.volume ?? "",
     issue: csl.issue ?? "",
     pages: csl.page ?? "",
@@ -152,9 +171,32 @@ export function cslToZoteroItem(
     numPages: csl["number-of-pages"] ?? "",
     series: csl["collection-title"] ?? "",
     language: csl.language ?? "",
-    collections,
-    tags,
   };
+
+  // Map container-title to the correct field for this item type
+  const containerTitleField = CONTAINER_TITLE_FIELD[itemType];
+  if (containerTitleField) {
+    candidates[containerTitleField] = csl["container-title"] ?? "";
+  }
+
+  // Filter: only include fields valid for this item type
+  const validFields = ITEM_TYPE_FIELDS[itemType];
+  const result: CslToZoteroResult = { itemType, creators, collections, tags };
+
+  if (validFields) {
+    for (const [field, value] of Object.entries(candidates)) {
+      if (validFields.has(field)) {
+        result[field] = value;
+      }
+    }
+  } else {
+    // Unknown item type — include all fields as fallback
+    for (const [field, value] of Object.entries(candidates)) {
+      result[field] = value;
+    }
+  }
+
+  return result;
 }
 
 export function zoteroItemToCsl(item: ZoteroItemData): CslItemData {
