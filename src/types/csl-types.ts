@@ -25,8 +25,8 @@ export interface CslItemData {
   "publisher-place"?: string;
   URL?: string;
   abstract?: string;
-  ISSN?: string;
-  ISBN?: string;
+  ISSN?: string | string[];
+  ISBN?: string | string[];
   language?: string;
   edition?: string;
   editor?: CslName[];

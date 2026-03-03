@@ -108,6 +108,32 @@ describe("cslToZoteroItem", () => {
     }
   });
 
+  it("handles ISBN and ISSN as arrays (DOI resolver can return arrays)", () => {
+    const csl: CslItemData = {
+      type: "article-journal",
+      title: "Array ISSN Paper",
+      ISSN: ["1234-5678", "8765-4321"] as unknown as string,
+      ISBN: ["978-0-123456-78-9"] as unknown as string,
+    };
+
+    const result = cslToZoteroItem(csl);
+    expect(result.ISSN).toBe("1234-5678");
+    expect(result.ISBN).toBe("978-0-123456-78-9");
+  });
+
+  it("handles ISBN and ISSN as strings (normal case)", () => {
+    const csl: CslItemData = {
+      type: "article-journal",
+      title: "String ISSN Paper",
+      ISSN: "1234-5678",
+      ISBN: "978-0-123456-78-9",
+    };
+
+    const result = cslToZoteroItem(csl);
+    expect(result.ISSN).toBe("1234-5678");
+    expect(result.ISBN).toBe("978-0-123456-78-9");
+  });
+
   it("maps new CSL fields (ISBN, ISSN, edition, numPages, series, language)", () => {
     const csl: CslItemData = {
       type: "book",

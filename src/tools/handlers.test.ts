@@ -764,6 +764,105 @@ describe("add_items_by_doi", () => {
     expect(parsed.pdf_results).toBeUndefined();
     expect(vi.mocked(lookupOaPdf)).not.toHaveBeenCalled();
   });
+
+  it("throws when Zotero API write fails (isSuccess false)", async () => {
+    const { resolveDois } = await import("../utils/doi-resolver.js");
+    vi.mocked(resolveDois).mockResolvedValueOnce({
+      success: [
+        {
+          doi: "10.1234/fail",
+          data: {
+            type: "article-journal",
+            title: "Fail Paper",
+            DOI: "10.1234/fail",
+          },
+        },
+      ],
+      failed: [],
+    });
+
+    const writeData = {
+      isSuccess: false,
+      data: [],
+      errors: { "0": "Invalid item type" },
+    };
+    const { mock } = createZoteroApiMock([], writeData);
+    const result = await handleToolCall(
+      "add_items_by_doi",
+      { dois: ["10.1234/fail"] },
+      mock,
+      TEST_USER_ID
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.error).toContain("Zotero API write failed");
+  });
+
+  it("throws when Zotero API returns empty data", async () => {
+    const { resolveDois } = await import("../utils/doi-resolver.js");
+    vi.mocked(resolveDois).mockResolvedValueOnce({
+      success: [
+        {
+          doi: "10.1234/empty",
+          data: {
+            type: "article-journal",
+            title: "Empty Paper",
+            DOI: "10.1234/empty",
+          },
+        },
+      ],
+      failed: [],
+    });
+
+    const writeData = {
+      isSuccess: true,
+      data: [],
+      errors: {},
+    };
+    const { mock } = createZoteroApiMock([], writeData);
+    const result = await handleToolCall(
+      "add_items_by_doi",
+      { dois: ["10.1234/empty"] },
+      mock,
+      TEST_USER_ID
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.error).toContain("empty response");
+  });
+
+  it("throws when entity key is missing from response", async () => {
+    const { resolveDois } = await import("../utils/doi-resolver.js");
+    vi.mocked(resolveDois).mockResolvedValueOnce({
+      success: [
+        {
+          doi: "10.1234/nokey",
+          data: {
+            type: "article-journal",
+            title: "No Key Paper",
+            DOI: "10.1234/nokey",
+          },
+        },
+      ],
+      failed: [],
+    });
+
+    const writeData = {
+      isSuccess: true,
+      data: [{ title: "No Key Paper" }],
+      errors: {},
+    };
+    const { mock } = createZoteroApiMock([], writeData);
+    const result = await handleToolCall(
+      "add_items_by_doi",
+      { dois: ["10.1234/nokey"] },
+      mock,
+      TEST_USER_ID
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.error).toContain("Failed to get item key");
+  });
 });
 
 // ─── get_item_fulltext ─────────────────────────────────────────
