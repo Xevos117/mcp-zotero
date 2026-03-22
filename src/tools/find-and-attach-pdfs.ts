@@ -4,7 +4,7 @@ import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
 import { lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
-import { mapWithConcurrency } from "../utils/concurrency.js";
+import { mapWithConcurrency, createCancellationToken } from "../utils/concurrency.js";
 import { fetchAllPages } from "../utils/pagination.js";
 
 export const toolConfig = {
@@ -36,7 +36,7 @@ const FindAndAttachPdfsSchema = z.object(toolConfig.inputSchema);
 interface ItemResult {
   item_key: string;
   doi: string | null;
-  status: "attached" | "available" | "not_found" | "skipped" | "error";
+  status: "attached" | "available" | "not_found" | "skipped" | "error" | "quota_exceeded";
   reason?: string;
   source?: string;
   pdf_url?: string;
@@ -100,6 +100,8 @@ export async function handleFindAndAttachPdfs(
     }
 
     // 3. Process each item in parallel
+    const cancelToken = createCancellationToken();
+
     const settled = await mapWithConcurrency(keys, async (key): Promise<ItemResult> => {
       const item = itemMap.get(key);
       if (!item) {
@@ -181,6 +183,16 @@ export async function handleFindAndAttachPdfs(
             pdf_url: pdfUrl,
           };
         }
+
+        if (!uploadResult.success && uploadResult.error.code === "storage_quota_exceeded") {
+          cancelToken.cancelled = true;
+          return {
+            item_key: key,
+            doi,
+            status: "quota_exceeded",
+            reason: uploadResult.error.message,
+          };
+        }
       }
 
       return {
@@ -190,7 +202,7 @@ export async function handleFindAndAttachPdfs(
         reason: `Download failed for all ${urlsToTry.length} URL(s)`,
         source: primary.source ?? undefined,
       };
-    });
+    }, undefined, cancelToken);
 
     const results: ItemResult[] = settled
       .filter((r): r is PromiseFulfilledResult<ItemResult> => r.status === "fulfilled")
@@ -200,11 +212,13 @@ export async function handleFindAndAttachPdfs(
     let notFound = 0;
     let skipped = 0;
     let errors = 0;
+    let quotaExceeded = 0;
     for (const r of results) {
       if (r.status === "attached") attached++;
       else if (r.status === "not_found") notFound++;
       else if (r.status === "skipped") skipped++;
       else if (r.status === "error") errors++;
+      else if (r.status === "quota_exceeded") quotaExceeded++;
     }
 
     return {
@@ -218,7 +232,14 @@ export async function handleFindAndAttachPdfs(
               not_found: notFound,
               skipped,
               errors,
+              quota_exceeded: quotaExceeded,
               dry_run,
+              ...(quotaExceeded > 0
+                ? {
+                    storage_quota_warning:
+                      "Zotero storage quota is full. Remaining PDF uploads were skipped. Free up space at https://www.zotero.org/settings/storage or upgrade your plan.",
+                  }
+                : {}),
               results,
             },
             null,

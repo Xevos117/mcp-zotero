@@ -31,6 +31,7 @@ export type PdfUploadErrorCode =
   | "file_too_large"
   | "item_creation_failed"
   | "auth_failed"
+  | "storage_quota_exceeded"
   | "upload_failed"
   | "registration_failed";
 
@@ -180,10 +181,23 @@ export async function downloadAndUploadPdf(
     itemData.collections = options.collections ?? [];
   }
 
-  const createResponse = await zoteroApi
-    .library("user", userId)
-    .items()
-    .post([itemData]);
+  let createResponse;
+  try {
+    createResponse = await zoteroApi
+      .library("user", userId)
+      .items()
+      .post([itemData]);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      error: {
+        code: "item_creation_failed" as const,
+        message: `Failed to create attachment item: ${detail}`,
+        networkDetail: detail,
+      },
+    };
+  }
 
   if (!createResponse.isSuccess()) {
     const errors = createResponse.getErrors();
@@ -209,17 +223,42 @@ export async function downloadAndUploadPdf(
     mtime: String(Date.now()),
   });
 
-  const authResponse = await fetch(authUrl, {
-    method: "POST",
-    headers: {
-      "Zotero-API-Key": apiKey,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "If-None-Match": "*",
-    },
-    body: authBody.toString(),
-  });
+  let authResponse: Response;
+  try {
+    authResponse = await fetch(authUrl, {
+      method: "POST",
+      headers: {
+        "Zotero-API-Key": apiKey,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "If-None-Match": "*",
+      },
+      body: authBody.toString(),
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    return {
+      success: false,
+      itemKey,
+      error: {
+        code: "auth_failed",
+        message: `Upload authorization failed: ${detail}`,
+        networkDetail: detail,
+      },
+    };
+  }
 
   if (!authResponse.ok) {
+    if (authResponse.status === 413) {
+      return {
+        success: false,
+        itemKey,
+        error: {
+          code: "storage_quota_exceeded",
+          message: "Zotero storage quota exceeded. The file cannot be uploaded because your Zotero cloud storage is full. Free up space by deleting stored files in Zotero, or upgrade your storage plan at https://www.zotero.org/settings/storage.",
+          status: 413,
+        },
+      };
+    }
     return {
       success: false,
       itemKey,
@@ -241,11 +280,25 @@ export async function downloadAndUploadPdf(
     const suffix = Buffer.from(auth.suffix, "utf-8");
     const uploadBody = Buffer.concat([prefix, buffer, suffix]);
 
-    const uploadResponse = await fetch(auth.url, {
-      method: "POST",
-      headers: { "Content-Type": auth.contentType },
-      body: uploadBody,
-    });
+    let uploadResponse: Response;
+    try {
+      uploadResponse = await fetch(auth.url, {
+        method: "POST",
+        headers: { "Content-Type": auth.contentType },
+        body: uploadBody,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        itemKey,
+        error: {
+          code: "upload_failed",
+          message: `File upload failed: ${detail}`,
+          networkDetail: detail,
+        },
+      };
+    }
 
     if (!uploadResponse.ok) {
       return {
@@ -259,15 +312,29 @@ export async function downloadAndUploadPdf(
       };
     }
 
-    const registerResponse = await fetch(authUrl, {
-      method: "POST",
-      headers: {
-        "Zotero-API-Key": apiKey,
-        "Content-Type": "application/x-www-form-urlencoded",
-        "If-None-Match": "*",
-      },
-      body: `upload=${auth.uploadKey}`,
-    });
+    let registerResponse: Response;
+    try {
+      registerResponse = await fetch(authUrl, {
+        method: "POST",
+        headers: {
+          "Zotero-API-Key": apiKey,
+          "Content-Type": "application/x-www-form-urlencoded",
+          "If-None-Match": "*",
+        },
+        body: `upload=${auth.uploadKey}`,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      return {
+        success: false,
+        itemKey,
+        error: {
+          code: "registration_failed",
+          message: `Upload registration failed: ${detail}`,
+          networkDetail: detail,
+        },
+      };
+    }
 
     if (!registerResponse.ok) {
       return {

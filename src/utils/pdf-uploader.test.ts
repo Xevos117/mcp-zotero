@@ -285,6 +285,103 @@ describe("downloadAndUploadPdf", () => {
     }
   });
 
+  it("returns storage_quota_exceeded when auth returns 413", async () => {
+    const fetchMock = vi.fn();
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/pdf" }),
+      arrayBuffer: () =>
+        Promise.resolve(
+          pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength)
+        ),
+    });
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 413 });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const writeData = {
+      isSuccess: true,
+      data: [{ key: "QUOTA1", title: "paper.pdf" }],
+      errors: {},
+    };
+    const { mock } = createZoteroApiMock([], writeData);
+
+    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+      url: "https://example.com/paper.pdf",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("storage_quota_exceeded");
+      expect(result.error.status).toBe(413);
+      expect(result.error.message).toContain("storage quota");
+      expect(result.itemKey).toBe("QUOTA1");
+    }
+  });
+
+  it("returns item_creation_failed with networkDetail when API throws", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/pdf" }),
+        arrayBuffer: () =>
+          Promise.resolve(
+            pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength)
+          ),
+      })
+    );
+
+    const { mock, postStub } = createZoteroApiMock([]);
+    postStub.mockRejectedValueOnce(new Error("Connection refused"));
+
+    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+      url: "https://example.com/paper.pdf",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("item_creation_failed");
+      expect(result.error.networkDetail).toBe("Connection refused");
+    }
+  });
+
+  it("returns auth_failed with networkDetail when auth fetch throws", async () => {
+    const fetchMock = vi.fn();
+    // download succeeds
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/pdf" }),
+      arrayBuffer: () =>
+        Promise.resolve(
+          pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength)
+        ),
+    });
+    // auth fetch throws network error
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const writeData = {
+      isSuccess: true,
+      data: [{ key: "AUTH_NET", title: "paper.pdf" }],
+      errors: {},
+    };
+    const { mock } = createZoteroApiMock([], writeData);
+
+    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+      url: "https://example.com/paper.pdf",
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe("auth_failed");
+      expect(result.error.networkDetail).toBe("Failed to fetch");
+      expect(result.itemKey).toBe("AUTH_NET");
+    }
+  });
+
   it("sends User-Agent header in download request", async () => {
     const fetchMock = mockFetchChain();
     await mockFulltextSuccess();

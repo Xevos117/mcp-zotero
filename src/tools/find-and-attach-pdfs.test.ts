@@ -340,6 +340,68 @@ describe("find_and_attach_pdfs handler", () => {
     expect(parsed.results[0].reason).toContain("import_pdf_to_zotero");
   });
 
+  it("reports quota_exceeded and stops when storage is full (413)", async () => {
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
+    const { downloadAndUploadPdf } = await import("../utils/pdf-uploader.js");
+
+    const item1 = { ...fullItemFixture, key: "ITEM1", DOI: "10.1234/one" };
+    const item2 = { ...fullItemFixture, key: "ITEM2", DOI: "10.1234/two" };
+
+    // Both items have OA PDFs available
+    vi.mocked(lookupOaPdfWithFallbacks).mockResolvedValueOnce({
+      primary: {
+        found: true,
+        pdf_url: "https://journal.org/one.pdf",
+        source: "unpaywall_gold",
+        license: "cc-by",
+        oa_status: "gold",
+      },
+      fallback_urls: [],
+    });
+    vi.mocked(lookupOaPdfWithFallbacks).mockResolvedValueOnce({
+      primary: {
+        found: true,
+        pdf_url: "https://journal.org/two.pdf",
+        source: "unpaywall_gold",
+        license: "cc-by",
+        oa_status: "gold",
+      },
+      fallback_urls: [],
+    });
+
+    // First upload returns 413 storage quota exceeded
+    vi.mocked(downloadAndUploadPdf).mockResolvedValueOnce({
+      success: false,
+      itemKey: "ATT_Q1",
+      error: {
+        code: "storage_quota_exceeded",
+        message: "Zotero storage quota exceeded.",
+        status: 413,
+      },
+    });
+
+    const { mock, getStub } = createZoteroApiMock([]);
+    getStub.mockResolvedValueOnce({ getData: () => [item1, item2] });
+    // Children checks (skip_if_attachment_exists=true)
+    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getData: () => [] });
+
+    const result = await handleToolCall(
+      "find_and_attach_pdfs",
+      { item_keys: ["ITEM1", "ITEM2"] },
+      mock,
+      TEST_USER_ID
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.quota_exceeded).toBeGreaterThanOrEqual(1);
+    expect(parsed.storage_quota_warning).toContain("storage quota is full");
+    // The first item should be quota_exceeded
+    const quotaResult = parsed.results.find((r: Record<string, unknown>) => r.status === "quota_exceeded");
+    expect(quotaResult).toBeDefined();
+    expect(quotaResult.reason).toContain("storage quota");
+  });
+
   it("tries fallback URLs when primary download fails", async () => {
     const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
     const { downloadAndUploadPdf } = await import("../utils/pdf-uploader.js");

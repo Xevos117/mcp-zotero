@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapWithConcurrency, DEFAULT_CONCURRENCY } from "./concurrency.js";
+import { mapWithConcurrency, DEFAULT_CONCURRENCY, createCancellationToken } from "./concurrency.js";
 
 describe("mapWithConcurrency", () => {
   it("returns fulfilled results for all items", async () => {
@@ -117,5 +117,71 @@ describe("mapWithConcurrency", () => {
     const results = await mapWithConcurrency([42], async (n) => n * 2);
     expect(results).toHaveLength(1);
     expect((results[0] as PromiseFulfilledResult<number>).value).toBe(84);
+  });
+
+  it("stops processing when cancellation token is set (sequential)", async () => {
+    const cancel = createCancellationToken();
+    const processed: number[] = [];
+
+    const results = await mapWithConcurrency(
+      [1, 2, 3, 4, 5],
+      async (n) => {
+        processed.push(n);
+        if (n === 2) cancel.cancelled = true;
+        return n;
+      },
+      1,
+      cancel
+    );
+
+    expect(processed).toEqual([1, 2]);
+    const fulfilled = results.filter((r) => r?.status === "fulfilled");
+    expect(fulfilled).toHaveLength(2);
+  });
+
+  it("cancellation stops subsequent items with concurrency > 1", async () => {
+    const cancel = createCancellationToken();
+    const processed: number[] = [];
+
+    // All items take time; item 1 cancels after completing.
+    // With concurrency 2: workers 1 and 2 start items 1 and 2 (both take 20ms).
+    // After item 1 completes, cancellation is set. Worker 1 checks cancel and stops.
+    // Worker 2 finishes item 2 (already started), then checks cancel and stops.
+    // Items 3-5 are never started.
+    const results = await mapWithConcurrency(
+      [1, 2, 3, 4, 5],
+      async (n) => {
+        processed.push(n);
+        await new Promise((r) => setTimeout(r, 20));
+        if (n === 1) cancel.cancelled = true;
+        return n;
+      },
+      2,
+      cancel
+    );
+
+    // Items 1 and 2 were started concurrently
+    expect(processed).toContain(1);
+    expect(processed).toContain(2);
+    // Items 4 and 5 should never have been reached
+    expect(processed).not.toContain(4);
+    expect(processed).not.toContain(5);
+    const fulfilled = results.filter((r) => r?.status === "fulfilled");
+    expect(fulfilled.length).toBeGreaterThanOrEqual(2);
+    expect(fulfilled.length).toBeLessThanOrEqual(3);
+  });
+
+  it("works normally when cancel token is not set", async () => {
+    const cancel = createCancellationToken();
+    const results = await mapWithConcurrency(
+      [1, 2, 3],
+      async (n) => n * 2,
+      2,
+      cancel
+    );
+
+    expect(cancel.cancelled).toBe(false);
+    const fulfilled = results.filter((r) => r?.status === "fulfilled");
+    expect(fulfilled).toHaveLength(3);
   });
 });

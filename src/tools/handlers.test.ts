@@ -941,6 +941,115 @@ describe("add_items_by_doi", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.error).toContain("Failed to get item key");
   });
+
+  it("returns created items even when PDF attach phase throws", async () => {
+    const ORIGINAL_ENV = process.env;
+    process.env = { ...ORIGINAL_ENV, ZOTERO_API_KEY: "test-api-key" };
+
+    const { resolveDois } = await import("../utils/doi-resolver.js");
+    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+
+    vi.mocked(resolveDois).mockResolvedValueOnce({
+      success: [
+        {
+          doi: "10.1234/survives",
+          data: {
+            type: "article-journal",
+            title: "Survives PDF Failure",
+            DOI: "10.1234/survives",
+          },
+        },
+      ],
+      failed: [],
+    });
+
+    // Make lookupOaPdf throw to simulate a network failure
+    vi.mocked(lookupOaPdf).mockRejectedValueOnce(new Error("Unpaywall unreachable"));
+
+    const writeData = {
+      isSuccess: true,
+      data: [{ key: "SURV01", title: "Survives PDF Failure" }],
+      errors: {},
+    };
+    const { mock } = createZoteroApiMock([], writeData);
+    const result = await handleToolCall(
+      "add_items_by_doi",
+      { dois: ["10.1234/survives"] },
+      mock,
+      TEST_USER_ID
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.success).toHaveLength(1);
+    expect(parsed.success[0].item_key).toBe("SURV01");
+    expect(parsed.pdf_attach_error).toContain("PDF attachment failed");
+    expect(parsed.pdf_attach_error).toContain("Items were created successfully");
+
+    process.env = ORIGINAL_ENV;
+  });
+
+  it("reports storage_quota_warning when PDF attach hits 413", async () => {
+    const ORIGINAL_ENV = process.env;
+    process.env = { ...ORIGINAL_ENV, ZOTERO_API_KEY: "test-api-key" };
+
+    const { resolveDois } = await import("../utils/doi-resolver.js");
+    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { downloadAndUploadPdf } = await import("../utils/pdf-uploader.js");
+
+    vi.mocked(resolveDois).mockResolvedValueOnce({
+      success: [
+        {
+          doi: "10.1234/quota",
+          data: {
+            type: "article-journal",
+            title: "Quota Paper",
+            DOI: "10.1234/quota",
+          },
+        },
+      ],
+      failed: [],
+    });
+
+    vi.mocked(lookupOaPdf).mockResolvedValueOnce({
+      found: true,
+      pdf_url: "https://journal.org/paper.pdf",
+      source: "unpaywall_gold",
+      license: "cc-by",
+      oa_status: "gold",
+    });
+
+    vi.mocked(downloadAndUploadPdf).mockResolvedValueOnce({
+      success: false,
+      itemKey: "QUOTA_ATT",
+      error: {
+        code: "storage_quota_exceeded",
+        message: "Zotero storage quota exceeded.",
+        status: 413,
+      },
+    });
+
+    const writeData = {
+      isSuccess: true,
+      data: [{ key: "QUOTA01", title: "Quota Paper" }],
+      errors: {},
+    };
+    const { mock } = createZoteroApiMock([], writeData);
+    const result = await handleToolCall(
+      "add_items_by_doi",
+      { dois: ["10.1234/quota"] },
+      mock,
+      TEST_USER_ID
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.success).toHaveLength(1);
+    expect(parsed.success[0].item_key).toBe("QUOTA01");
+    expect(parsed.pdf_results).toHaveLength(1);
+    expect(parsed.pdf_results[0].pdf_attached).toBe(false);
+    expect(parsed.storage_quota_warning).toContain("storage quota is full");
+
+    process.env = ORIGINAL_ENV;
+  });
 });
 
 // ─── get_item_fulltext ─────────────────────────────────────────
@@ -1897,6 +2006,33 @@ describe("import_pdf_to_zotero", () => {
     expect(parsed.item_key).toBe("IMP013");
     expect(parsed.fulltext_indexed).toBe(false);
     expect(parsed.fulltext_status).toContain("Non-PDF content type");
+  });
+
+  it("returns actionable error when storage quota is exceeded (413)", async () => {
+    await mockUploader({
+      success: false,
+      itemKey: "QUOTA1",
+      error: {
+        code: "storage_quota_exceeded",
+        message: "Zotero storage quota exceeded.",
+        status: 413,
+      },
+    });
+
+    const { mock } = createZoteroApiMock([]);
+    const result = await handleToolCall(
+      "import_pdf_to_zotero",
+      { url: "https://example.com/paper.pdf" },
+      mock,
+      TEST_USER_ID
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.error).toBe("Zotero storage quota exceeded");
+    expect(parsed.status).toBe(413);
+    expect(parsed.suggestion).toContain("zotero.org/settings/storage");
+    expect(parsed.item_key).toBe("QUOTA1");
+    expect(parsed.note).toContain("attachment metadata record was created");
   });
 });
 

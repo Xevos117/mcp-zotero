@@ -6,7 +6,7 @@ import { cslToZoteroItem } from "../utils/csl-to-zotero.js";
 import { logger } from "../utils/logger.js";
 import { lookupOaPdf } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
-import { mapWithConcurrency } from "../utils/concurrency.js";
+import { mapWithConcurrency, createCancellationToken } from "../utils/concurrency.js";
 
 export const toolConfig = {
   name: "add_items_by_doi",
@@ -85,6 +85,8 @@ async function attachPdfsToItems(
   }
 
   // Email is valid — process all items in parallel (reuse probe for first)
+  const cancelToken = createCancellationToken();
+
   const settled = await mapWithConcurrency(itemsWithDoi, async (item, i): Promise<PdfAttachResult> => {
     const oaResult = i === 0 ? probe : await lookupOaPdf(item.doi);
     if (oaResult.found && oaResult.pdf_url) {
@@ -92,6 +94,11 @@ async function attachPdfsToItems(
         url: oaResult.pdf_url,
         parentItem: item.item_key,
       });
+
+      if (!uploadResult.success && uploadResult.error.code === "storage_quota_exceeded") {
+        cancelToken.cancelled = true;
+      }
+
       return {
         item_key: item.item_key,
         doi: item.doi,
@@ -111,7 +118,7 @@ async function attachPdfsToItems(
         ? "Open access copy exists at a repository but no direct PDF link is available. The user can download it manually from the landing page and use import_pdf_to_zotero to attach it."
         : "No open access PDF found",
     };
-  });
+  }, undefined, cancelToken);
 
   return settled
     .filter((r): r is PromiseFulfilledResult<PdfAttachResult> => r.status === "fulfilled")
@@ -186,12 +193,22 @@ export async function handleAddItemsByDoi(
     }
 
     let pdf_results: PdfAttachResult[] | undefined;
+    let pdf_attach_error: string | undefined;
     if (auto_attach_pdf) {
       const apiKey = process.env.ZOTERO_API_KEY;
       if (apiKey) {
-        pdf_results = await attachPdfsToItems(success, zoteroApi, userId, apiKey);
+        try {
+          pdf_results = await attachPdfsToItems(success, zoteroApi, userId, apiKey);
+        } catch (err) {
+          pdf_attach_error = `PDF attachment failed: ${err instanceof Error ? err.message : String(err)}. Items were created successfully.`;
+          logger.error("PDF attach phase failed", { error: pdf_attach_error });
+        }
       }
     }
+
+    const quotaHit = pdf_results?.some((r) =>
+      r.error?.includes("storage quota")
+    );
 
     return {
       content: [
@@ -202,6 +219,13 @@ export async function handleAddItemsByDoi(
               success,
               failed: resolved.failed,
               ...(pdf_results !== undefined ? { pdf_results } : {}),
+              ...(pdf_attach_error !== undefined ? { pdf_attach_error } : {}),
+              ...(quotaHit
+                ? {
+                    storage_quota_warning:
+                      "Zotero storage quota is full. Some PDF attachments were skipped. All items were created successfully (metadata only). Free up space at https://www.zotero.org/settings/storage or upgrade your plan.",
+                  }
+                : {}),
             },
             null,
             2

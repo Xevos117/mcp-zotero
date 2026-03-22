@@ -28,6 +28,13 @@ export async function putFulltext(
     return { success: true };
   }
 
+  if (response.status === 413) {
+    return {
+      success: false,
+      error: "Fulltext content too large for Zotero API (status 413). The PDF text may exceed the fulltext size limit.",
+    };
+  }
+
   return {
     success: false,
     error: `Fulltext PUT failed with status ${response.status}`,

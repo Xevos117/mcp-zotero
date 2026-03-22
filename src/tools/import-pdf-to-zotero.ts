@@ -82,6 +82,14 @@ export async function handleImportPdfToZotero(
           return formatErrorResponse("File exceeds 100 MB limit", {
             size_bytes: result.error.sizeBytes,
           });
+        case "storage_quota_exceeded":
+          return formatErrorResponse("Zotero storage quota exceeded", {
+            status: result.error.status,
+            suggestion:
+              "Your Zotero cloud storage is full. Free up space by deleting stored files in your Zotero library, or upgrade your storage plan at https://www.zotero.org/settings/storage. Note: item metadata and linked URL attachments do not consume storage — only imported file attachments do.",
+            item_key: result.itemKey,
+            note: "An attachment metadata record was created but the file could not be uploaded. You may want to delete it with delete_items or retry after freeing storage.",
+          });
         case "auth_failed":
           return formatErrorResponse("Upload authorization failed", {
             status: result.error.status,
