@@ -41,7 +41,7 @@ const ItemSchema = z
       if (key === "itemType" || key === "title" || key === "creators") continue;
       if (!validFields.has(key)) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           message: `Field "${key}" is not valid for itemType "${data.itemType}". Valid fields: ${[...validFields].join(", ")}`,
           path: [key],
         });
@@ -52,7 +52,7 @@ const ItemSchema = z
     for (const [i, creator] of (data.creators ?? []).entries()) {
       if (!validCreatorTypes.has(creator.creatorType)) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           message: `Invalid creatorType "${creator.creatorType}" for "${data.itemType}". Valid: ${[...validCreatorTypes].join(", ")}`,
           path: ["creators", i, "creatorType"],
         });

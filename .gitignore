@@ -46,6 +46,7 @@ debug.log
 .env*
 *.pem
 *.key
+.mcp.json
 
 # Optional: local development files
 dev/
