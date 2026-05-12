@@ -3,7 +3,7 @@ import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/z
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteCollections } from "../utils/unsafe-operations.js";
 import { logger } from "../utils/logger.js";
-import { getLibraryType } from "../utils/library-context.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "delete_collection",
@@ -14,6 +14,7 @@ export const toolConfig = {
       .string()
       .min(1)
       .describe("Zotero collection key to delete. Get this from get_collections."),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -25,7 +26,8 @@ export async function handleDeleteCollection(
   args: Record<string, unknown>,
   unsafeOps: UnsafeOperationsMode = "none"
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { collection_key } = DeleteCollectionSchema.parse(args);
+  const { collection_key, library_type, library_id } = DeleteCollectionSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (!canDeleteCollections(unsafeOps)) {
     return formatErrorResponse(
@@ -40,7 +42,7 @@ export async function handleDeleteCollection(
 
   try {
     const response = await zoteroApi
-      .library(getLibraryType(), userId)
+      .library(libraryType, libraryId)
       .collections(collection_key)
       .get();
 
@@ -54,7 +56,7 @@ export async function handleDeleteCollection(
     }
 
     await zoteroApi
-      .library(getLibraryType(), userId)
+      .library(libraryType, libraryId)
       .collections(collection_key)
       .version(version)
       .delete();

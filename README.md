@@ -71,6 +71,40 @@ ZOTERO_LIBRARY_ID=6178978          # the group ID
 
 The API key in `ZOTERO_API_KEY` must have access to the target group library — generate or scope keys at https://www.zotero.org/settings/keys.
 
+
+### Per-call library override
+
+Every tool accepts two optional args that override the env defaults for that single call:
+
+- `library_type` — `"user"` or `"group"`
+- `library_id` — numeric library ID
+
+Resolution order: per-call arg > env var > implicit default (`user`, `ZOTERO_USER_ID`).
+
+This lets a single MCP instance target multiple libraries (e.g., a staging group and a final-output group) without restarting:
+
+```jsonc
+// First call targets the staging group
+{
+  "tool": "add_items",
+  "args": {
+    "items": [...],
+    "library_type": "group",
+    "library_id": "5597114"
+  }
+}
+
+// Second call targets DART-output (different group)
+{
+  "tool": "add_items",
+  "args": {
+    "items": [...],
+    "library_type": "group",
+    "library_id": "6178978"
+  }
+}
+```
+
 ## Environment Variables
 
 | Variable | Required | Description |

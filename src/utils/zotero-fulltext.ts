@@ -1,17 +1,18 @@
-import { getLibraryType } from "./library-context.js";
+import { LibraryType } from "./library-context.js";
 interface FulltextPutResult {
   success: boolean;
   error?: string;
 }
 
 export async function putFulltext(
+  libraryType: LibraryType,
   userId: string,
   itemKey: string,
   apiKey: string,
   content: string,
   totalPages: number
 ): Promise<FulltextPutResult> {
-  const url = `https://api.zotero.org/${getLibraryType()}s/${userId}/items/${itemKey}/fulltext`;
+  const url = `https://api.zotero.org/${libraryType}s/${userId}/items/${itemKey}/fulltext`;
   const response = await fetch(url, {
     method: "PUT",
     headers: {

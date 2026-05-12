@@ -7,7 +7,7 @@ import { logger } from "../utils/logger.js";
 import { lookupOaPdf } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
 import { mapWithConcurrency, createCancellationToken } from "../utils/concurrency.js";
-import { getLibraryType } from "../utils/library-context.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "add_items_by_doi",
@@ -43,6 +43,7 @@ WORKFLOW TIPS:
       .describe(
         "Attach freely available OA PDFs via Unpaywall (default: true). This is lightweight and adds no cost — leave enabled. Only set to false if PDF attachment is causing errors."
       ),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -67,6 +68,7 @@ interface CreatedItem {
 async function attachPdfsToItems(
   items: CreatedItem[],
   zoteroApi: ZoteroApiInterface,
+  libraryType: LibraryType,
   userId: string,
   apiKey: string
 ): Promise<PdfAttachResult[]> {
@@ -91,7 +93,7 @@ async function attachPdfsToItems(
   const settled = await mapWithConcurrency(itemsWithDoi, async (item, i): Promise<PdfAttachResult> => {
     const oaResult = i === 0 ? probe : await lookupOaPdf(item.doi);
     if (oaResult.found && oaResult.pdf_url) {
-      const uploadResult = await downloadAndUploadPdf(zoteroApi, userId, apiKey, {
+      const uploadResult = await downloadAndUploadPdf(zoteroApi, libraryType, userId, apiKey, {
         url: oaResult.pdf_url,
         parentItem: item.item_key,
       });
@@ -131,7 +133,8 @@ export async function handleAddItemsByDoi(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { dois, collection_key, tags, auto_attach_pdf } = AddItemsByDoiSchema.parse(args);
+  const { dois, collection_key, tags, auto_attach_pdf, library_type, library_id } = AddItemsByDoiSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (dois.length === 0) {
     return formatErrorResponse("At least one DOI is required");
@@ -154,7 +157,7 @@ export async function handleAddItemsByDoi(
     );
 
     const response = await zoteroApi
-      .library(getLibraryType(), userId)
+      .library(libraryType, libraryId)
       .items()
       .post(zoteroItems);
 
@@ -199,7 +202,7 @@ export async function handleAddItemsByDoi(
       const apiKey = process.env.ZOTERO_API_KEY;
       if (apiKey) {
         try {
-          pdf_results = await attachPdfsToItems(success, zoteroApi, userId, apiKey);
+          pdf_results = await attachPdfsToItems(success, zoteroApi, libraryType, libraryId, apiKey);
         } catch (err) {
           pdf_attach_error = `PDF attachment failed: ${err instanceof Error ? err.message : String(err)}. Items were created successfully.`;
           logger.error("PDF attach phase failed", { error: pdf_attach_error });

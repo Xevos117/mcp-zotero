@@ -3,7 +3,7 @@ import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/z
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
 import { logger } from "../utils/logger.js";
-import { getLibraryType } from "../utils/library-context.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_items_details",
@@ -22,6 +22,7 @@ export const toolConfig = {
       .describe(
         "Include abstractNote in the response. Default false to keep responses lightweight."
       ),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -39,7 +40,8 @@ export async function handleGetItemsDetails(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { item_keys, include_abstract } = GetItemsDetailsSchema.parse(args);
+  const { item_keys, include_abstract, library_type, library_id } = GetItemsDetailsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (item_keys.length === 0) {
     return formatErrorResponse("At least one item key is required");
@@ -47,7 +49,7 @@ export async function handleGetItemsDetails(
 
   try {
     const response = await zoteroApi
-      .library(getLibraryType(), userId)
+      .library(libraryType, libraryId)
       .items()
       .get({ itemKey: item_keys.join(",") });
 

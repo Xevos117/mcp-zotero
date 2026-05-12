@@ -3,7 +3,7 @@ import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/z
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
 import { logger } from "../utils/logger.js";
-import { getLibraryType } from "../utils/library-context.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "delete_items",
@@ -17,6 +17,7 @@ export const toolConfig = {
       .describe(
         'Array of Zotero item keys to delete (e.g. ["EUHUT5K3", "F9UQM7N2"]). Max 50 per call.'
       ),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -28,7 +29,8 @@ export async function handleDeleteItems(
   args: Record<string, unknown>,
   unsafeOps: UnsafeOperationsMode = "none"
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { item_keys } = DeleteItemsSchema.parse(args);
+  const { item_keys, library_type, library_id } = DeleteItemsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (!canDeleteItems(unsafeOps)) {
     return formatErrorResponse(
@@ -43,7 +45,7 @@ export async function handleDeleteItems(
 
   try {
     const response = await zoteroApi
-      .library(getLibraryType(), userId)
+      .library(libraryType, libraryId)
       .items()
       .get({ itemKey: item_keys.join(",") });
 
@@ -72,7 +74,7 @@ export async function handleDeleteItems(
     const keysToDelete = [...foundKeys] as string[];
 
     await zoteroApi
-      .library(getLibraryType(), userId)
+      .library(libraryType, libraryId)
       .items()
       .version(libraryVersion)
       .delete(keysToDelete);

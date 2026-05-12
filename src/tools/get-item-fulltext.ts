@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, ZoteroFulltextResponse, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
-import { getLibraryType } from "../utils/library-context.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_item_fulltext",
@@ -15,6 +15,7 @@ export const toolConfig = {
       .optional()
       .default(50000)
       .describe("Maximum characters to return (default: 50000, 0 = no limit)"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -25,7 +26,8 @@ export async function handleGetItemFulltext(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { item_key, max_characters } = GetItemFulltextSchema.parse(args);
+  const { item_key, max_characters, library_type, library_id } = GetItemFulltextSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const apiKey = process.env.ZOTERO_API_KEY;
   if (!apiKey) {
@@ -35,7 +37,7 @@ export async function handleGetItemFulltext(
   try {
     // Fetch parent item metadata for context
     const itemResponse = await zoteroApi
-      .library(getLibraryType(), userId)
+      .library(libraryType, libraryId)
       .items(item_key)
       .get();
 
@@ -43,12 +45,12 @@ export async function handleGetItemFulltext(
 
     // If the item itself is a PDF attachment, use it directly
     if (itemData.itemType === "attachment" && itemData.contentType === "application/pdf") {
-      return fetchFulltext(item_key, item_key, userId, apiKey, max_characters);
+      return fetchFulltext(item_key, item_key, libraryType, libraryId, apiKey, max_characters);
     }
 
     // Fetch children to find PDF attachment
     const childrenResponse = await zoteroApi
-      .library(getLibraryType(), userId)
+      .library(libraryType, libraryId)
       .items(item_key)
       .children()
       .get();
@@ -78,7 +80,7 @@ export async function handleGetItemFulltext(
       return formatErrorResponse("No PDF attachment found for this item.", { item_key });
     }
 
-    return fetchFulltext(item_key, pdfAttachment.key, userId, apiKey, max_characters);
+    return fetchFulltext(item_key, pdfAttachment.key, libraryType, libraryId, apiKey, max_characters);
   } catch (err) {
     if (isZoteroApiError(err)) {
       if (err.response?.status === 404) {
@@ -98,11 +100,12 @@ export async function handleGetItemFulltext(
 async function fetchFulltext(
   itemKey: string,
   attachmentKey: string,
+  libraryType: LibraryType,
   userId: string,
   apiKey: string,
   maxCharacters: number
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const url = `https://api.zotero.org/${getLibraryType()}s/${userId}/items/${attachmentKey}/fulltext`;
+  const url = `https://api.zotero.org/${libraryType}s/${userId}/items/${attachmentKey}/fulltext`;
   const response = await fetch(url, {
     headers: { "Zotero-API-Key": apiKey },
   });

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
-import { getLibraryType } from "../utils/library-context.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "add_linked_url_attachment",
@@ -36,6 +36,7 @@ export const toolConfig = {
       .array(z.string())
       .optional()
       .describe("Tags to apply to the attachment"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -46,8 +47,8 @@ export async function handleAddLinkedUrlAttachment(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { url, title, content_type, parent_item, collections, tags } =
-    AddLinkedUrlAttachmentSchema.parse(args);
+  const { url, title, content_type, parent_item, collections, tags, library_type, library_id } = AddLinkedUrlAttachmentSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const itemData: Record<string, unknown> = {
     itemType: "attachment",
@@ -70,7 +71,7 @@ export async function handleAddLinkedUrlAttachment(
 
   try {
     const response = await zoteroApi
-      .library(getLibraryType(), userId)
+      .library(libraryType, libraryId)
       .items()
       .post([itemData]);
 

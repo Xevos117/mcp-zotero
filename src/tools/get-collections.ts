@@ -3,7 +3,7 @@ import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
 import { fetchAllPages } from "../utils/pagination.js";
-import { getLibraryType } from "../utils/library-context.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_collections",
@@ -14,6 +14,7 @@ export const toolConfig = {
       .optional()
       .default(false)
       .describe("Include trashed (deleted) collections. Default false."),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -24,11 +25,12 @@ export async function handleGetCollections(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { include_trashed } = GetCollectionsSchema.parse(args);
+  const { include_trashed, library_type, library_id } = GetCollectionsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   try {
     const { items: allCollections } = await fetchAllPages((params) =>
-      zoteroApi.library(getLibraryType(), userId).collections().get(params)
+      zoteroApi.library(libraryType, libraryId).collections().get(params)
     );
 
     if (!Array.isArray(allCollections) || allCollections.length === 0) {
