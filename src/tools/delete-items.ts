@@ -3,6 +3,7 @@ import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/z
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
 import { logger } from "../utils/logger.js";
+import { getLibraryType } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "delete_items",
@@ -42,7 +43,7 @@ export async function handleDeleteItems(
 
   try {
     const response = await zoteroApi
-      .library("user", userId)
+      .library(getLibraryType(), userId)
       .items()
       .get({ itemKey: item_keys.join(",") });
 
@@ -71,7 +72,7 @@ export async function handleDeleteItems(
     const keysToDelete = [...foundKeys] as string[];
 
     await zoteroApi
-      .library("user", userId)
+      .library(getLibraryType(), userId)
       .items()
       .version(libraryVersion)
       .delete(keysToDelete);

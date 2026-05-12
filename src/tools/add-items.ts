@@ -9,6 +9,7 @@ import {
   TITLE_FIELD_NAME,
   ZoteroItemType,
 } from "../utils/zotero-item-types.js";
+import { getLibraryType } from "../utils/library-context.js";
 
 const CreatorSchema = z
   .object({
@@ -152,7 +153,7 @@ export async function handleAddItems(
 
   try {
     const response = await zoteroApi
-      .library("user", userId)
+      .library(getLibraryType(), userId)
       .items()
       .post(payloads);
 

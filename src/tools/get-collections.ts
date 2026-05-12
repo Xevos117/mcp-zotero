@@ -3,6 +3,7 @@ import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
 import { fetchAllPages } from "../utils/pagination.js";
+import { getLibraryType } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_collections",
@@ -27,7 +28,7 @@ export async function handleGetCollections(
 
   try {
     const { items: allCollections } = await fetchAllPages((params) =>
-      zoteroApi.library("user", userId).collections().get(params)
+      zoteroApi.library(getLibraryType(), userId).collections().get(params)
     );
 
     if (!Array.isArray(allCollections) || allCollections.length === 0) {

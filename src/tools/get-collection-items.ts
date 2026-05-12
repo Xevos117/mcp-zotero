@@ -4,6 +4,7 @@ import { formatErrorResponse } from "../utils/error-formatter.js";
 import { formatCreators, formatTags } from "../utils/item-formatter.js";
 import { logger } from "../utils/logger.js";
 import { fetchAllPages } from "../utils/pagination.js";
+import { getLibraryType } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_collection_items",
@@ -30,7 +31,7 @@ export async function handleGetCollectionItems(
 
   try {
     const { items: allItems, totalResults } = await fetchAllPages((params) =>
-      zoteroApi.library("user", userId).collections(collectionKey).items().get(params)
+      zoteroApi.library(getLibraryType(), userId).collections(collectionKey).items().get(params)
     );
 
     if (!allItems || allItems.length === 0) {

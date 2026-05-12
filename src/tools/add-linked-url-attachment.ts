@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
+import { getLibraryType } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "add_linked_url_attachment",
@@ -69,7 +70,7 @@ export async function handleAddLinkedUrlAttachment(
 
   try {
     const response = await zoteroApi
-      .library("user", userId)
+      .library(getLibraryType(), userId)
       .items()
       .post([itemData]);
 

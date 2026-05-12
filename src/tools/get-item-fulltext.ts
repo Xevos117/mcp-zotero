@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, ZoteroFulltextResponse, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
+import { getLibraryType } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_item_fulltext",
@@ -34,7 +35,7 @@ export async function handleGetItemFulltext(
   try {
     // Fetch parent item metadata for context
     const itemResponse = await zoteroApi
-      .library("user", userId)
+      .library(getLibraryType(), userId)
       .items(item_key)
       .get();
 
@@ -47,7 +48,7 @@ export async function handleGetItemFulltext(
 
     // Fetch children to find PDF attachment
     const childrenResponse = await zoteroApi
-      .library("user", userId)
+      .library(getLibraryType(), userId)
       .items(item_key)
       .children()
       .get();
@@ -101,7 +102,7 @@ async function fetchFulltext(
   apiKey: string,
   maxCharacters: number
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const url = `https://api.zotero.org/users/${userId}/items/${attachmentKey}/fulltext`;
+  const url = `https://api.zotero.org/${getLibraryType()}s/${userId}/items/${attachmentKey}/fulltext`;
   const response = await fetch(url, {
     headers: { "Zotero-API-Key": apiKey },
   });

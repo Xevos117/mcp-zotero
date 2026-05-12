@@ -7,6 +7,7 @@ import { logger } from "../utils/logger.js";
 import { lookupOaPdf } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
 import { mapWithConcurrency, createCancellationToken } from "../utils/concurrency.js";
+import { getLibraryType } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "add_items_by_doi",
@@ -153,7 +154,7 @@ export async function handleAddItemsByDoi(
     );
 
     const response = await zoteroApi
-      .library("user", userId)
+      .library(getLibraryType(), userId)
       .items()
       .post(zoteroItems);
 

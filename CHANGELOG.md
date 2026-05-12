@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Group library support via two new env vars:
+  - `ZOTERO_LIBRARY_TYPE` — `"user"` (default) or `"group"`. The MCP routes every
+    Zotero Web API call through `/${libraryType}s/${libraryId}/...`, so setting
+    `group` makes the server operate on a group library instead of a user library.
+  - `ZOTERO_LIBRARY_ID` — numeric library ID. Falls back to `ZOTERO_USER_ID`
+    when unset, preserving back-compat for user-library deployments.
+- Eagerly validates `ZOTERO_LIBRARY_TYPE` at startup so a misconfigured server
+  fails fast rather than on the first tool call.
+- Unit tests for `library-context` helpers.
+
+### Changed
+- All tool handlers and the citation injector now build library URIs from the
+  configured type/id pair (`.library(getLibraryType(), id)` and
+  `${getLibraryType()}s/${id}` in raw URLs). No behavior change for
+  user-library deployments.
+
 All notable changes to this project will be documented in this file.
 
 ## [1.0.8] - 2026-03-03

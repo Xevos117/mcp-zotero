@@ -3,6 +3,7 @@ import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/z
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
 import { logger } from "../utils/logger.js";
+import { getLibraryType } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "search_library",
@@ -61,7 +62,7 @@ export async function handleSearchLibrary(
 
   try {
     const response = await zoteroApi
-      .library("user", userId)
+      .library(getLibraryType(), userId)
       .items()
       .get(params);
 

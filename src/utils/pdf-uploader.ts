@@ -3,6 +3,7 @@ import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { logger } from "./logger.js";
 import { extractPdfText } from "./pdf-text-extractor.js";
 import { putFulltext } from "./zotero-fulltext.js";
+import { getLibraryType } from "./library-context.js";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
@@ -184,7 +185,7 @@ export async function downloadAndUploadPdf(
   let createResponse;
   try {
     createResponse = await zoteroApi
-      .library("user", userId)
+      .library(getLibraryType(), userId)
       .items()
       .post([itemData]);
   } catch (err) {
@@ -215,7 +216,7 @@ export async function downloadAndUploadPdf(
   const itemKey = created[0].key as string;
 
   // 5. Upload authorization
-  const authUrl = `https://api.zotero.org/users/${userId}/items/${itemKey}/file`;
+  const authUrl = `https://api.zotero.org/${getLibraryType()}s/${userId}/items/${itemKey}/file`;
   const authBody = new URLSearchParams({
     md5,
     filename,

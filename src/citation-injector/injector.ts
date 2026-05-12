@@ -7,6 +7,7 @@ import { formatCitationText } from "./citation-formatter.js";
 import { regexEscape, unescapeXml } from "./xml-utils.js";
 import { normalizeZciteTags } from "./zcite-normalizer.js";
 import { zoteroItemToCsl } from "../utils/csl-to-zotero.js";
+import { getLibraryType } from "../utils/library-context.js";
 
 export interface InjectionResult {
   outputPath: string;
@@ -65,7 +66,7 @@ async function fetchCslData(
 
   for (const key of keys) {
     const response = await zoteroApi
-      .library("user", userId)
+      .library(getLibraryType(), userId)
       .items(key)
       .get();
     const zoteroItem = response.getData() as ZoteroItemData;
@@ -84,8 +85,8 @@ function buildCitationItems(
     const itemData = cslData.get(key) ?? { type: "article-journal" };
     const item: ZoteroCitationItem = {
       id: idx,
-      uris: [`http://zotero.org/users/${userId}/items/${key}`],
-      uri: [`http://zotero.org/users/${userId}/items/${key}`],
+      uris: [`http://zotero.org/${getLibraryType()}s/${userId}/items/${key}`],
+      uri: [`http://zotero.org/${getLibraryType()}s/${userId}/items/${key}`],
       itemData,
     };
     if (match.locator) item.locator = match.locator;
