@@ -1,5 +1,43 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Per-call library override on every tool — `library_type` and `library_id`
+  optional args let a single MCP instance target multiple libraries (e.g.,
+  a staging group AND a final-output group) without restarting. Resolution
+  order: arg > env > implicit default. Spread `libraryArgsSchema` is added
+  to every tool's input schema; handlers call `resolveLibrary` to compute
+  the effective context.
+- `resolveLibrary(args, defaultLibraryId)` helper in `library-context.ts`,
+  plus 5 unit tests covering precedence and validation.
+
+### Changed
+- Internal helpers `downloadAndUploadPdf`, `putFulltext`, `fetchFulltext`,
+  `fetchCslData`, `buildCitationItems`, `injectCitations`, and
+  `attachPdfsToItems` now accept `libraryType` alongside the existing
+  library-id argument so cross-library write/read sequences (PDF upload +
+  fulltext index, citation injection) honor per-call overrides.
+
+## [Unreleased]
+
+### Added
+- Group library support via two new env vars:
+  - `ZOTERO_LIBRARY_TYPE` — `"user"` (default) or `"group"`. The MCP routes every
+    Zotero Web API call through `/${libraryType}s/${libraryId}/...`, so setting
+    `group` makes the server operate on a group library instead of a user library.
+  - `ZOTERO_LIBRARY_ID` — numeric library ID. Falls back to `ZOTERO_USER_ID`
+    when unset, preserving back-compat for user-library deployments.
+- Eagerly validates `ZOTERO_LIBRARY_TYPE` at startup so a misconfigured server
+  fails fast rather than on the first tool call.
+- Unit tests for `library-context` helpers.
+
+### Changed
+- All tool handlers and the citation injector now build library URIs from the
+  configured type/id pair (`.library(getLibraryType(), id)` and
+  `${getLibraryType()}s/${id}` in raw URLs). No behavior change for
+  user-library deployments.
+
 All notable changes to this project will be documented in this file.
 
 ## [1.0.8] - 2026-03-03

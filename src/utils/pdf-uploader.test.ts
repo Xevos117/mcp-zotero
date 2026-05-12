@@ -86,7 +86,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -104,7 +104,7 @@ describe("downloadAndUploadPdf", () => {
     );
 
     const { mock } = createZoteroApiMock([]);
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -122,7 +122,7 @@ describe("downloadAndUploadPdf", () => {
     );
 
     const { mock } = createZoteroApiMock([]);
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/forbidden.pdf",
     });
 
@@ -154,7 +154,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -176,7 +176,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -199,7 +199,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/corrupt.pdf",
     });
 
@@ -219,7 +219,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock, postStub } = createZoteroApiMock([], writeData);
 
-    await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
       parentItem: "PARENT1",
     });
@@ -245,7 +245,7 @@ describe("downloadAndUploadPdf", () => {
     );
 
     const { mock } = createZoteroApiMock([]);
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -273,7 +273,7 @@ describe("downloadAndUploadPdf", () => {
     );
 
     const { mock } = createZoteroApiMock([]);
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -306,7 +306,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -336,7 +336,7 @@ describe("downloadAndUploadPdf", () => {
     const { mock, postStub } = createZoteroApiMock([]);
     postStub.mockRejectedValueOnce(new Error("Connection refused"));
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -370,7 +370,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -393,7 +393,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 

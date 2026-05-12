@@ -9,6 +9,7 @@ import {
   TITLE_FIELD_NAME,
   ZoteroItemType,
 } from "../utils/zotero-item-types.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 const CreatorSchema = z
   .object({
@@ -108,6 +109,7 @@ Invalid fields or creatorTypes for a given type are rejected with helpful error 
       .array(z.string())
       .optional()
       .describe("Tags to apply to all items"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -118,7 +120,8 @@ export async function handleAddItems(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { items, collection_key, tags } = AddItemsSchema.parse(args);
+  const { items, collection_key, tags, library_type, library_id } = AddItemsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const payloads = items.map((item) => {
     const { itemType, title, creators, ...fields } = item;
@@ -152,7 +155,7 @@ export async function handleAddItems(
 
   try {
     const response = await zoteroApi
-      .library("user", userId)
+      .library(libraryType, libraryId)
       .items()
       .post(payloads);
 

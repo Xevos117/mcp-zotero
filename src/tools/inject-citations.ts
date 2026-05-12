@@ -3,6 +3,7 @@ import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { injectCitations } from "../citation-injector/injector.js";
 import { logger } from "../utils/logger.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "inject_citations",
@@ -45,6 +46,7 @@ NOTE: If the inject-citations skill is available, prefer the skill workflow (run
       .describe(
         "Citation style for the visible placeholder text. Zotero will reformat on refresh. Default: apa"
       ),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -55,7 +57,8 @@ export async function handleInjectCitations(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { file_path, style } = InjectCitationsSchema.parse(args);
+  const { file_path, style, library_type, library_id } = InjectCitationsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (!file_path.endsWith(".docx")) {
     return formatErrorResponse("File must be a .docx file", {
@@ -64,7 +67,7 @@ export async function handleInjectCitations(
   }
 
   try {
-    const result = await injectCitations(file_path, zoteroApi, userId, style);
+    const result = await injectCitations(file_path, zoteroApi, libraryType, libraryId, style);
 
     const responseObj: Record<string, unknown> = {
       output_path: result.outputPath,

@@ -50,6 +50,61 @@ LLMs without filesystem access — including Claude Desktop, which connects to M
    export UNSAFE_OPERATIONS="none"           # Optional: "none" | "items" | "all" (see below)
    ```
 
+### Targeting a group library
+
+By default the server targets your personal Zotero library (`/users/<ZOTERO_USER_ID>/...`).
+To target a group library instead, set two additional environment variables:
+
+| Variable | Values | Required? | Default |
+|---|---|---|---|
+| `ZOTERO_LIBRARY_TYPE` | `user` \| `group` | No | `user` |
+| `ZOTERO_LIBRARY_ID` | numeric library ID | No (when type=user; falls back to `ZOTERO_USER_ID`) | — |
+
+Example for a group library:
+
+```
+ZOTERO_API_KEY=...
+ZOTERO_USER_ID=12345               # still required
+ZOTERO_LIBRARY_TYPE=group
+ZOTERO_LIBRARY_ID=6178978          # the group ID
+```
+
+The API key in `ZOTERO_API_KEY` must have access to the target group library — generate or scope keys at https://www.zotero.org/settings/keys.
+
+
+### Per-call library override
+
+Every tool accepts two optional args that override the env defaults for that single call:
+
+- `library_type` — `"user"` or `"group"`
+- `library_id` — numeric library ID
+
+Resolution order: per-call arg > env var > implicit default (`user`, `ZOTERO_USER_ID`).
+
+This lets a single MCP instance target multiple libraries (e.g., a staging group and a final-output group) without restarting:
+
+```jsonc
+// First call targets the staging group
+{
+  "tool": "add_items",
+  "args": {
+    "items": [...],
+    "library_type": "group",
+    "library_id": "5597114"
+  }
+}
+
+// Second call targets DART-output (different group)
+{
+  "tool": "add_items",
+  "args": {
+    "items": [...],
+    "library_type": "group",
+    "library_id": "6178978"
+  }
+}
+```
+
 ## Environment Variables
 
 | Variable | Required | Description |

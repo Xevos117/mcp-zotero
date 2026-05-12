@@ -1821,6 +1821,7 @@ describe("import_pdf_to_zotero", () => {
 
     expect(vi.mocked(downloadAndUploadPdf)).toHaveBeenCalledWith(
       expect.anything(), // zoteroApi proxy
+      "user",
       TEST_USER_ID,
       "test-api-key",
       {

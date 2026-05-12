@@ -6,6 +6,7 @@ import { lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
 import { mapWithConcurrency, createCancellationToken } from "../utils/concurrency.js";
 import { fetchAllPages } from "../utils/pagination.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "find_and_attach_pdfs",
@@ -28,6 +29,7 @@ export const toolConfig = {
       .boolean()
       .default(false)
       .describe("Only report which PDFs are available without downloading/attaching"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -49,8 +51,8 @@ export async function handleFindAndAttachPdfs(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { item_keys, collection_key, skip_if_attachment_exists, dry_run } =
-    FindAndAttachPdfsSchema.parse(args);
+  const { item_keys, collection_key, skip_if_attachment_exists, dry_run, library_type, library_id } = FindAndAttachPdfsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   // Validate: exactly one of item_keys or collection_key
   if (item_keys && collection_key) {
@@ -70,7 +72,7 @@ export async function handleFindAndAttachPdfs(
     let keys: string[];
     if (collection_key) {
       const { items: collItems } = await fetchAllPages((params) =>
-        zoteroApi.library("user", userId).collections(collection_key).items().get(params)
+        zoteroApi.library(libraryType, libraryId).collections(collection_key).items().get(params)
       );
       keys = collItems
         .filter((item) => item.itemType !== "attachment" && item.itemType !== "note")
@@ -86,7 +88,7 @@ export async function handleFindAndAttachPdfs(
 
     // 2. Batch-fetch item metadata to get DOIs
     const metaResponse = await zoteroApi
-      .library("user", userId)
+      .library(libraryType, libraryId)
       .items()
       .get({ itemKey: keys.join(",") });
     const metaItems = metaResponse.getData() as ZoteroItemData[];
@@ -116,7 +118,7 @@ export async function handleFindAndAttachPdfs(
       // Check for existing attachments
       if (skip_if_attachment_exists) {
         const childrenResponse = await zoteroApi
-          .library("user", userId)
+          .library(libraryType, libraryId)
           .items(key)
           .children()
           .get();
@@ -169,7 +171,7 @@ export async function handleFindAndAttachPdfs(
       const urlsToTry = [primary.pdf_url, ...fallback_urls];
 
       for (const pdfUrl of urlsToTry) {
-        const uploadResult = await downloadAndUploadPdf(zoteroApi, userId, apiKey, {
+        const uploadResult = await downloadAndUploadPdf(zoteroApi, libraryType, libraryId, apiKey, {
           url: pdfUrl,
           parentItem: key,
         });
