@@ -42,17 +42,17 @@
   "author": "Xevos17",
   "license": "MIT",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.27.1",
-    "dotenv": "^17.3.1",
-    "fast-xml-parser": "^5.5.8",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2",
+    "fast-xml-parser": "^5.8.0",
     "jszip": "^3.10.1",
-    "unpdf": "^1.4.0",
-    "zod": "^4.3.6",
+    "unpdf": "^1.6.2",
+    "zod": "^4.4.3",
     "zotero-api-client": "^0.48.0"
   },
   "devDependencies": {
-    "@types/node": "^25.5.0",
+    "@types/node": "^25.8.0",
     "typescript": "latest",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.6"
   }
 }
