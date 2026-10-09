@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
-import { formatWriteError } from "../utils/write-results.js";
+import { postInBatches } from "../utils/write-results.js";
 import {
   ZOTERO_ITEM_TYPES,
   ITEM_TYPE_FIELDS,
@@ -155,40 +155,18 @@ export async function handleAddItems(
   });
 
   try {
-    const response = await zoteroApi
-      .library(libraryType, libraryId)
-      .items()
-      .post(payloads);
+    const write = await postInBatches(
+      (batch) => zoteroApi.library(libraryType, libraryId).items().post(batch),
+      payloads
+    );
 
-    const errors = response.getErrors();
-    const errorIndices = new Set(Object.keys(errors));
-
-    const success: Array<{
-      index: number;
-      item_key: string;
-      title: string;
-      item_type: string;
-    }> = [];
-    const failed: Array<{ index: number; title: string; error: string }> = [];
-
-    for (const [idx, msg] of Object.entries(errors)) {
-      const i = Number(idx);
-      failed.push({ index: i, title: items[i].title, error: formatWriteError(msg) });
-    }
-
-    const created = response.getData();
-    let successIdx = 0;
-    for (let i = 0; i < items.length; i++) {
-      if (!errorIndices.has(String(i))) {
-        const entity = created[successIdx++];
-        success.push({
-          index: i,
-          item_key: entity?.key ?? "unknown",
-          title: entity?.title ?? items[i].title,
-          item_type: items[i].itemType,
-        });
-      }
-    }
+    const success = write.created.map(({ index, entity }) => ({
+      index,
+      item_key: entity.key as string,
+      title: entity.title ?? items[index].title,
+      item_type: items[index].itemType,
+    }));
+    const failed = write.failed.map(({ index, error }) => ({ index, title: items[index].title, error }));
 
     if (success.length === 0 && failed.length > 0) {
       return formatErrorResponse("All items failed to create", { failed });

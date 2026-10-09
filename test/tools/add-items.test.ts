@@ -168,7 +168,7 @@ describe("add_items (MCP)", () => {
   // creati, ma zotero-api-client restituisce TUTTI gli item inviati (quelli
   // falliti senza key) → se fallisce un indice non finale, i successivi
   // ricevono item_key/title dell'item sbagliato ("unknown" / titolo del fallito).
-  it.fails("AI-09 BUG fallimento parziale al primo indice: item_key/title assegnati all'item giusto", async () => {
+  it("AI-09 fallimento parziale al primo indice: item_key/title assegnati all'item giusto", async () => {
     h.net.on("POST", ITEMS, zWrite({ keys: ["SKIP", "OK000001"], fail: { 0: { code: 400, message: "Invalid date" } } }));
     const out = await h.call("add_items", {
       items: [
@@ -210,7 +210,7 @@ describe("add_items (MCP)", () => {
 
   // BUG: add_items non ha .max(50) né chunking: l'API Zotero accetta al massimo
   // 50 oggetti per POST (oltre risponde 413), quindi un batch di 60 fallisce tutto.
-  it.fails("AI-13 BUG batch di 60 item: suddiviso in POST da ≤50 oppure rifiutato in validazione", async () => {
+  it("AI-13 batch di 60 item: suddiviso in POST da ≤50 oppure rifiutato in validazione", async () => {
     h.net.on("POST", ITEMS, (req, hit) => {
       const n = req.json<unknown[]>().length;
       if (n > 50) return zError(413, "Too many objects (max 50)");
@@ -218,9 +218,22 @@ describe("add_items (MCP)", () => {
     });
     const items = Array.from({ length: 60 }, (_, i) => ({ itemType: "book", title: `Book ${i}` }));
     const out = await h.call("add_items", { items });
-    const chunked = !out.isError && out.json.success?.length === 60;
-    const rejectedUpfront = out.isError && h.net.calls.length === 0;
-    expect(chunked || rejectedUpfront).toBe(true);
+    expect(out.isError).toBe(false);
+    expect(h.net.requests("POST", ITEMS).map((r) => r.json<unknown[]>().length)).toEqual([50, 10]);
+    expect(out.json.success.map((s: { index: number }) => s.index)).toEqual(items.map((_, i) => i));
+    expect(new Set(out.json.success.map((s: { item_key: string }) => s.item_key)).size).toBe(60);
+  });
+
+  it("AI-13b fallimento nel secondo batch: indici e titoli riferiti all'input originale", async () => {
+    h.net.on("POST", ITEMS, (req, hit) =>
+      zWrite({ fail: hit === 2 ? { 5: { code: 400, message: "Invalid date" } } : {} })(req, hit)
+    );
+    const items = Array.from({ length: 60 }, (_, i) => ({ itemType: "book", title: `Book ${i}` }));
+    const out = await h.call("add_items", { items });
+    expect(out.isError).toBe(false);
+    expect(out.json.failed).toEqual([{ index: 55, title: "Book 55", error: "400: Invalid date" }]);
+    expect(out.json.success).toHaveLength(59);
+    expect(out.json.success.find((s: { index: number }) => s.index === 56).title).toBe("Book 56");
   });
 
   describe("validazione input", () => {
