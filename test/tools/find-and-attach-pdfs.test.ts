@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
 } from "../helpers/mcp-harness.js";
 import { networkError, statusResponse } from "../helpers/fake-net.js";
 import {
@@ -71,18 +71,18 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(attach).toMatchObject({ itemType: "attachment", parentItem: "AAAA1111" });
   });
 
-  it("FA-02 item_keys e collection_key insieme → errore morbido, nessuna rete", async () => {
-    expectSoftError(await h.call("find_and_attach_pdfs", { item_keys: ["A"], collection_key: "C" }), "not both");
+  it("FA-02 item_keys e collection_key insieme → errore strutturato, nessuna rete", async () => {
+    expectErrorJson(await h.call("find_and_attach_pdfs", { item_keys: ["A"], collection_key: "C" }), "not both");
     expect(h.net.calls).toHaveLength(0);
   });
 
-  it("FA-03 né item_keys né collection_key → errore morbido", async () => {
-    expectSoftError(await h.call("find_and_attach_pdfs", {}), "Provide either item_keys or collection_key");
+  it("FA-03 né item_keys né collection_key → errore strutturato", async () => {
+    expectErrorJson(await h.call("find_and_attach_pdfs", {}), "Provide either item_keys or collection_key");
     expect(h.net.calls).toHaveLength(0);
   });
 
   it("FA-04 item_keys vuoto → 'No items to process'", async () => {
-    expectSoftError(await h.call("find_and_attach_pdfs", { item_keys: [] }), "No items to process");
+    expectErrorJson(await h.call("find_and_attach_pdfs", { item_keys: [] }), "No items to process");
   });
 
   it("FA-05 collection_key: pagina la collezione (Total-Results) ed esclude allegati e note", async () => {
@@ -117,7 +117,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
 
   it("FA-06 collezione vuota → 'No items to process'", async () => {
     h.net.on("GET", `${ZBASE}/collections/COL00001/items`, zList([]));
-    expectSoftError(await h.call("find_and_attach_pdfs", { collection_key: "COL00001" }), "No items to process");
+    expectErrorJson(await h.call("find_and_attach_pdfs", { collection_key: "COL00001" }), "No items to process");
   });
 
   it("FA-07 item senza DOI → status error 'No DOI'; chiave inesistente → 'Item not found'", async () => {
@@ -229,19 +229,19 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(h.net.requests("POST", FILE_ROUTE).length).toBeLessThan(12);
   });
 
-  it("FA-18 errori della GET metadati Zotero → errore morbido 'find_and_attach_pdfs failed'", async () => {
+  it("FA-18 errori della GET metadati Zotero → errore strutturato 'find_and_attach_pdfs failed'", async () => {
     for (const status of [403, 404, 429, 500, 503]) {
       await h.close();
       h = await startHarness({ unpaywallEmail: UNPAYWALL_EMAIL });
       h.net.on("GET", ITEMS, zError(status));
-      const json = expectSoftError(await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111"] }), "find_and_attach_pdfs failed");
+      const json = expectErrorJson(await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111"] }), "find_and_attach_pdfs failed");
       expect(json.details).toContain(String(status));
     }
   });
 
-  it("FA-19 errore di rete sulla collezione → errore morbido con details", async () => {
+  it("FA-19 errore di rete sulla collezione → errore strutturato con details", async () => {
     h.net.on("GET", `${ZBASE}/collections/COL00001/items`, networkError("ETIMEDOUT"));
-    const json = expectSoftError(await h.call("find_and_attach_pdfs", { collection_key: "COL00001" }), "find_and_attach_pdfs failed");
+    const json = expectErrorJson(await h.call("find_and_attach_pdfs", { collection_key: "COL00001" }), "find_and_attach_pdfs failed");
     expect(json.details).toContain("ETIMEDOUT");
   });
 
@@ -280,10 +280,10 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(out.json.results.filter((r: Result) => r.reason === "Item not found")).toHaveLength(0);
   });
 
-  it("FA-23 ZOTERO_API_KEY assente → errore morbido senza rete", async () => {
+  it("FA-23 ZOTERO_API_KEY assente → errore strutturato senza rete", async () => {
     await h.close();
     h = await startHarness({ unpaywallEmail: UNPAYWALL_EMAIL, envApiKey: "" });
-    expectSoftError(await h.call("find_and_attach_pdfs", { item_keys: ["A"] }), "ZOTERO_API_KEY");
+    expectErrorJson(await h.call("find_and_attach_pdfs", { item_keys: ["A"] }), "ZOTERO_API_KEY");
     expect(h.net.calls).toHaveLength(0);
   });
 

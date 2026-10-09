@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
   ZOTERO_ERROR_STATUSES,
 } from "../helpers/mcp-harness.js";
@@ -69,9 +69,9 @@ describe("add_linked_url_attachment (MCP)", () => {
     expect(h.net.calls[0].json<Array<{ url: string }>>()[0].url).toBe(url);
   });
 
-  it("ALU-05 scrittura rifiutata → errore morbido con details", async () => {
+  it("ALU-05 scrittura rifiutata → errore strutturato con details", async () => {
     h.net.on("POST", ITEMS, zWrite({ fail: { 0: { code: 400, message: "Parent item PAR00001 not found" } } }));
-    const json = expectSoftError(
+    const json = expectErrorJson(
       await h.call("add_linked_url_attachment", { url: URL_, parent_item: "PAR00001" }),
       "Failed to create linked URL attachment"
     );

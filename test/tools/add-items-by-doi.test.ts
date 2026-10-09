@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
 } from "../helpers/mcp-harness.js";
 import { FakeHandler, jsonResponse, networkError, statusResponse } from "../helpers/fake-net.js";
@@ -128,9 +128,9 @@ describe("add_items_by_doi (MCP)", () => {
       expect(h.net.requests("POST", ITEMS)[0].json<unknown[]>()).toHaveLength(1);
     });
 
-    it("AID-06 tutti i DOI falliscono → errore morbido, nessuna POST", async () => {
+    it("AID-06 tutti i DOI falliscono → errore strutturato, nessuna POST", async () => {
       h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/net": "network" }));
-      const json = expectSoftError(
+      const json = expectErrorJson(
         await h.call("add_items_by_doi", { dois: ["10.1/missing", "10.1/net"] }),
         "All DOI resolutions failed"
       );
@@ -166,15 +166,15 @@ describe("add_items_by_doi (MCP)", () => {
       expect(h.net.toHost("doi.org")[0].url.pathname).not.toContain("<");
     });
 
-    it("AID-10 array vuoto → errore morbido, nessuna rete", async () => {
-      expectSoftError(await h.call("add_items_by_doi", { dois: [] }), "At least one DOI is required");
+    it("AID-10 array vuoto → errore strutturato, nessuna rete", async () => {
+      expectErrorJson(await h.call("add_items_by_doi", { dois: [] }), "At least one DOI is required");
       expect(h.net.calls).toHaveLength(0);
     });
 
-    it("AID-11 scrittura Zotero rifiutata → errore morbido 'Zotero API write failed' con indice", async () => {
+    it("AID-11 scrittura Zotero rifiutata → errore strutturato 'Zotero API write failed' con indice", async () => {
       h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a") }));
       h.net.on("POST", ITEMS, itemsAndAttachments({ 0: { code: 400, message: "Invalid field" } }));
-      const json = expectSoftError(await h.call("add_items_by_doi", { dois: ["10.1/a"] }), "Zotero API write failed");
+      const json = expectErrorJson(await h.call("add_items_by_doi", { dois: ["10.1/a"] }), "Zotero API write failed");
       expect(json.error).toContain("Item 0");
       expect(json.error).toContain("Invalid field");
     });
@@ -186,6 +186,7 @@ describe("add_items_by_doi (MCP)", () => {
       h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a"), "10.1/b": csl("10.1/b") }));
       h.net.on("POST", ITEMS, itemsAndAttachments({ 1: { code: 400, message: "Invalid field" } }));
       const out = await h.call("add_items_by_doi", { dois: ["10.1/a", "10.1/b"], auto_attach_pdf: false });
+      expect(out.isError).toBe(false); // successo parziale: non è un errore del tool
       expect(out.json.success).toEqual([expect.objectContaining({ doi: "10.1/a", item_key: "PAPER000" })]);
       expect(out.json.failed).toEqual([{ doi: "10.1/b", error: "400: Invalid field" }]);
     });

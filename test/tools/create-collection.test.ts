@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
   ZOTERO_ERROR_STATUSES,
 } from "../helpers/mcp-harness.js";
@@ -43,8 +43,8 @@ describe("create_collection (MCP)", () => {
     expect(out.json.name).toBe("Spaced");
   });
 
-  it.each(["", "   ", "\t\n"])("CC-04 nome vuoto/solo spazi (%j) → errore morbido, nessuna POST", async (name) => {
-    expectSoftError(await h.call("create_collection", { name }), "Collection name is required");
+  it.each(["", "   ", "\t\n"])("CC-04 nome vuoto/solo spazi (%j) → errore strutturato, nessuna POST", async (name) => {
+    expectErrorJson(await h.call("create_collection", { name }), "Collection name is required");
     expect(h.net.calls).toHaveLength(0);
   });
 
@@ -55,9 +55,9 @@ describe("create_collection (MCP)", () => {
     expect(out.json.name).toBe("Résumé 研究 🧪");
   });
 
-  it("CC-06 scrittura rifiutata (failed) → errore morbido 'Failed to create collection'", async () => {
+  it("CC-06 scrittura rifiutata (failed) → errore strutturato 'Failed to create collection'", async () => {
     h.net.on("POST", COLLS, zWrite({ fail: { 0: { code: 400, message: "Parent collection PARENT01 not found" } } }));
-    const json = expectSoftError(
+    const json = expectErrorJson(
       await h.call("create_collection", { name: "X", parent_collection: "PARENT01" }),
       "Failed to create collection"
     );

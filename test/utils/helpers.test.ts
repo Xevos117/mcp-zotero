@@ -36,12 +36,12 @@ describe("logger", () => {
 });
 
 describe("formatErrorResponse", () => {
-  it("H-02 contenuto testuale JSON {error, ...details} senza flag isError (comportamento attuale)", () => {
+  it("H-02 contenuto testuale JSON {error, ...details} con isError: true (convenzione MCP)", () => {
     const r = formatErrorResponse("Oops", { item_key: "K", nested: { a: 1 } });
     expect(r.content).toHaveLength(1);
     expect(r.content[0].type).toBe("text");
     expect(JSON.parse(r.content[0].text)).toEqual({ error: "Oops", item_key: "K", nested: { a: 1 } });
-    expect((r as Record<string, unknown>).isError).toBeUndefined();
+    expect(r.isError).toBe(true);
   });
 
   it("H-03 una chiave 'error' nei details sovrascrive il messaggio (pin)", () => {

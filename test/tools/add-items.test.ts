@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
   ZOTERO_ERROR_STATUSES,
 } from "../helpers/mcp-harness.js";
@@ -176,6 +176,7 @@ describe("add_items (MCP)", () => {
         { itemType: "book", title: "Good" },
       ],
     });
+    expect(out.isError).toBe(false); // successo parziale: non è un errore del tool
     expect(out.json.success).toEqual([{ index: 1, item_key: "OK000001", title: "Good", item_type: "book" }]);
   });
 
@@ -187,13 +188,13 @@ describe("add_items (MCP)", () => {
     expect(out.json.failed[0].error).toBe("400: Invalid date");
   });
 
-  it("AI-11 tutti falliti → errore morbido 'All items failed to create' con elenco", async () => {
+  it("AI-11 tutti falliti → errore strutturato 'All items failed to create' con elenco", async () => {
     h.net.on(
       "POST",
       ITEMS,
       zWrite({ fail: { 0: { code: 400, message: "e0" }, 1: { code: 400, message: "e1" } } })
     );
-    const json = expectSoftError(
+    const json = expectErrorJson(
       await h.call("add_items", { items: [{ itemType: "book", title: "A" }, { itemType: "book", title: "B" }] }),
       "All items failed to create"
     );

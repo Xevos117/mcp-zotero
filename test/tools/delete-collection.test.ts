@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
 } from "../helpers/mcp-harness.js";
 import { networkError, jsonResponse } from "../helpers/fake-net.js";
@@ -23,7 +23,7 @@ describe("delete_collection (MCP)", () => {
       "DC-01 modalità '%s' → rifiutato, nessuna chiamata di rete",
       async (mode) => {
         h = await startHarness({ unsafeOps: mode });
-        const json = expectSoftError(
+        const json = expectErrorJson(
           await h.call("delete_collection", { collection_key: "COL00001" }),
           "Deletion of collections is not allowed"
         );
@@ -68,36 +68,36 @@ describe("delete_collection (MCP)", () => {
       expect((await h.call("delete_collection", { collection_key: "COL00001" })).json.name).toBe("Архив 🗄️");
     });
 
-    it("DC-06 404 sulla GET → errore morbido 'Collection not found', nessuna DELETE", async () => {
+    it("DC-06 404 sulla GET → errore strutturato 'Collection not found', nessuna DELETE", async () => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, zError(404));
-      const json = expectSoftError(await h.call("delete_collection", { collection_key: "COL00001" }), "Collection not found");
+      const json = expectErrorJson(await h.call("delete_collection", { collection_key: "COL00001" }), "Collection not found");
       expect(json.status).toBe("not_found");
       expect(h.net.requests("DELETE", COLL)).toHaveLength(0);
     });
 
-    it("DC-07 404 sulla DELETE → errore morbido 'Collection not found'", async () => {
+    it("DC-07 404 sulla DELETE → errore strutturato 'Collection not found'", async () => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, zSingle(collection("COL00001", "X"), 3));
       h.net.on("DELETE", COLL, zError(404));
-      expectSoftError(await h.call("delete_collection", { collection_key: "COL00001" }), "Collection not found");
+      expectErrorJson(await h.call("delete_collection", { collection_key: "COL00001" }), "Collection not found");
     });
 
-    it("DC-08 412 sulla DELETE → errore morbido version_conflict", async () => {
+    it("DC-08 412 sulla DELETE → errore strutturato version_conflict", async () => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, zSingle(collection("COL00001", "X"), 3));
       h.net.on("DELETE", COLL, zError(412, "Library has been modified since specified version"));
-      const json = expectSoftError(
+      const json = expectErrorJson(
         await h.call("delete_collection", { collection_key: "COL00001" }),
         "modified by another client"
       );
       expect(json.status).toBe("version_conflict");
     });
 
-    it("DC-09 versione non determinabile (nessun header) → errore morbido, nessuna DELETE", async () => {
+    it("DC-09 versione non determinabile (nessun header) → errore strutturato, nessuna DELETE", async () => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, jsonResponse(zoteroEntity(collection("COL00001", "X"))));
-      expectSoftError(
+      expectErrorJson(
         await h.call("delete_collection", { collection_key: "COL00001" }),
         "Could not determine collection version"
       );

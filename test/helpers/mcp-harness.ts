@@ -122,11 +122,11 @@ export function expectValidationError(outcome: ToolOutcome, field: string): void
 }
 
 /**
- * "Errore morbido": il server risponde con un JSON `{ error, ... }` senza
- * isError (comportamento attuale di formatErrorResponse).
+ * "Errore strutturato": il tool risponde con formatErrorResponse, cioè un JSON
+ * `{ error, ... }` con isError: true (convenzione MCP per i fallimenti dei tool).
  */
-export function expectSoftError(outcome: ToolOutcome, message: string | RegExp): any {
-  expect(outcome.isError).toBe(false);
+export function expectErrorJson(outcome: ToolOutcome, message: string | RegExp): any {
+  expect(outcome.isError).toBe(true);
   expect(outcome.json).toBeTypeOf("object");
   if (typeof message === "string") {
     expect(outcome.json.error).toContain(message);

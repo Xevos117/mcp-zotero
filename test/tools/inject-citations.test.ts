@@ -7,7 +7,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
 } from "../helpers/mcp-harness.js";
 import { networkError } from "../helpers/fake-net.js";
@@ -168,14 +168,14 @@ describe("inject_citations (MCP)", () => {
     expect(citations(xml)[0].citationItems[0].itemData.title).toBe("Über «Lernen» & 学习");
   });
 
-  it("IC-08 file non .docx → errore morbido senza rete", async () => {
-    const json = expectSoftError(await h.call("inject_citations", { file_path: "/tmp/document.pdf" }), "File must be a .docx file");
+  it("IC-08 file non .docx → errore strutturato senza rete", async () => {
+    const json = expectErrorJson(await h.call("inject_citations", { file_path: "/tmp/document.pdf" }), "File must be a .docx file");
     expect(json.file_path).toBe("/tmp/document.pdf");
     expect(h.net.calls).toHaveLength(0);
   });
 
   it("IC-09 estensione maiuscola .DOCX → rifiutata (controllo case-sensitive)", async () => {
-    expectSoftError(await h.call("inject_citations", { file_path: "/tmp/PAPER.DOCX" }), "File must be a .docx file");
+    expectErrorJson(await h.call("inject_citations", { file_path: "/tmp/PAPER.DOCX" }), "File must be a .docx file");
   });
 
   it("IC-10 file inesistente → isError (ENOENT)", async () => {

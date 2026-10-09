@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
   carriesApiKey,
   ZOTERO_ERROR_STATUSES,
@@ -80,16 +80,16 @@ describe("search_library (MCP)", () => {
     expect(out.json[0]).not.toHaveProperty("dateAdded");
   });
 
-  it("SL-06 nessun risultato con query: errore morbido con query e suggestion", async () => {
+  it("SL-06 nessun risultato con query: errore strutturato con query e suggestion", async () => {
     h.net.on("GET", ITEMS, zList([]));
-    const json = expectSoftError(await h.call("search_library", { query: "zzz" }), "No results found");
+    const json = expectErrorJson(await h.call("search_library", { query: "zzz" }), "No results found");
     expect(json.query).toBe("zzz");
     expect(json.suggestion).toBeTypeOf("string");
   });
 
-  it("SL-07 libreria vuota senza query: errore morbido 'No items found'", async () => {
+  it("SL-07 libreria vuota senza query: errore strutturato 'No items found'", async () => {
     h.net.on("GET", ITEMS, zList([]));
-    expectSoftError(await h.call("search_library", {}), "No items found");
+    expectErrorJson(await h.call("search_library", {}), "No items found");
   });
 
   it("SL-08 unicode: query codificata correttamente e titoli/autori preservati", async () => {

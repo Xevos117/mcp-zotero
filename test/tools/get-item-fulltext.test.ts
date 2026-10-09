@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
   carriesApiKey,
 } from "../helpers/mcp-harness.js";
@@ -106,19 +106,19 @@ describe("get_item_fulltext (MCP)", () => {
     expect(out.json.characters).toBe("Grüße 你好 🚀".length);
   });
 
-  it("GIF-08 full text non indicizzato (404) → errore morbido", async () => {
+  it("GIF-08 full text non indicizzato (404) → errore strutturato", async () => {
     h.net.on("GET", PARENT, zSingle(article("PAR00001")));
     h.net.on("GET", CHILDREN, zList([pdfAttachment("ATT00001", "PAR00001")]));
     h.net.on("GET", FULLTEXT, zError(404));
-    const json = expectSoftError(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "Full text not indexed");
+    const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "Full text not indexed");
     expect(json).toMatchObject({ item_key: "PAR00001", attachment_key: "ATT00001" });
   });
 
-  it.each([403, 429, 500, 503])("GIF-09 fulltext HTTP %i → errore morbido con lo status", async (status) => {
+  it.each([403, 429, 500, 503])("GIF-09 fulltext HTTP %i → errore strutturato con lo status", async (status) => {
     h.net.on("GET", PARENT, zSingle(article("PAR00001")));
     h.net.on("GET", CHILDREN, zList([pdfAttachment("ATT00001", "PAR00001")]));
     h.net.on("GET", FULLTEXT, zError(status));
-    expectSoftError(await h.call("get_item_fulltext", { item_key: "PAR00001" }), `status ${status}`);
+    expectErrorJson(await h.call("get_item_fulltext", { item_key: "PAR00001" }), `status ${status}`);
   });
 
   it("GIF-10 errore di rete sull'endpoint fulltext → isError", async () => {
@@ -132,7 +132,7 @@ describe("get_item_fulltext (MCP)", () => {
     it("GIF-11 item senza URL → 'No PDF attachment found'", async () => {
       h.net.on("GET", PARENT, zSingle(article("PAR00001")));
       h.net.on("GET", CHILDREN, zList([]));
-      const json = expectSoftError(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "No PDF attachment found");
+      const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "No PDF attachment found");
       expect(json.item_key).toBe("PAR00001");
       expect(h.net.requests("GET", /fulltext$/)).toHaveLength(0);
     });
@@ -140,21 +140,21 @@ describe("get_item_fulltext (MCP)", () => {
     it("GIF-12 item con URL → suggerisce di usare l'URL", async () => {
       h.net.on("GET", PARENT, zSingle(article("PAR00001", { url: "https://example.org/p" })));
       h.net.on("GET", CHILDREN, zList([]));
-      const json = expectSoftError(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "This item has a URL");
+      const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "This item has a URL");
       expect(json.url).toBe("https://example.org/p");
     });
 
     it.each(["webpage", "blogPost"])("GIF-13 itemType %s → messaggio pagina web", async (itemType) => {
       h.net.on("GET", PARENT, zSingle({ key: "PAR00001", itemType, title: "W", url: "https://blog.example/x" }));
       h.net.on("GET", CHILDREN, zList([]));
-      const json = expectSoftError(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "web page item");
+      const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "web page item");
       expect(json.url).toBe("https://blog.example/x");
     });
   });
 
-  it("GIF-14 item inesistente (404) → errore morbido 'Item not found'", async () => {
+  it("GIF-14 item inesistente (404) → errore strutturato 'Item not found'", async () => {
     h.net.on("GET", PARENT, zError(404));
-    const json = expectSoftError(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "Item not found");
+    const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "Item not found");
     expect(json.item_key).toBe("PAR00001");
   });
 
@@ -174,10 +174,10 @@ describe("get_item_fulltext (MCP)", () => {
     expectToolError(await h.call("get_item_fulltext", { item_key: "PAR00001" }));
   });
 
-  it("GIF-18 ZOTERO_API_KEY assente → errore morbido senza chiamate", async () => {
+  it("GIF-18 ZOTERO_API_KEY assente → errore strutturato senza chiamate", async () => {
     await h.close();
     h = await startHarness({ envApiKey: "" });
-    expectSoftError(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "ZOTERO_API_KEY");
+    expectErrorJson(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "ZOTERO_API_KEY");
     expect(h.net.calls).toHaveLength(0);
   });
 

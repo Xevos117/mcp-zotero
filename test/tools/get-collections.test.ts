@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
   ZOTERO_ERROR_STATUSES,
 } from "../helpers/mcp-harness.js";
@@ -72,15 +72,15 @@ describe("get_collections (MCP)", () => {
     expect(all.json.map((c: ZItem) => c.key)).toEqual(["COL00001", "COL00002"]);
   });
 
-  it("GC-06 tutte nel cestino → errore morbido che suggerisce include_trashed", async () => {
+  it("GC-06 tutte nel cestino → errore strutturato che suggerisce include_trashed", async () => {
     h.net.on("GET", COLLS, zList([collection("COL00002", "Trashed", { deleted: true })]));
-    const json = expectSoftError(await h.call("get_collections", {}), "No collections found");
+    const json = expectErrorJson(await h.call("get_collections", {}), "No collections found");
     expect(json.suggestion).toContain("include_trashed");
   });
 
-  it("GC-07 nessuna collezione → errore morbido con helpUrl", async () => {
+  it("GC-07 nessuna collezione → errore strutturato con helpUrl", async () => {
     h.net.on("GET", COLLS, zList([]));
-    const json = expectSoftError(await h.call("get_collections", {}), "No collections found");
+    const json = expectErrorJson(await h.call("get_collections", {}), "No collections found");
     expect(json.helpUrl).toMatch(/^https:\/\/www\.zotero\.org\//);
   });
 

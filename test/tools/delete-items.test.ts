@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
 } from "../helpers/mcp-harness.js";
 import { networkError, jsonResponse } from "../helpers/fake-net.js";
@@ -27,7 +27,7 @@ describe("delete_items (MCP)", () => {
   describe("guard UNSAFE_OPERATIONS", () => {
     it("DI-01 modalità 'none' → rifiutato, nessuna chiamata di rete", async () => {
       h = await startHarness({ unsafeOps: "none" });
-      const json = expectSoftError(
+      const json = expectErrorJson(
         await h.call("delete_items", { item_keys: ["AAAA1111"] }),
         "Deletion of items is not allowed"
       );
@@ -68,26 +68,26 @@ describe("delete_items (MCP)", () => {
       expect(deletedKeys(h)).toEqual(["AAAA1111"]);
     });
 
-    it("DI-05 nessuna chiave trovata → errore morbido not_found, nessuna DELETE", async () => {
+    it("DI-05 nessuna chiave trovata → errore strutturato not_found, nessuna DELETE", async () => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, zLibraryQuery([]));
-      const json = expectSoftError(await h.call("delete_items", { item_keys: ["GONE0001"] }), "No items found");
+      const json = expectErrorJson(await h.call("delete_items", { item_keys: ["GONE0001"] }), "No items found");
       expect(json.status).toBe("not_found");
       expect(h.net.requests("DELETE", ITEMS)).toHaveLength(0);
     });
 
-    it("DI-06 412 sulla DELETE → errore morbido version_conflict", async () => {
+    it("DI-06 412 sulla DELETE → errore strutturato version_conflict", async () => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, zLibraryQuery([article("AAAA1111")]));
       h.net.on("DELETE", ITEMS, zError(412));
-      const json = expectSoftError(await h.call("delete_items", { item_keys: ["AAAA1111"] }), "modified by another client");
+      const json = expectErrorJson(await h.call("delete_items", { item_keys: ["AAAA1111"] }), "modified by another client");
       expect(json.status).toBe("version_conflict");
     });
 
-    it("DI-07 versione di libreria assente → errore morbido, nessuna DELETE", async () => {
+    it("DI-07 versione di libreria assente → errore strutturato, nessuna DELETE", async () => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, jsonResponse([zoteroEntity(article("AAAA1111"))]));
-      expectSoftError(await h.call("delete_items", { item_keys: ["AAAA1111"] }), "Could not determine library version");
+      expectErrorJson(await h.call("delete_items", { item_keys: ["AAAA1111"] }), "Could not determine library version");
       expect(h.net.requests("DELETE", ITEMS)).toHaveLength(0);
     });
 
@@ -150,7 +150,7 @@ describe("delete_items (MCP)", () => {
         const keys = manyArticles(50).map((i) => i.key);
         h.net.on("GET", ITEMS, zLibraryQuery([]));
         const out = await h.call("delete_items", { item_keys: keys });
-        expectSoftError(out, "No items found");
+        expectErrorJson(out, "No items found");
       });
 
       it("DI-15 la validazione precede il guard", async () => {

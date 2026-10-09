@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
 } from "../helpers/mcp-harness.js";
 import { networkError } from "../helpers/fake-net.js";
@@ -96,16 +96,16 @@ describe("get_collection_items (MCP)", () => {
     });
   });
 
-  it("GCI-05 collezione vuota → errore morbido status 'empty'", async () => {
+  it("GCI-05 collezione vuota → errore strutturato status 'empty'", async () => {
     h.net.on("GET", COLL_ITEMS, zList([]));
-    const json = expectSoftError(await h.call("get_collection_items", { collectionKey: "COL00001" }), "Collection is empty");
+    const json = expectErrorJson(await h.call("get_collection_items", { collectionKey: "COL00001" }), "Collection is empty");
     expect(json.status).toBe("empty");
     expect(json.collectionKey).toBe("COL00001");
   });
 
-  it("GCI-06 solo allegati → errore morbido status 'invalid_items'", async () => {
+  it("GCI-06 solo allegati → errore strutturato status 'invalid_items'", async () => {
     h.net.on("GET", COLL_ITEMS, zList([pdfAttachment("ATT00001", "X")]));
-    const json = expectSoftError(
+    const json = expectErrorJson(
       await h.call("get_collection_items", { collectionKey: "COL00001" }),
       "No valid items found in collection"
     );
@@ -120,9 +120,9 @@ describe("get_collection_items (MCP)", () => {
     expect(h.net.calls.map((c) => c.url.searchParams.get("start") ?? "0")).toEqual(["0", "100", "200"]);
   });
 
-  it("GCI-08 404 → errore morbido status 'not_found' (non isError)", async () => {
+  it("GCI-08 404 → errore strutturato status 'not_found'", async () => {
     h.net.on("GET", COLL_ITEMS, zError(404, "Collection not found"));
-    const json = expectSoftError(
+    const json = expectErrorJson(
       await h.call("get_collection_items", { collectionKey: "COL00001" }),
       "Collection is empty or not accessible"
     );

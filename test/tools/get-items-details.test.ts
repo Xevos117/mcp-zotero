@@ -3,7 +3,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   expectToolError,
   ZOTERO_ERROR_STATUSES,
 } from "../helpers/mcp-harness.js";
@@ -75,14 +75,14 @@ describe("get_items_details (MCP)", () => {
     }
   });
 
-  it("GID-04 array vuoto → errore morbido senza chiamate di rete", async () => {
-    expectSoftError(await h.call("get_items_details", { item_keys: [] }), "At least one item key is required");
+  it("GID-04 array vuoto → errore strutturato senza chiamate di rete", async () => {
+    expectErrorJson(await h.call("get_items_details", { item_keys: [] }), "At least one item key is required");
     expect(h.net.calls).toHaveLength(0);
   });
 
-  it("GID-05 nessun item trovato → errore morbido con le chiavi richieste", async () => {
+  it("GID-05 nessun item trovato → errore strutturato con le chiavi richieste", async () => {
     h.net.on("GET", ITEMS, zList([]));
-    const json = expectSoftError(await h.call("get_items_details", { item_keys: ["NOPE0001"] }), "No items found");
+    const json = expectErrorJson(await h.call("get_items_details", { item_keys: ["NOPE0001"] }), "No items found");
     expect(json.item_keys).toEqual(["NOPE0001"]);
   });
 

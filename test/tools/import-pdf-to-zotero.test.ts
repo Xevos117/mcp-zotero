@@ -4,7 +4,7 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectSoftError,
+  expectErrorJson,
   carriesApiKey,
 } from "../helpers/mcp-harness.js";
 import { binaryResponse, networkError, statusResponse } from "../helpers/fake-net.js";
@@ -155,16 +155,16 @@ describe("import_pdf_to_zotero (MCP)", () => {
   });
 
   describe("errori di download", () => {
-    it.each([403, 404, 500])("IP-07 download HTTP %i → errore morbido con status", async (status) => {
+    it.each([403, 404, 500])("IP-07 download HTTP %i → errore strutturato con status", async (status) => {
       h.net.on("GET", "journals.example.org/papers/attention.pdf", statusResponse(status));
-      const json = expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Failed to download file");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Failed to download file");
       expect(json.status).toBe(status);
       expect(h.net.requests("POST", ITEMS)).toHaveLength(0);
     });
 
-    it("IP-08 errore di rete nel download → errore morbido con details e suggestion", async () => {
+    it("IP-08 errore di rete nel download → errore strutturato con details e suggestion", async () => {
       h.net.on("GET", "journals.example.org/papers/attention.pdf", networkError("ECONNRESET"));
-      const json = expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Network error downloading file");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Network error downloading file");
       expect(json.details).toContain("ECONNRESET");
       expect(json.suggestion).toBeTypeOf("string");
     });
@@ -175,46 +175,46 @@ describe("import_pdf_to_zotero (MCP)", () => {
         "journals.example.org/papers/attention.pdf",
         binaryResponse(Buffer.from("<!DOCTYPE html><html><body>Login</body></html>"), "text/html")
       );
-      const json = expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "not a valid PDF");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "not a valid PDF");
       expect(json.details).toContain("HTML");
       expect(h.net.requests("POST", ITEMS)).toHaveLength(0);
     });
 
     it("IP-10 file vuoto → 'not a valid PDF'", async () => {
       h.net.on("GET", "journals.example.org/papers/attention.pdf", binaryResponse(Buffer.alloc(0)));
-      expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "not a valid PDF");
+      expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "not a valid PDF");
     });
 
     it("IP-11 file oltre 100 MB → 'File exceeds 100 MB limit', nessun item creato", async () => {
       const big = Buffer.alloc(100 * 1024 * 1024 + 1);
       big.write("%PDF-1.4\n");
       h.net.on("GET", "journals.example.org/papers/attention.pdf", binaryResponse(big));
-      const json = expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "100 MB");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "100 MB");
       expect(json.size_bytes).toBe(big.length);
       expect(h.net.requests("POST", ITEMS)).toHaveLength(0);
     }, 30_000);
   });
 
   describe("errori Zotero", () => {
-    it("IP-12 creazione item rifiutata (failed) → errore morbido 'import_pdf_to_zotero failed'", async () => {
+    it("IP-12 creazione item rifiutata (failed) → errore strutturato 'import_pdf_to_zotero failed'", async () => {
       servePdf(h.net, PDF_URL);
       h.net.on("POST", ITEMS, zWrite({ fail: { 0: { code: 400, message: "Parent item not found" } } }));
-      expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL, parent_item: "NOPE" }), "import_pdf_to_zotero failed");
+      expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL, parent_item: "NOPE" }), "import_pdf_to_zotero failed");
       expect(h.net.requests("POST", FILE_ROUTE)).toHaveLength(0);
     });
 
-    it.each([403, 404, 412, 429, 500, 503])("IP-13 HTTP %i sulla creazione item → errore morbido con details", async (status) => {
+    it.each([403, 404, 412, 429, 500, 503])("IP-13 HTTP %i sulla creazione item → errore strutturato con details", async (status) => {
       servePdf(h.net, PDF_URL);
       h.net.on("POST", ITEMS, zError(status));
-      const json = expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "import_pdf_to_zotero failed");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "import_pdf_to_zotero failed");
       expect(json.details).toContain(String(status));
     });
 
-    it("IP-14 quota storage piena (413 in auth) → errore morbido con item_key orfano e nota", async () => {
+    it("IP-14 quota storage piena (413 in auth) → errore strutturato con item_key orfano e nota", async () => {
       servePdf(h.net, PDF_URL);
       h.net.on("POST", ITEMS, zWrite({ keys: ["ORPHAN01"] }));
       installUploadPipeline(h.net, { authStatus: 413 });
-      const json = expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "storage quota exceeded");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "storage quota exceeded");
       expect(json).toMatchObject({ status: 413, item_key: "ORPHAN01" });
       expect(json.suggestion).toContain("zotero.org/settings/storage");
       expect(json.note).toContain("delete_items");
@@ -225,7 +225,7 @@ describe("import_pdf_to_zotero (MCP)", () => {
       servePdf(h.net, PDF_URL);
       h.net.on("POST", ITEMS, zWrite());
       installUploadPipeline(h.net, { authStatus: status });
-      const json = expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Upload authorization failed");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Upload authorization failed");
       expect(json.status).toBe(status);
     });
 
@@ -233,14 +233,14 @@ describe("import_pdf_to_zotero (MCP)", () => {
       servePdf(h.net, PDF_URL);
       h.net.on("POST", ITEMS, zWrite());
       installUploadPipeline(h.net, { authStatus: "network" });
-      expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Upload authorization failed");
+      expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Upload authorization failed");
     });
 
     it("IP-17 upload su storage HTTP 500 → 'File upload failed', niente register", async () => {
       servePdf(h.net, PDF_URL);
       h.net.on("POST", ITEMS, zWrite());
       installUploadPipeline(h.net, { uploadStatus: 500 });
-      const json = expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "File upload failed");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "File upload failed");
       expect(json.status).toBe(500);
       expect(h.net.requests("POST", FILE_ROUTE)).toHaveLength(1);
     });
@@ -249,7 +249,7 @@ describe("import_pdf_to_zotero (MCP)", () => {
       servePdf(h.net, PDF_URL);
       h.net.on("POST", ITEMS, zWrite());
       installUploadPipeline(h.net, { registerStatus: 412 });
-      const json = expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Upload registration failed");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Upload registration failed");
       expect(json.status).toBe(412);
     });
 
@@ -297,10 +297,10 @@ describe("import_pdf_to_zotero (MCP)", () => {
     expect(out.json.size_bytes).toBe(pdf.length);
   });
 
-  it("IP-21 ZOTERO_API_KEY assente → errore morbido senza rete", async () => {
+  it("IP-21 ZOTERO_API_KEY assente → errore strutturato senza rete", async () => {
     await h.close();
     h = await startHarness({ envApiKey: "" });
-    expectSoftError(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "ZOTERO_API_KEY");
+    expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "ZOTERO_API_KEY");
     expect(h.net.calls).toHaveLength(0);
   });
 
