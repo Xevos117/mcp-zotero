@@ -26,9 +26,10 @@ processo server ucciso con SIGKILL se ancora vivo 5 s dopo la chiusura.
 - **Versioni**: i test non dipendono dal testo dei messaggi zod/SDK. Su un errore di validazione
   controllano solo `isError` e la presenza del nome del campo. Gli errori che l'SDK rilancia come
   JSON-RPC invece di restituirli come `CallToolResult` vengono normalizzati in `isError: true`.
-- **Libreria**: tutti i test usano la libreria utente di default (nessuna variabile `ZOTERO_LIBRARY_*`);
+- **Libreria**: i test per tool usano la libreria utente di default (nessuna variabile `ZOTERO_LIBRARY_*`);
   le asserzioni richiedono path `/users/{USER_ID}/...` (costante `ZBASE`). La firma di `registerAllTools`
-  è usata in un solo punto (`startHarness`). I test per le librerie di gruppo vanno aggiunti a parte.
+  è usata in un solo punto (`startHarness`). Le librerie di gruppo sono coperte dagli e2e in
+  `test/e2e/group-library.e2e.test.ts`, da GUI-06/07, TL-08, H-19 e dai test unitari della PR #7 in `src/`.
 - **Errore morbido** = risposta JSON `{ "error": ... }` **senza** `isError` (comportamento attuale di
   `formatErrorResponse`). **Errore duro** = il tool lancia un'eccezione e l'SDK la converte in `isError: true`.
 
@@ -329,6 +330,22 @@ corretto, o lo ha modificato una libreria aggiornata (vedi colonna "dipende da")
 | E2E-20 | rete | nessuna richiesta del processo figlio senza route |
 | E2E-21/22 | UNSAFE_OPERATIONS assente / " ITEMS " | delete bloccati senza chiamate HTTP / solo delete_items abilitato |
 | E2E-23 | senza credenziali | exit code 1 entro 5 s, errore su stderr |
+
+## E2E librerie di gruppo (`test/e2e/group-library.e2e.test.ts`)
+Server avviato con `ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID=777` (e `ZOTERO_USER_ID` utente).
+| ID | Scenario | Atteso |
+|---|---|---|
+| E2E-G01 | get_user_id | `library_type: "group"`, `library_path: "groups/777"`, `user_id` da `ZOTERO_USER_ID` |
+| E2E-G02/03 | lettura: search, collezioni, item, dettagli, fulltext | GET su `/groups/777/...` |
+| E2E-G04/05/06 | scrittura: create_collection, add_items, linked URL, import PDF, add_items_by_doi con PDF OA | POST item, auth/registrazione file e PUT fulltext su `/groups/777/...` |
+| E2E-G07 | delete_items, delete_collection | GET di verifica e DELETE su `/groups/777/...` |
+| E2E-G08 | inject_citations | URI `http://zotero.org/groups/777/items/{key}`, nessun `/users/` |
+| E2E-G09 | find_and_attach_pdfs dry_run | item e children dal gruppo |
+| E2E-G10 | tutte le richieste precedenti | solo path `/groups/777/`, nessuna richiesta senza route |
+| E2E-G11 | override per chiamata | `library_type: "user"` → `/users/{ZOTERO_USER_ID}`; `library_id: "888"` → `/groups/888` |
+| E2E-G12 | `library_id` non numerico ("abc", path traversal, "12a", "", "-1"), `library_type` sconosciuto | isError, nessuna chiamata HTTP |
+| E2E-G13 | group senza `ZOTERO_LIBRARY_ID` | exit code 1 entro 5 s, "requires ZOTERO_LIBRARY_ID", nessuna chiamata HTTP |
+| E2E-G14 | `ZOTERO_LIBRARY_ID` non numerico / `ZOTERO_LIBRARY_TYPE` sconosciuto | exit code 1 con messaggio dedicato |
 
 ## Lacune note
 - Il comportamento reale di api.zotero.org (limite di 50 chiavi, limit di default 25, 413 oltre 50 oggetti
