@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import { readFile, writeFile } from "node:fs/promises";
+import { format, parse } from "node:path";
 import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
 import { CslItemData, ZoteroCitationItem } from "../types/csl-types.js";
 import { generateZoteroFieldCode, generateBibliographyFieldCode } from "./field-codes.js";
@@ -149,6 +150,10 @@ export async function injectCitations(
   userId: string,
   style: string
 ): Promise<InjectionResult> {
+  // Derive "<name>_cited<ext>" from the basename only: a directory containing ".docx" stays untouched
+  const { dir, name, ext } = parse(filePath);
+  const outputPath = format({ dir, name: `${name}_cited`, ext });
+
   const fileBuffer = await readFile(filePath);
   const zip = await JSZip.loadAsync(fileBuffer);
 
@@ -163,7 +168,6 @@ export async function injectCitations(
   const matches = parseZciteMatches(documentXml);
 
   if (matches.length === 0) {
-    const outputPath = filePath.replace(".docx", "_cited.docx");
     const buffer = await zip.generateAsync({ type: "nodebuffer" });
     await writeFile(outputPath, buffer);
     return { outputPath, found: 0, injected: 0, warnings: [] };
@@ -209,7 +213,6 @@ export async function injectCitations(
 
   // Save
   zip.file("word/document.xml", documentXml);
-  const outputPath = filePath.replace(".docx", "_cited.docx");
   const buffer = await zip.generateAsync({ type: "nodebuffer" });
   await writeFile(outputPath, buffer);
 

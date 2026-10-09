@@ -246,7 +246,7 @@ describe("inject_citations (MCP)", () => {
   // BUG: injector.ts:162/208 usa filePath.replace(".docx", "_cited.docx"), che
   // sostituisce la PRIMA occorrenza: con una cartella che contiene ".docx" nel
   // nome l'output finisce in un percorso sbagliato (o la scrittura fallisce).
-  it.fails("IC-20 BUG cartella con '.docx' nel nome: output accanto all'input", async () => {
+  it("IC-20 cartella con '.docx' nel nome: output accanto all'input", async () => {
     serveItems(h, { SMITH001: SMITH });
     const sub = join(dir.path, "thesis.docx.d");
     await mkdir(sub);
