@@ -1,52 +1,24 @@
 # Changelog
 
-## [Unreleased]
-
-### Added
-- Per-call library override on every tool — `library_type` and `library_id`
-  optional args let a single MCP instance target multiple libraries (e.g.,
-  a staging group AND a final-output group) without restarting. Resolution
-  order: arg > env > implicit default. Spread `libraryArgsSchema` is added
-  to every tool's input schema; handlers call `resolveLibrary` to compute
-  the effective context.
-- `resolveLibrary(args, defaultLibraryId)` helper in `library-context.ts`,
-  plus 5 unit tests covering precedence and validation.
-
-### Changed
-- Internal helpers `downloadAndUploadPdf`, `putFulltext`, `fetchFulltext`,
-  `fetchCslData`, `buildCitationItems`, `injectCitations`, and
-  `attachPdfsToItems` now accept `libraryType` alongside the existing
-  library-id argument so cross-library write/read sequences (PDF upload +
-  fulltext index, citation injection) honor per-call overrides.
-
-## [Unreleased]
-
-### Added
-- Group library support via two new env vars:
-  - `ZOTERO_LIBRARY_TYPE` — `"user"` (default) or `"group"`. The MCP routes every
-    Zotero Web API call through `/${libraryType}s/${libraryId}/...`, so setting
-    `group` makes the server operate on a group library instead of a user library.
-  - `ZOTERO_LIBRARY_ID` — numeric library ID. Falls back to `ZOTERO_USER_ID`
-    when unset, preserving back-compat for user-library deployments.
-- Eagerly validates `ZOTERO_LIBRARY_TYPE` at startup so a misconfigured server
-  fails fast rather than on the first tool call.
-- Unit tests for `library-context` helpers.
-
-### Changed
-- All tool handlers and the citation injector now build library URIs from the
-  configured type/id pair (`.library(getLibraryType(), id)` and
-  `${getLibraryType()}s/${id}` in raw URLs). No behavior change for
-  user-library deployments.
-
 All notable changes to this project will be documented in this file.
 
 ## [2.0.0] - Unreleased
 
-Toolchain and dependency upgrade. No changes to tool names, descriptions or input schemas: the `tools/list` output is identical to 1.0.9.
+Toolchain and dependency upgrade, plus group library support. Tool names are unchanged; the only `tools/list` differences from 1.0.9 are the optional `library_type` / `library_id` arguments and the updated `get_user_id` description.
 
 ### Breaking
 
 - **Node.js >= 22 required** (was >= 18). `unpdf` 1.8 (PDF.js 6) requires Node 22 at runtime, and Node 18/20 are end-of-life. This is the only reason for the major bump: users on Node 22+ need no changes.
+
+### Added
+
+- **Group library support** ([#7](https://github.com/Xevos117/mcp-zotero/pull/7), by @chrisawai):
+  - `ZOTERO_LIBRARY_TYPE` (`user` default, or `group`) and `ZOTERO_LIBRARY_ID` route every Zotero Web API call, the PDF upload/fulltext URLs and the citation field-code URIs (`http://zotero.org/groups/<id>/items/<key>`) to the configured library. User-library deployments are unchanged.
+  - Optional per-call `library_type` / `library_id` arguments on every tool (except `get_user_id`) let one server instance target several libraries.
+- Fixes on top of #7:
+  - `ZOTERO_LIBRARY_TYPE=group` without `ZOTERO_LIBRARY_ID` now fails at startup instead of silently using the user ID as a group ID; an empty `ZOTERO_LIBRARY_TYPE` means `user`; library IDs must be numeric (they are interpolated into API URLs).
+  - A per-call `library_type: "group"` without `library_id` is rejected instead of reusing the user ID; `library_type: "user"` on a group server falls back to `ZOTERO_USER_ID`.
+  - `get_user_id` now also returns `library_type`, `library_id` and `library_path`; the skill script `inject.js` accepts `groups/<id>` / `users/<id>` (a bare numeric ID still means a user library), so skill-generated citations point at the right library.
 
 ### Changed
 
@@ -64,7 +36,7 @@ Toolchain and dependency upgrade. No changes to tool names, descriptions or inpu
 - `actions/checkout` and `actions/setup-node` v4 → v7.
 - Tests run on Node 22, 24 and 26; release workflow uses Node 24.
 - `timeout-minutes` on every job and long step.
-- New `npm run smoke` step: starts `build/server.js` over stdio with fake credentials, checks `initialize`, that all 15 tools are listed with valid input schemas, and runs `get_collections` through the real `zotero-api-client` with a stubbed `fetch` (no network). This catches broken runtime imports that unit tests (which mock the client) miss.
+- New `npm run smoke` step: starts `build/server.js` over stdio with fake credentials, once for a user library and once for a group library, checks `initialize`, that all 15 tools are listed with valid input schemas, and runs `get_collections` and `inject_citations` through the real `zotero-api-client` with a stubbed `fetch` that only serves the expected library (no network); the injected field code must carry the matching `users/` or `groups/` URI. This catches broken runtime imports that unit tests (which mock the client) miss.
 
 ## [1.0.8] - 2026-03-03
 

@@ -60,18 +60,20 @@ To target a group library instead, set two additional environment variables:
 | Variable | Values | Required? | Default |
 |---|---|---|---|
 | `ZOTERO_LIBRARY_TYPE` | `user` \| `group` | No | `user` |
-| `ZOTERO_LIBRARY_ID` | numeric library ID | No (when type=user; falls back to `ZOTERO_USER_ID`) | — |
+| `ZOTERO_LIBRARY_ID` | numeric library ID | Yes when type=`group`; otherwise falls back to `ZOTERO_USER_ID` | — |
 
 Example for a group library:
 
 ```
 ZOTERO_API_KEY=...
-ZOTERO_USER_ID=12345               # still required
+ZOTERO_USER_ID=12345               # optional for groups: used by get_user_id and per-call library_type="user"
 ZOTERO_LIBRARY_TYPE=group
 ZOTERO_LIBRARY_ID=6178978          # the group ID
 ```
 
 The API key in `ZOTERO_API_KEY` must have access to the target group library — generate or scope keys at https://www.zotero.org/settings/keys.
+
+The server refuses to start if `ZOTERO_LIBRARY_TYPE=group` is set without `ZOTERO_LIBRARY_ID`, or if a library ID is not numeric.
 
 
 ### Per-call library override
@@ -81,7 +83,9 @@ Every tool accepts two optional args that override the env defaults for that sin
 - `library_type` — `"user"` or `"group"`
 - `library_id` — numeric library ID
 
-Resolution order: per-call arg > env var > implicit default (`user`, `ZOTERO_USER_ID`).
+Resolution order: per-call arg > env var > implicit default (`user`, `ZOTERO_USER_ID`). `library_id` must be numeric. Overriding `library_type` to `group` on a server configured for a user library requires `library_id`; overriding to `user` on a group server without `library_id` uses `ZOTERO_USER_ID`.
+
+Note that per-call overrides let the LLM reach any library the API key can access. Scope the key to the libraries you want exposed; deletions remain gated by `UNSAFE_OPERATIONS`.
 
 This lets a single MCP instance target multiple libraries (e.g., a staging group and a final-output group) without restarting:
 

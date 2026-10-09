@@ -15,7 +15,14 @@ startCommand:
       zoteroUserId:
         type: string
         description: Your Zotero user ID.
+      zoteroLibraryType:
+        type: string
+        enum: [user, group]
+        description: Optional. Set to "group" to target a group library.
+      zoteroLibraryId:
+        type: string
+        description: Optional. Numeric group ID, required when zoteroLibraryType is "group".
   commandFunction:
     # A function that produces the CLI command to start the MCP on stdio.
     |-
-    (config) => ({ command: 'node', args: ['build/server.js'], env: { ZOTERO_API_KEY: config.zoteroApiKey, ZOTERO_USER_ID: config.zoteroUserId } })
+    (config) => ({ command: 'node', args: ['build/server.js'], env: { ZOTERO_API_KEY: config.zoteroApiKey, ZOTERO_USER_ID: config.zoteroUserId, ...(config.zoteroLibraryType ? { ZOTERO_LIBRARY_TYPE: config.zoteroLibraryType } : {}), ...(config.zoteroLibraryId ? { ZOTERO_LIBRARY_ID: config.zoteroLibraryId } : {}) } })
