@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - Unreleased
+
+Toolchain and dependency upgrade. No changes to tool names, descriptions or input schemas: the `tools/list` output is identical to 1.0.9.
+
+### Breaking
+
+- **Node.js >= 22 required** (was >= 18). `unpdf` 1.8 (PDF.js 6) requires Node 22 at runtime, and Node 18/20 are end-of-life. This is the only reason for the major bump: users on Node 22+ need no changes.
+
+### Changed
+
+- **TypeScript 7.0** (native compiler), pinned as `^7.0.2` instead of `latest`. Emitted JavaScript is byte-identical to the TypeScript 5.9 build.
+  - `tsconfig.json`: explicit `"types": ["node"]` (TS 7 defaults `types` to `[]`), removed `typeRoots` (pointed at `src/types`, which is not a type-package folder) and the unused `allowJs`, added `isolatedModules` (matches how vitest transpiles each file).
+- **zotero-api-client 0.48 → 0.51**: the package dropped `lib/main-node.cjs` and the `cross-fetch` polyfill in favour of the global `fetch`. The server now loads the package main entry, typed via the package's own declarations; the stale local `src/types/zotero-api-client.d.ts` augmentation was removed. Client-side request validation (added in 0.49) accepts every endpoint used by the tools.
+- **unpdf 1.4 → 1.8**: `extractText({ mergePages: true })` now preserves line breaks, so text uploaded to the Zotero full-text index by `import_pdf_to_zotero` / `find_and_attach_pdfs` keeps its line structure instead of being joined with spaces.
+- **dotenv 17 → 18**: no API change for `config({ quiet: true })`; dotenv now logs to stderr, so it can no longer corrupt the stdio JSON-RPC stream.
+- **vitest 4 → 5**: `testTimeout`/`hookTimeout` set explicitly to 10 s. Vitest 5 clears mocks before each test by default; the suite already passes under the new default.
+- Minor updates: `@modelcontextprotocol/sdk` 1.32.1, `zod` 4.6.5, `fast-xml-parser` 5.11.2, `jszip` 3.10.2, `@types/node` 26.
+- `npm audit`: 0 vulnerabilities (transitive fixes for the SDK's HTTP-transport dependencies).
+
+### CI
+
+- `actions/checkout` and `actions/setup-node` v4 → v7.
+- Tests run on Node 22, 24 and 26; release workflow uses Node 24.
+- `timeout-minutes` on every job and long step.
+- New `npm run smoke` step: starts `build/server.js` over stdio with fake credentials, checks `initialize`, that all 15 tools are listed with valid input schemas, and runs `get_collections` through the real `zotero-api-client` with a stubbed `fetch` (no network). This catches broken runtime imports that unit tests (which mock the client) miss.
+
 ## [1.0.8] - 2026-03-03
 
 ### Fixed

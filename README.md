@@ -32,6 +32,8 @@ LLMs without filesystem access — including Claude Desktop, which connects to M
 
 ## Setup
 
+Requires **Node.js 22 or newer**.
+
 1. Get your Zotero credentials:
 
    ```bash
