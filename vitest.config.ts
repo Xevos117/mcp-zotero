@@ -4,9 +4,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "test/**/*.test.ts"],
+    exclude: ["**/node_modules/**", "**/.git/**", "test/e2e/**"],
     setupFiles: ["src/__mocks__/setup.ts"],
     testTimeout: 10_000,
     hookTimeout: 10_000,
+    teardownTimeout: 10_000,
   },
 });
