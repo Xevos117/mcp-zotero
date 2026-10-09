@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { Harness, startHarness } from "../helpers/mcp-harness.js";
 import { USER_ID } from "../helpers/zotero-fake.js";
 
@@ -29,10 +29,36 @@ describe("get_user_id (MCP)", () => {
     expect(out.json.user_id).toBe("0012345");
   });
 
-  it("GUI-04 user id vuoto restituito come stringa vuota", async () => {
+  it("GUI-04 user id vuoto → errore 'library ID is not set' (validazione id della PR #7)", async () => {
     h = await startHarness({ userId: "" });
     const out = await h.call("get_user_id", {});
-    expect(out.json).toMatchObject({ user_id: "" });
+    expect(out.isError).toBe(true);
+    expect(out.text).toMatch(/library ID is not set/);
+    expect(h.net.calls).toHaveLength(0);
+  });
+
+  it("GUI-06 libreria utente: library_type, library_id e library_path", async () => {
+    h = await startHarness();
+    const out = await h.call("get_user_id", {});
+    expect(out.json).toEqual({
+      user_id: USER_ID,
+      library_type: "user",
+      library_id: USER_ID,
+      library_path: `users/${USER_ID}`,
+    });
+  });
+
+  it("GUI-07 libreria di gruppo: user_id reale da ZOTERO_USER_ID, library_path groups/{id}", async () => {
+    h = await startHarness({ userId: "777" });
+    vi.stubEnv("ZOTERO_LIBRARY_TYPE", "group");
+    vi.stubEnv("ZOTERO_USER_ID", USER_ID);
+    const out = await h.call("get_user_id", {});
+    expect(out.json).toEqual({
+      user_id: USER_ID,
+      library_type: "group",
+      library_id: "777",
+      library_path: "groups/777",
+    });
   });
 
   // BUG: con @modelcontextprotocol/sdk 1.27 una tools/call senza il campo
