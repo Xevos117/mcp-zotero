@@ -52,7 +52,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "typescript": "latest",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.0"
   }
 }
