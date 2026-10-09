@@ -174,7 +174,7 @@ describe("putFulltext (fetch finto)", () => {
   it("H-17 PUT JSON con content/indexedPages/totalPages e API key; 204 → success", async () => {
     const net = new FakeNet().install();
     net.on("PUT", `${ZBASE}/items/ATT00001/fulltext`, statusResponse(204));
-    const r = await putFulltext(USER_ID, "ATT00001", "k-123", "testo ü", 4);
+    const r = await putFulltext("user", USER_ID, "ATT00001", "k-123", "testo ü", 4);
     expect(r).toEqual({ success: true });
     const [req] = net.calls;
     expect(req.headers.get("Zotero-API-Key")).toBe("k-123");
@@ -187,8 +187,16 @@ describe("putFulltext (fetch finto)", () => {
   ])("H-18 status %i → success=false con lo status nel messaggio", async (status, needle) => {
     const net = new FakeNet().install();
     net.on("PUT", `${ZBASE}/items/ATT00001/fulltext`, statusResponse(status));
-    const r = await putFulltext(USER_ID, "ATT00001", "k", "t", 1);
+    const r = await putFulltext("user", USER_ID, "ATT00001", "k", "t", 1);
     expect(r.success).toBe(false);
     expect(r.error).toContain(needle);
+  });
+
+  it("H-19 libreria di gruppo → PUT su /groups/{id}/items/{key}/fulltext", async () => {
+    const net = new FakeNet().install();
+    net.on("PUT", "api.zotero.org/groups/777/items/ATT00001/fulltext", statusResponse(204));
+    const r = await putFulltext("group", "777", "ATT00001", "k", "t", 1);
+    expect(r).toEqual({ success: true });
+    expect(net.calls).toHaveLength(1);
   });
 });
