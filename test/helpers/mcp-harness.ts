@@ -44,9 +44,9 @@ export interface HarnessOptions {
 }
 
 export function createZoteroClient(apiKey = TEST_API_KEY): ZoteroApiInterface {
-  // Stesso caricamento di src/server.ts
+  // Stesso caricamento di src/server.ts (zotero-api-client >= 0.51: unico entry lib/main.cjs)
   const require = createRequire(import.meta.url);
-  const factory = require("zotero-api-client/lib/main-node.cjs").default;
+  const factory = require("zotero-api-client").default;
   return factory(apiKey) as ZoteroApiInterface;
 }
 
