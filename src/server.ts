@@ -61,8 +61,10 @@ class ZoteroServer {
         );
       }
 
+      // zotero-api-client >= 0.51 ships a single CJS entry (lib/main.cjs) that relies on the
+      // global fetch; the old lib/main-node.cjs (cross-fetch polyfill) no longer exists.
       const require = createRequire(import.meta.url);
-      const zoteroApiFactory = require("zotero-api-client/lib/main-node.cjs").default;
+      const { default: zoteroApiFactory } = require("zotero-api-client") as typeof import("zotero-api-client");
       this.zoteroApi = zoteroApiFactory(apiKey) as ZoteroApiInterface;
     }
   }
