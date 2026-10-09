@@ -67,7 +67,7 @@ describe("create_collection (MCP)", () => {
   // BUG: create-collection.ts:47 fa `Object.values(errors).join("; ")` ma gli
   // errori di zotero-api-client sono oggetti {key, code, message} → details
   // diventa "[object Object]" e il messaggio del server va perso.
-  it.fails("CC-07 BUG details riporta il messaggio d'errore del server", async () => {
+  it("CC-07 details riporta il messaggio d'errore del server", async () => {
     h.net.on("POST", COLLS, zWrite({ fail: { 0: { code: 400, message: "Parent collection PARENT01 not found" } } }));
     const out = await h.call("create_collection", { name: "X", parent_collection: "PARENT01" });
     expect(out.json.details).toContain("Parent collection PARENT01 not found");

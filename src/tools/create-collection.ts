@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
+import { formatWriteErrors } from "../utils/write-results.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
@@ -46,8 +47,7 @@ export async function handleCreateCollection(
       .post([collectionData]);
 
     if (!response.isSuccess()) {
-      const errors = response.getErrors();
-      const errorMsg = Object.values(errors).join("; ") || "Unknown error";
+      const errorMsg = formatWriteErrors(response.getErrors());
       return formatErrorResponse("Failed to create collection", {
         details: errorMsg,
       });

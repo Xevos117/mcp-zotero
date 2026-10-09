@@ -79,10 +79,17 @@ export interface ZoteroResponse {
   getTotalResults(): number | null;
 }
 
+/** Failure entry of a multi-object write, keyed by request index in getErrors(). */
+export interface ZoteroWriteError {
+  key?: string;
+  code?: number;
+  message?: string;
+}
+
 export interface ZoteroWriteResponse {
   isSuccess(): boolean;
   getData(): ZoteroItemData[];
-  getErrors(): Record<string, string>;
+  getErrors(): Record<string, ZoteroWriteError>;
   getEntityByIndex(index: number): ZoteroItemData;
 }
 

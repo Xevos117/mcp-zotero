@@ -3,6 +3,7 @@ import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { logger } from "./logger.js";
 import { extractPdfText } from "./pdf-text-extractor.js";
 import { putFulltext } from "./zotero-fulltext.js";
+import { formatWriteErrors } from "./write-results.js";
 import { LibraryType } from "./library-context.js";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -202,8 +203,7 @@ export async function downloadAndUploadPdf(
   }
 
   if (!createResponse.isSuccess()) {
-    const errors = createResponse.getErrors();
-    const errorMsg = Object.values(errors).join("; ") || "Unknown error";
+    const errorMsg = formatWriteErrors(createResponse.getErrors());
     return {
       success: false,
       error: {

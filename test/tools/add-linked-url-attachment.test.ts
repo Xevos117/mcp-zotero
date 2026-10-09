@@ -80,7 +80,7 @@ describe("add_linked_url_attachment (MCP)", () => {
 
   // BUG: add-linked-url-attachment.ts:78 — stesso problema di create_collection:
   // gli errori sono oggetti, details diventa "[object Object]".
-  it.fails("ALU-06 BUG details riporta il messaggio d'errore del server", async () => {
+  it("ALU-06 details riporta il messaggio d'errore del server", async () => {
     h.net.on("POST", ITEMS, zWrite({ fail: { 0: { code: 400, message: "Parent item PAR00001 not found" } } }));
     const out = await h.call("add_linked_url_attachment", { url: URL_, parent_item: "PAR00001" });
     expect(out.json.details).toContain("Parent item PAR00001 not found");

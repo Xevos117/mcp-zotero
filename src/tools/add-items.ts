@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
+import { formatWriteError } from "../utils/write-results.js";
 import {
   ZOTERO_ITEM_TYPES,
   ITEM_TYPE_FIELDS,
@@ -172,7 +173,7 @@ export async function handleAddItems(
 
     for (const [idx, msg] of Object.entries(errors)) {
       const i = Number(idx);
-      failed.push({ index: i, title: items[i].title, error: msg });
+      failed.push({ index: i, title: items[i].title, error: formatWriteError(msg) });
     }
 
     const created = response.getData();

@@ -4,6 +4,7 @@ import { formatErrorResponse } from "../utils/error-formatter.js";
 import { resolveDois } from "../utils/doi-resolver.js";
 import { cslToZoteroItem } from "../utils/csl-to-zotero.js";
 import { logger } from "../utils/logger.js";
+import { formatWriteError } from "../utils/write-results.js";
 import { lookupOaPdf } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
 import { mapWithConcurrency, createCancellationToken } from "../utils/concurrency.js";
@@ -165,8 +166,7 @@ export async function handleAddItemsByDoi(
       const errors = response.getErrors();
       const errorMessages = Object.entries(errors)
         .map(
-          ([idx, msg]) =>
-            `Item ${idx}: ${typeof msg === "object" ? JSON.stringify(msg) : msg}`
+          ([idx, msg]) => `Item ${idx}: ${formatWriteError(msg)}`
         )
         .join(", ");
       return formatErrorResponse(`Zotero API write failed: ${errorMessages}`);

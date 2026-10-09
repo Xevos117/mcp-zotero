@@ -181,10 +181,10 @@ describe("add_items (MCP)", () => {
 
   // BUG: add-items.ts:172 copia in `failed[].error` l'oggetto errore grezzo
   // ({key, code, message}) invece di una stringa, come documentato dal tipo.
-  it.fails("AI-10 BUG failed[].error è una stringa leggibile", async () => {
+  it("AI-10 failed[].error è una stringa leggibile", async () => {
     h.net.on("POST", ITEMS, zWrite({ fail: { 0: { code: 400, message: "Invalid date" } } }));
     const out = await h.call("add_items", { items: [{ itemType: "book", title: "Bad" }, { itemType: "book", title: "x" }] });
-    expect(typeof out.json.failed[0].error).toBe("string");
+    expect(out.json.failed[0].error).toBe("400: Invalid date");
   });
 
   it("AI-11 tutti falliti → errore morbido 'All items failed to create' con elenco", async () => {
