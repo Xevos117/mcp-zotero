@@ -7,7 +7,7 @@ Suite aggiunta in `test/` (i test storici restano in `src/**/*.test.ts`).
 | `npx vitest run` (= `npm test`) | unit: `src/**` + `test/tools/**` + `test/utils/**` | ~8 s |
 | `npm run test:e2e` | `npm run build`, poi `test/e2e/**` con `vitest.e2e.config.ts` | ~4 s + build |
 
-Timeout: unit `testTimeout`/`hookTimeout` 15 s (`vitest.config.ts`); e2e 60 s, ogni chiamata MCP 15 s,
+Timeout: unit `testTimeout`/`hookTimeout` 10 s (`vitest.config.ts`); e2e 60 s, ogni chiamata MCP 15 s,
 processo server ucciso con SIGKILL se ancora vivo 5 s dopo la chiusura.
 
 ## Come funzionano
@@ -51,7 +51,6 @@ corretto, o lo ha modificato una libreria aggiornata (vedi colonna "dipende da")
 | IP-23 | src/utils/pdf-uploader.ts:371/377 | `buffer.length` letto dopo `extractPdfText`: unpdf fa il detach dell'ArrayBuffer → `size_bytes: 0` | unpdf |
 | FA-20 | src/tools/find-and-attach-pdfs.ts:208 | i task `rejected` vengono scartati: l'item sparisce da `results` e dai contatori | — |
 | IC-20 | src/citation-injector/injector.ts:162/208 | `replace(".docx", "_cited.docx")` agisce sulla prima occorrenza: una cartella `x.docx.d/` produce un path di output sbagliato | — |
-| GUI-05 | (SDK) src/tools/index.ts:86 | `tools/call` senza `arguments` su un tool senza parametri → errore di validazione | @modelcontextprotocol/sdk |
 
 ---
 
@@ -130,8 +129,11 @@ corretto, o lo ha modificato una libreria aggiornata (vedi colonna "dipende da")
 ## get_user_id (`get-user-id.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| GUI-01..04 | normale / argomenti extra / "0012345" / "" | `{user_id}` verbatim, nessuna chiamata HTTP |
-| GUI-05 | **BUG** tools/call senza `arguments` | successo |
+| GUI-01..03 | normale / argomenti extra / "0012345" | `{user_id}` verbatim, nessuna chiamata HTTP |
+| GUI-04 | user id "" | isError "library ID is not set", nessuna chiamata HTTP |
+| GUI-05 | tools/call senza `arguments` | successo (corretto nell'SDK 1.32; era BUG con 1.27) |
+| GUI-06 | libreria utente | `{user_id, library_type: "user", library_id, library_path: "users/{id}"}` |
+| GUI-07 | `ZOTERO_LIBRARY_TYPE=group`, id 777 | `user_id` da `ZOTERO_USER_ID`, `library_path: "groups/777"` |
 
 ## create_collection (`create-collection.test.ts`)
 | ID | Scenario | Atteso |
@@ -296,12 +298,13 @@ corretto, o lo ha modificato una libreria aggiornata (vedi colonna "dipende da")
 | ID | Scenario | Atteso |
 |---|---|---|
 | TL-01 | elenco | esattamente 15 nomi |
-| TL-02 | per tool | `type: object`, properties e required attesi, descrizione presente |
+| TL-02 | per tool | `type: object`, properties e required attesi (+ `library_type`/`library_id` tranne get_user_id), descrizione presente |
 | TL-03 | enum/default | sort, direction, limit, style, auto_attach_pdf, max_characters, dry_run, content_type |
 | TL-04 | cardinalità | delete_items 1..50, add_items min 1, collection_key minLength 1 |
 | TL-05 | add_items.itemType | enum di 37 tipi; required itemType+title |
 | TL-06 | url | `format: uri` |
 | TL-07 | tool sconosciuto | isError |
+| TL-08 | override libreria | `library_type` enum user/group, `library_id` pattern numerico, mai required |
 
 ## Helper pubblici (`test/utils/helpers.test.ts`)
 | ID | Scenario | Atteso |
@@ -314,6 +317,7 @@ corretto, o lo ha modificato una libreria aggiornata (vedi colonna "dipende da")
 | H-11..14 | fetchWithRetry | Retry-After come data passata, 500 senza retry, esaurimento dei retry, errore di rete |
 | H-15/16 | resolveDoi | codifica + Accept CSL / 404 con DOI e status nel messaggio |
 | H-17/18 | putFulltext | body JSON + API key, 204 / 413 e 500 |
+| H-19 | putFulltext gruppo | PUT su `/groups/777/items/{key}/fulltext` |
 
 ## E2E (`test/e2e/stdio-server.e2e.test.ts`)
 | ID | Scenario | Atteso |
