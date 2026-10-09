@@ -34,6 +34,8 @@ const EXPECTED: Record<string, { required: string[]; properties: string[] }> = {
   inject_citations: { required: ["file_path"], properties: ["file_path", "style"] },
 };
 
+const LIBRARY_ARGS = ["library_type", "library_id"];
+
 describe("tools/list (MCP)", () => {
   let h: Harness;
   let tools: Array<{ name: string; description?: string; inputSchema: Record<string, any> }>;
@@ -54,7 +56,9 @@ describe("tools/list (MCP)", () => {
     const t = tools.find((x) => x.name === name)!;
     expect(t.description?.length ?? 0).toBeGreaterThan(20);
     expect(t.inputSchema.type).toBe("object");
-    expect(Object.keys(t.inputSchema.properties ?? {}).sort()).toEqual([...exp.properties].sort());
+    // Override di libreria per chiamata (PR #7): opzionale su tutti i tool tranne get_user_id
+    const expected = name === "get_user_id" ? exp.properties : [...exp.properties, ...LIBRARY_ARGS];
+    expect(Object.keys(t.inputSchema.properties ?? {}).sort()).toEqual([...expected].sort());
     expect([...(t.inputSchema.required ?? [])].sort()).toEqual([...exp.required].sort());
   });
 
@@ -70,6 +74,15 @@ describe("tools/list (MCP)", () => {
     expect(props("get_item_fulltext").max_characters.default).toBe(50000);
     expect(props("find_and_attach_pdfs").dry_run.default).toBe(false);
     expect(props("import_pdf_to_zotero").content_type.default).toBe("application/pdf");
+  });
+
+  it("TL-08 library_type enum user/group e library_id numerico, mai obbligatori", () => {
+    for (const t of tools.filter((x) => x.name !== "get_user_id")) {
+      expect([...t.inputSchema.properties.library_type.enum].sort()).toEqual(["group", "user"]);
+      expect(t.inputSchema.properties.library_id).toMatchObject({ type: "string", pattern: "^\\d+$" });
+      expect(t.inputSchema.required ?? []).not.toContain("library_type");
+      expect(t.inputSchema.required ?? []).not.toContain("library_id");
+    }
   });
 
   it("TL-04 vincoli di cardinalità: delete_items 1..50, add_items min 1, delete_collection minLength 1", () => {
