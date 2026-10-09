@@ -104,7 +104,7 @@ describe("delete_items (MCP)", () => {
     // BUG: delete-items.ts:47 non passa `limit` alla GET di verifica; l'API Zotero
     // restituisce al massimo 25 item di default → con 26-50 chiavi le restanti
     // vengono riportate come not_found e NON cancellate.
-    it.fails("DI-09 BUG 30 chiavi esistenti: tutte cancellate (limit di default Zotero = 25)", async () => {
+    it("DI-09 30 chiavi esistenti: tutte cancellate (limit di default Zotero = 25)", async () => {
       h = await startHarness({ unsafeOps: "items" });
       const lib = manyArticles(30);
       h.net.on("GET", ITEMS, zLibraryQuery(lib));

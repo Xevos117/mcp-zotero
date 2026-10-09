@@ -135,9 +135,9 @@ describe("find_and_attach_pdfs handler", () => {
     const itemWithDoi = { ...fullItemFixture, DOI: "10.1234/test" };
     const { mock, getStub } = createZoteroApiMock([]);
     // Batch metadata fetch
-    getStub.mockResolvedValueOnce({ getData: () => [itemWithDoi] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [itemWithDoi] });
     // Children check (skip_if_attachment_exists=true by default)
-    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
@@ -155,7 +155,7 @@ describe("find_and_attach_pdfs handler", () => {
   it("returns error status for items without DOI", async () => {
     const itemNoDoi = { key: "NO_DOI", itemType: "book" };
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => [itemNoDoi] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [itemNoDoi] });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
@@ -179,8 +179,8 @@ describe("find_and_attach_pdfs handler", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => [itemWithDoi] });
-    getStub.mockResolvedValueOnce({ getData: () => [pdfChild] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [itemWithDoi] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [pdfChild] });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
@@ -212,8 +212,8 @@ describe("find_and_attach_pdfs handler", () => {
 
     const itemWithDoi = { ...fullItemFixture, DOI: "10.1234/test" };
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => [itemWithDoi] });
-    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [itemWithDoi] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
@@ -245,8 +245,8 @@ describe("find_and_attach_pdfs handler", () => {
 
     const itemWithDoi = { ...fullItemFixture, DOI: "10.1234/closed" };
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => [itemWithDoi] });
-    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [itemWithDoi] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
@@ -286,11 +286,11 @@ describe("find_and_attach_pdfs handler", () => {
 
     const { mock, getStub } = createZoteroApiMock([]);
     // Collection items fetch (via fetchAllPages — needs getTotalResults)
-    getStub.mockResolvedValueOnce({ getData: () => [collItem], getTotalResults: () => 1 });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [collItem], getTotalResults: () => 1 });
     // Batch metadata fetch
-    getStub.mockResolvedValueOnce({ getData: () => [collItem], getTotalResults: () => 1 });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [collItem], getTotalResults: () => 1 });
     // Children check
-    getStub.mockResolvedValueOnce({ getData: () => [], getTotalResults: () => 0 });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [], getTotalResults: () => 0 });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
@@ -321,8 +321,8 @@ describe("find_and_attach_pdfs handler", () => {
 
     const itemWithDoi = { ...fullItemFixture, DOI: "10.1126/science.abb4808" };
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => [itemWithDoi] });
-    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [itemWithDoi] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
@@ -381,10 +381,10 @@ describe("find_and_attach_pdfs handler", () => {
     });
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => [item1, item2] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [item1, item2] });
     // Children checks (skip_if_attachment_exists=true)
-    getStub.mockResolvedValueOnce({ getData: () => [] });
-    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
@@ -432,8 +432,8 @@ describe("find_and_attach_pdfs handler", () => {
 
     const itemWithDoi = { ...fullItemFixture, DOI: "10.1234/test" };
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => [itemWithDoi] });
-    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [itemWithDoi] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",

@@ -36,3 +36,29 @@ export async function fetchAllPages(
 
   return { items: allItems, totalResults };
 }
+
+/** Zotero Web API limit on the number of keys in a single `itemKey` filter. */
+export const MAX_KEYS_PER_REQUEST = 50;
+
+/**
+ * Fetch items by key in chunks of MAX_KEYS_PER_REQUEST, each with an explicit `limit`
+ * (the API default page size is 25, so a bare `itemKey` GET silently drops the rest).
+ * Returns the items found and the library version of the last response.
+ */
+export async function fetchItemsByKeys(
+  buildRequest: (params: Record<string, unknown>) => Promise<ZoteroResponse>,
+  keys: string[]
+): Promise<{ items: ZoteroItemData[]; version: number | null }> {
+  const items: ZoteroItemData[] = [];
+  let version: number | null = null;
+
+  for (let start = 0; start < keys.length; start += MAX_KEYS_PER_REQUEST) {
+    const chunk = keys.slice(start, start + MAX_KEYS_PER_REQUEST);
+    const response = await buildRequest({ itemKey: chunk.join(","), limit: chunk.length });
+    const data = response.getData();
+    items.push(...(Array.isArray(data) ? data : data ? [data] : []));
+    version = response.getVersion();
+  }
+
+  return { items, version };
+}

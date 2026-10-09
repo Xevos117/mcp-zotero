@@ -105,7 +105,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
   // BUG: find-and-attach-pdfs.ts:91 — con una collezione di 120 item la GET
   // metadati invia 120 chiavi in un solo itemKey (max 50 per l'API Zotero, e
   // comunque limit di default 25) → il tool fallisce o perde item.
-  it.fails("FA-25 BUG collection_key con 120 item: tutti processati", async () => {
+  it("FA-25 collection_key con 120 item: tutti processati", async () => {
     const articles = manyArticles(120, "C");
     h.net.on("GET", `${ZBASE}/collections/COL00001/items`, zLibraryQuery(articles));
     library(h, articles);
@@ -269,7 +269,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
   // BUG: find-and-attach-pdfs.ts:91 — la GET metadati non passa `limit` (default
   // Zotero 25) né divide le chiavi in blocchi da 50: con >25 item quelli oltre il
   // 25° risultano "Item not found".
-  it.fails("FA-22 BUG 30 item_keys: nessuno risulta 'Item not found'", async () => {
+  it("FA-22 30 item_keys: nessuno risulta 'Item not found'", async () => {
     const lib = manyArticles(30);
     library(h, lib);
     installUnpaywall(h.net, {});

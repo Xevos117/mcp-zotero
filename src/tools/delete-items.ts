@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
+import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
 import { logger } from "../utils/logger.js";
+import { fetchItemsByKeys } from "../utils/pagination.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
@@ -44,15 +45,12 @@ export async function handleDeleteItems(
   }
 
   try {
-    const response = await zoteroApi
-      .library(libraryType, libraryId)
-      .items()
-      .get({ itemKey: item_keys.join(",") });
+    const { items, version: libraryVersion } = await fetchItemsByKeys(
+      (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
+      item_keys
+    );
 
-    const items = response.getData() as ZoteroItemData[];
-    const itemList = Array.isArray(items) ? items : [items];
-
-    const foundKeys = new Set(itemList.map((item) => item.key).filter(Boolean));
+    const foundKeys = new Set(items.map((item) => item.key).filter(Boolean));
     const notFoundKeys = item_keys.filter((k) => !foundKeys.has(k));
 
     if (foundKeys.size === 0) {
@@ -64,7 +62,6 @@ export async function handleDeleteItems(
 
     // Use library version from response header (Last-Modified-Version),
     // not individual item versions — required for multi-object DELETE
-    const libraryVersion = response.getVersion();
     if (libraryVersion === null) {
       return formatErrorResponse("Could not determine library version", {
         item_keys,

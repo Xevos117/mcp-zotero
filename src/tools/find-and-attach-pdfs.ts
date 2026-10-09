@@ -5,7 +5,7 @@ import { logger } from "../utils/logger.js";
 import { lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
 import { mapWithConcurrency, createCancellationToken } from "../utils/concurrency.js";
-import { fetchAllPages } from "../utils/pagination.js";
+import { fetchAllPages, fetchItemsByKeys } from "../utils/pagination.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
@@ -87,15 +87,13 @@ export async function handleFindAndAttachPdfs(
     }
 
     // 2. Batch-fetch item metadata to get DOIs
-    const metaResponse = await zoteroApi
-      .library(libraryType, libraryId)
-      .items()
-      .get({ itemKey: keys.join(",") });
-    const metaItems = metaResponse.getData() as ZoteroItemData[];
-    const itemsArray = Array.isArray(metaItems) ? metaItems : [metaItems];
+    const { items: metaItems } = await fetchItemsByKeys(
+      (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
+      keys
+    );
 
     const itemMap = new Map<string, ZoteroItemData>();
-    for (const item of itemsArray) {
+    for (const item of metaItems) {
       if (item.key) {
         itemMap.set(item.key, item);
       }

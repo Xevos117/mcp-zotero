@@ -107,7 +107,7 @@ describe("get_items_details (MCP)", () => {
 
   // BUG: get-items-details.ts:51 non passa `limit` → l'API Zotero applica il
   // default di 25 risultati e gli item oltre il 25° vengono persi in silenzio.
-  it.fails("GID-09 BUG 30 chiavi: tutte e 30 restituite (limit di default Zotero = 25)", async () => {
+  it("GID-09 30 chiavi: tutte e 30 restituite (limit di default Zotero = 25)", async () => {
     const lib = manyArticles(30);
     h.net.on("GET", ITEMS, zLibraryQuery(lib));
     const out = await h.call("get_items_details", { item_keys: lib.map((i) => i.key) });
@@ -116,7 +116,7 @@ describe("get_items_details (MCP)", () => {
 
   // BUG: get-items-details.ts:51 invia tutte le chiavi in un solo itemKey; l'API
   // Zotero accetta al massimo 50 chiavi per richiesta → serve chunking.
-  it.fails("GID-10 BUG 60 chiavi: restituite tutte (itemKey max 50 per richiesta)", async () => {
+  it("GID-10 60 chiavi: restituite tutte (itemKey max 50 per richiesta)", async () => {
     const lib = manyArticles(60);
     h.net.on("GET", ITEMS, zLibraryQuery(lib));
     const out = await h.call("get_items_details", { item_keys: lib.map((i) => i.key) });

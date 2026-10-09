@@ -258,7 +258,7 @@ describe("get_items_details", () => {
       TEST_USER_ID
     );
 
-    expect(getStub).toHaveBeenCalledWith({ itemKey: "ABC12345,DEF67890" });
+    expect(getStub).toHaveBeenCalledWith({ itemKey: "ABC12345,DEF67890", limit: 2 });
   });
 
   it("excludes abstract from response by default", async () => {
@@ -1077,9 +1077,9 @@ describe("get_item_fulltext", () => {
 
     const { mock, getStub } = createZoteroApiMock([]);
     // First call: parent item metadata
-    getStub.mockResolvedValueOnce({ getData: () => parentItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => parentItem });
     // Second call: children
-    getStub.mockResolvedValueOnce({ getData: () => [pdfChild] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [pdfChild] });
 
     vi.stubGlobal(
       "fetch",
@@ -1119,8 +1119,8 @@ describe("get_item_fulltext", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => parentItem });
-    getStub.mockResolvedValueOnce({ getData: () => [pdfChild] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => parentItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [pdfChild] });
 
     vi.stubGlobal(
       "fetch",
@@ -1143,8 +1143,8 @@ describe("get_item_fulltext", () => {
     const noteChild = { key: "NOTE01", itemType: "note", title: "My notes" };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => ({ ...parentItem, url: undefined }) });
-    getStub.mockResolvedValueOnce({ getData: () => [noteChild] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => ({ ...parentItem, url: undefined }) });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [noteChild] });
 
     const result = await handleToolCall(
       "get_item_fulltext",
@@ -1165,8 +1165,8 @@ describe("get_item_fulltext", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => parentItem });
-    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => parentItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
 
     const result = await handleToolCall(
       "get_item_fulltext",
@@ -1189,8 +1189,8 @@ describe("get_item_fulltext", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => webpageItem });
-    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => webpageItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
 
     const result = await handleToolCall(
       "get_item_fulltext",
@@ -1212,7 +1212,7 @@ describe("get_item_fulltext", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => attachmentItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => attachmentItem });
 
     vi.stubGlobal(
       "fetch",
@@ -1245,8 +1245,8 @@ describe("get_item_fulltext", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => parentItem });
-    getStub.mockResolvedValueOnce({ getData: () => [pdfChild] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => parentItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [pdfChild] });
 
     const longText = "A".repeat(200);
     vi.stubGlobal(
@@ -2302,8 +2302,8 @@ describe("pagination: get_collection_items", () => {
 
     const { mock, getStub } = createZoteroApiMock([]);
     getStub
-      .mockResolvedValueOnce({ getData: () => page1, getTotalResults: () => 150 })
-      .mockResolvedValueOnce({ getData: () => page2, getTotalResults: () => 150 });
+      .mockResolvedValueOnce({ getVersion: () => 1, getData: () => page1, getTotalResults: () => 150 })
+      .mockResolvedValueOnce({ getVersion: () => 1, getData: () => page2, getTotalResults: () => 150 });
 
     const result = await handleToolCall(
       "get_collection_items",
@@ -2335,8 +2335,8 @@ describe("pagination: get_collections", () => {
 
     const { mock, getStub } = createZoteroApiMock([]);
     getStub
-      .mockResolvedValueOnce({ getData: () => page1, getTotalResults: () => 130 })
-      .mockResolvedValueOnce({ getData: () => page2, getTotalResults: () => 130 });
+      .mockResolvedValueOnce({ getVersion: () => 1, getData: () => page1, getTotalResults: () => 130 })
+      .mockResolvedValueOnce({ getVersion: () => 1, getData: () => page2, getTotalResults: () => 130 });
 
     const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
 
@@ -2367,11 +2367,11 @@ describe("pagination: find_and_attach_pdfs with collection_key", () => {
 
     const { mock, getStub } = createZoteroApiMock([]);
     // Page 1 of collection items (via fetchAllPages)
-    getStub.mockResolvedValueOnce({ getData: () => page1, getTotalResults: () => 120 });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => page1, getTotalResults: () => 120 });
     // Page 2 of collection items (via fetchAllPages)
-    getStub.mockResolvedValueOnce({ getData: () => page2, getTotalResults: () => 120 });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => page2, getTotalResults: () => 120 });
     // Batch metadata fetch — returns items with DOIs
-    getStub.mockResolvedValueOnce({ getData: () => allItems, getTotalResults: () => 120 });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => allItems, getTotalResults: () => 120 });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",

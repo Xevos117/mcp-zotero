@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
+import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
 import { logger } from "../utils/logger.js";
+import { fetchItemsByKeys } from "../utils/pagination.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
@@ -48,23 +49,19 @@ export async function handleGetItemsDetails(
   }
 
   try {
-    const response = await zoteroApi
-      .library(libraryType, libraryId)
-      .items()
-      .get({ itemKey: item_keys.join(",") });
+    const { items } = await fetchItemsByKeys(
+      (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
+      item_keys
+    );
 
-    const items = response.getData() as ZoteroItemData[];
-
-    if (!items || (Array.isArray(items) && items.length === 0)) {
+    if (items.length === 0) {
       return formatErrorResponse("No items found for the given keys", {
         item_keys,
       });
     }
 
-    const itemList = Array.isArray(items) ? items : [items];
-
     const result: Record<string, Record<string, unknown>> = {};
-    for (const item of itemList) {
+    for (const item of items) {
       const key = item.key;
       if (!key) continue;
 
