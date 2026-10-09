@@ -163,7 +163,7 @@ describe("e2e: build/server.js su stdio", () => {
   });
 
   it("E2E-04 get_user_id", async () => {
-    expect((await call(s, "get_user_id", {})).json).toEqual({ user_id: USER_ID });
+    expect((await call(s, "get_user_id", {})).json).toMatchObject({ user_id: USER_ID });
   });
 
   it("E2E-05 search_library", async () => {
@@ -174,6 +174,8 @@ describe("e2e: build/server.js su stdio", () => {
     const req = fake.net.requests("GET", ITEMS).at(-1)!;
     expect(req.url.searchParams.get("q")).toBe("attention");
     expect(req.headers.get("zotero-api-key")).toBe("e2e-fake-key");
+    // default senza variabili di libreria: libreria utente /users/{ZOTERO_USER_ID}/
+    expect(req.url.pathname.startsWith(`/users/${USER_ID}/`)).toBe(true);
   });
 
   it("E2E-06 get_collections", async () => {
@@ -344,6 +346,6 @@ describe("e2e: configurazione del processo", () => {
       });
     });
     expect(code).toBe(1);
-    expect(stderr).toContain("Missing ZOTERO_API_KEY or ZOTERO_USER_ID");
+    expect(stderr).toMatch(/Missing ZOTERO_API_KEY/); // testo completo può cambiare con nuove variabili di libreria
   });
 });

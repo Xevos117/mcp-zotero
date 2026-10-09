@@ -78,6 +78,9 @@ export async function startHarness(opts: HarnessOptions = {}): Promise<Harness> 
     { name: "zotero-test", version: "0.0.0" },
     { capabilities: { tools: {} } }
   );
+  // Unico punto da adattare se la firma di registerAllTools cambia (es. supporto
+  // librerie di gruppo): i test assumono la libreria utente di default,
+  // cioè URL /users/{USER_ID}/... (vedi ZBASE in zotero-fake.ts).
   registerAllTools(server, createZoteroClient(), opts.userId ?? USER_ID, opts.unsafeOps ?? "none");
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

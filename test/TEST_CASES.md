@@ -26,6 +26,9 @@ processo server ucciso con SIGKILL se ancora vivo 5 s dopo la chiusura.
 - **Versioni**: i test non dipendono dal testo dei messaggi zod/SDK. Su un errore di validazione
   controllano solo `isError` e la presenza del nome del campo. Gli errori che l'SDK rilancia come
   JSON-RPC invece di restituirli come `CallToolResult` vengono normalizzati in `isError: true`.
+- **Libreria**: tutti i test usano la libreria utente di default (nessuna variabile `ZOTERO_LIBRARY_*`);
+  le asserzioni richiedono path `/users/{USER_ID}/...` (costante `ZBASE`). La firma di `registerAllTools`
+  è usata in un solo punto (`startHarness`). I test per le librerie di gruppo vanno aggiunti a parte.
 - **Errore morbido** = risposta JSON `{ "error": ... }` **senza** `isError` (comportamento attuale di
   `formatErrorResponse`). **Errore duro** = il tool lancia un'eccezione e l'SDK la converte in `isError: true`.
 

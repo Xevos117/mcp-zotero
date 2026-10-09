@@ -13,6 +13,7 @@ import { FakeHandler, FakeRequest, jsonResponse, statusResponse } from "./fake-n
 
 export const USER_ID = "424242";
 export const ZOTERO_HOST = "api.zotero.org";
+/** Libreria utente di default: tutte le route e le asserzioni sui path partono da qui. */
 export const ZBASE = `${ZOTERO_HOST}/users/${USER_ID}`;
 
 export type ZItem = Record<string, unknown> & { key: string };
