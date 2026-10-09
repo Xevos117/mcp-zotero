@@ -270,17 +270,17 @@ Attributes can appear in any order (the parser is order-independent).
 
 ### Step 5 — Run injection
 
-First, get the Zotero user ID by calling the MCP tool `get_user_id`. This returns the numeric user ID needed for field code URIs.
+First, call the MCP tool `get_user_id`. Its `library_path` field (`users/<id>` for a personal library, `groups/<id>` for a group library) is needed for field code URIs.
 
 Then execute the injection script bundled with this skill:
 
 ```bash
-node <skill_path>/scripts/inject.js input.docx output.docx metadata.json <userId> [style]
+node <skill_path>/scripts/inject.js input.docx output.docx metadata.json <library_path> [style]
 ```
 
 Where:
 - `<skill_path>` is the path to this skill's directory (use the location from the skill metadata)
-- `userId` is the Zotero user ID from `get_user_id`
+- `library_path` is the `library_path` value from `get_user_id` (a bare numeric user ID is also accepted)
 - `style` is one of: `apa` (default), `ieee`, `vancouver`, `harvard`, `chicago`
 
 The script outputs JSON to stdout:

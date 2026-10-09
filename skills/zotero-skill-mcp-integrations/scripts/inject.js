@@ -3,7 +3,10 @@
 // Standalone citation injection script for Claude skill usage.
 // Reads a .docx with <zcite> tags and a metadata.json, injects Zotero field codes.
 //
-// Usage: node inject.js <input.docx> <output.docx> <metadata.json> <userId> [style]
+// Usage: node inject.js <input.docx> <output.docx> <metadata.json> <userId|libraryPath> [style]
+//
+// <libraryPath> is "users/<id>" or "groups/<id>" (library_path from get_user_id);
+// a bare numeric ID is treated as a user ID for backward compatibility.
 //
 // Dependencies: jszip (npm install jszip)
 
@@ -41,12 +44,19 @@ const args = process.argv.slice(2);
 
 if (args.length < 4) {
   console.error(
-    "Usage: node inject.js <input.docx> <output.docx> <metadata.json> <userId> [style]"
+    "Usage: node inject.js <input.docx> <output.docx> <metadata.json> <userId|libraryPath> [style]"
   );
   process.exit(1);
 }
 
-const [inputPath, outputPath, metadataPath, userId, style = "apa"] = args;
+const [inputPath, outputPath, metadataPath, libraryArg, style = "apa"] = args;
+const libraryPath = /^\d+$/.test(libraryArg) ? `users/${libraryArg}` : libraryArg;
+if (!/^(users|groups)\/\d+$/.test(libraryPath)) {
+  console.error(
+    `Invalid library '${libraryArg}': expected a numeric user ID, "users/<id>" or "groups/<id>"`
+  );
+  process.exit(1);
+}
 
 // ---------------------------------------------------------------------------
 // Zotero itemType → CSL type mapping
@@ -524,16 +534,16 @@ function parseZciteMatches(documentXml) {
 /**
  * @param {{fullMatch: string, keys: string[], locator?: string, prefix?: string, suffix?: string, num?: string}} match
  * @param {Map<string, Record<string, unknown>>} cslData
- * @param {string} uid
+ * @param {string} libPath - "users/<id>" or "groups/<id>"
  * @returns {Array<Record<string, unknown>>}
  */
-function buildCitationItems(match, cslData, uid) {
+function buildCitationItems(match, cslData, libPath) {
   return match.keys.map((key, idx) => {
     const itemData = cslData.get(key) ?? { type: "article-journal" };
     const item = {
       id: idx,
-      uris: [`http://zotero.org/users/${uid}/items/${key}`],
-      uri: [`http://zotero.org/users/${uid}/items/${key}`],
+      uris: [`http://zotero.org/${libPath}/items/${key}`],
+      uri: [`http://zotero.org/${libPath}/items/${key}`],
       itemData,
     };
     if (match.locator) item.locator = match.locator;
@@ -639,7 +649,7 @@ async function main() {
   // 5. Replace each zcite tag with a field code
   let injected = 0;
   for (const match of matches) {
-    const citationItems = buildCitationItems(match, cslData, userId);
+    const citationItems = buildCitationItems(match, cslData, libraryPath);
     const itemDataList = match.keys.map(
       (k) => cslData.get(k) ?? { type: "article-journal" }
     );

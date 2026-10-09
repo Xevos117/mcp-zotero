@@ -8,7 +8,7 @@ import { ZoteroApiInterface } from "./types/zotero-types.js";
 import { registerAllTools } from "./tools/index.js";
 import { logger } from "./utils/logger.js";
 import { parseUnsafeOperations, UnsafeOperationsMode } from "./utils/unsafe-operations.js";
-import { getLibraryType } from "./utils/library-context.js";
+import { getDefaultLibrary } from "./utils/library-context.js";
 
 // Re-export for backward compatibility with existing tests
 export { formatErrorResponse } from "./utils/error-formatter.js";
@@ -54,19 +54,14 @@ class ZoteroServer {
       this.userId = options.userId || "";
       this.zoteroApi = options.zoteroApi;
     } else {
-      // ZOTERO_LIBRARY_ID takes precedence so the server can target a group
-      // library; falls back to ZOTERO_USER_ID for back-compat (user libraries).
-      this.userId =
-        process.env.ZOTERO_LIBRARY_ID || process.env.ZOTERO_USER_ID || "";
       const apiKey = process.env.ZOTERO_API_KEY || "";
-      if (!apiKey || !this.userId) {
-        throw new Error(
-          "Missing ZOTERO_API_KEY or ZOTERO_USER_ID/ZOTERO_LIBRARY_ID environment variables"
-        );
+      if (!apiKey) {
+        throw new Error("Missing ZOTERO_API_KEY environment variable");
       }
-      // Validate ZOTERO_LIBRARY_TYPE eagerly so a misconfigured server fails
-      // fast at startup rather than on the first tool call.
-      getLibraryType();
+      // Validate the library configuration eagerly so a misconfigured server fails
+      // fast at startup rather than on the first tool call. ZOTERO_LIBRARY_ID takes
+      // precedence (group libraries); ZOTERO_USER_ID is the user-library fallback.
+      this.userId = getDefaultLibrary().id;
 
       // zotero-api-client >= 0.51 ships a single CJS entry (lib/main.cjs) that relies on the
       // global fetch; the old lib/main-node.cjs (cross-fetch polyfill) no longer exists.
