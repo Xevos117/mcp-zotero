@@ -182,11 +182,22 @@ describe("add_items_by_doi (MCP)", () => {
     // BUG: add-items-by-doi.ts:160 tratta un fallimento parziale come totale:
     // l'item creato con successo non viene riportato (resta orfano in libreria
     // e un nuovo tentativo crea duplicati).
-    it.fails("AID-12 BUG scrittura parziale: riporta gli item creati e i falliti", async () => {
+    it("AID-12 scrittura parziale: riporta gli item creati e i falliti", async () => {
       h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a"), "10.1/b": csl("10.1/b") }));
       h.net.on("POST", ITEMS, itemsAndAttachments({ 1: { code: 400, message: "Invalid field" } }));
       const out = await h.call("add_items_by_doi", { dois: ["10.1/a", "10.1/b"], auto_attach_pdf: false });
       expect(out.json.success).toEqual([expect.objectContaining({ doi: "10.1/a", item_key: "PAPER000" })]);
+      expect(out.json.failed).toEqual([{ doi: "10.1/b", error: "400: Invalid field" }]);
+    });
+
+    it("AID-12b 60 DOI: scrittura in batch da 50, ordine e DOI preservati", async () => {
+      const dois = Array.from({ length: 60 }, (_, i) => `10.8/${i}`);
+      h.net.on("GET", DOI_ROUTE, doiResolver(Object.fromEntries(dois.map((d) => [d, csl(d)]))));
+      h.net.on("POST", ITEMS, itemsAndAttachments());
+      const out = await h.call("add_items_by_doi", { dois, auto_attach_pdf: false });
+      expect(h.net.requests("POST", ITEMS).map((r) => r.json<unknown[]>().length)).toEqual([50, 10]);
+      expect(out.json.success.map((s: { doi: string }) => s.doi)).toEqual(dois);
+      expect(new Set(out.json.success.map((s: { item_key: string }) => s.item_key)).size).toBe(60);
     });
 
     it.each([403, 404, 412, 413, 429, 500, 503])("AID-13 HTTP %i sulla POST Zotero → isError", async (status) => {

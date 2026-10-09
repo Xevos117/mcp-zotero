@@ -4,7 +4,7 @@ import { formatErrorResponse } from "../utils/error-formatter.js";
 import { resolveDois } from "../utils/doi-resolver.js";
 import { cslToZoteroItem } from "../utils/csl-to-zotero.js";
 import { logger } from "../utils/logger.js";
-import { formatWriteError } from "../utils/write-results.js";
+import { postInBatches } from "../utils/write-results.js";
 import { lookupOaPdf } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
 import { mapWithConcurrency, createCancellationToken } from "../utils/concurrency.js";
@@ -157,44 +157,25 @@ export async function handleAddItemsByDoi(
       })
     );
 
-    const response = await zoteroApi
-      .library(libraryType, libraryId)
-      .items()
-      .post(zoteroItems);
+    const write = await postInBatches(
+      (batch) => zoteroApi.library(libraryType, libraryId).items().post(batch),
+      zoteroItems
+    );
+    // Report resolution and write failures together, so a partial write never hides created items
+    const failed = [
+      ...resolved.failed,
+      ...write.failed.map(({ index, error }) => ({ doi: resolved.success[index].doi, error })),
+    ];
 
-    if (!response.isSuccess()) {
-      const errors = response.getErrors();
-      const errorMessages = Object.entries(errors)
-        .map(
-          ([idx, msg]) => `Item ${idx}: ${formatWriteError(msg)}`
-        )
-        .join(", ");
-      return formatErrorResponse(`Zotero API write failed: ${errorMessages}`);
+    if (write.created.length === 0) {
+      const errorMessages = write.failed.map(({ index, error }) => `Item ${index}: ${error}`).join("; ");
+      return formatErrorResponse(`Zotero API write failed: ${errorMessages}`, { failed });
     }
 
-    const createdItems = response.getData();
-    if (!createdItems || !Array.isArray(createdItems) || createdItems.length === 0) {
-      return formatErrorResponse(
-        "Zotero API returned empty response - items may not have been created"
-      );
-    }
-
-    const success: Array<{ doi: string; item_key: string; title: string }> = [];
-    for (let i = 0; i < resolved.success.length; i++) {
-      const r = resolved.success[i];
-      const entity = response.getEntityByIndex(i);
-      const itemKey = entity?.key;
-      if (!itemKey) {
-        return formatErrorResponse(
-          `Failed to get item key for DOI ${r.doi} at index ${i}. API response may be invalid.`
-        );
-      }
-      success.push({
-        doi: r.doi,
-        item_key: itemKey,
-        title: entity?.title ?? r.data.title ?? "Untitled",
-      });
-    }
+    const success = write.created.map(({ index, entity }) => {
+      const { doi, data } = resolved.success[index];
+      return { doi, item_key: entity.key as string, title: entity.title ?? data.title ?? "Untitled" };
+    });
 
     let pdf_results: PdfAttachResult[] | undefined;
     let pdf_attach_error: string | undefined;
@@ -221,7 +202,7 @@ export async function handleAddItemsByDoi(
           text: JSON.stringify(
             {
               success,
-              failed: resolved.failed,
+              failed,
               ...(pdf_results !== undefined ? { pdf_results } : {}),
               ...(pdf_attach_error !== undefined ? { pdf_attach_error } : {}),
               ...(quotaHit

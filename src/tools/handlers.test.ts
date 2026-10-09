@@ -906,7 +906,9 @@ describe("add_items_by_doi", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toContain("empty response");
+    // Missing keys are now per-item write failures (see postInBatches)
+    expect(parsed.error).toContain("Zotero API write failed");
+    expect(parsed.error).toContain("did not include an item key");
   });
 
   it("throws when entity key is missing from response", async () => {
@@ -939,7 +941,9 @@ describe("add_items_by_doi", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toContain("Failed to get item key");
+    // Missing keys are now per-item write failures (see postInBatches)
+    expect(parsed.error).toContain("Zotero API write failed");
+    expect(parsed.error).toContain("did not include an item key");
   });
 
   it("returns created items even when PDF attach phase throws", async () => {
