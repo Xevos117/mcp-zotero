@@ -4,7 +4,7 @@ import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
 import { lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
-import { mapWithConcurrency, createCancellationToken } from "../utils/concurrency.js";
+import { mapWithConcurrency, createCancellationToken, settledValues } from "../utils/concurrency.js";
 import { fetchAllPages, fetchItemsByKeys } from "../utils/pagination.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
@@ -204,9 +204,12 @@ export async function handleFindAndAttachPdfs(
       };
     }, undefined, cancelToken);
 
-    const results: ItemResult[] = settled
-      .filter((r): r is PromiseFulfilledResult<ItemResult> => r.status === "fulfilled")
-      .map((r) => r.value);
+    const results = settledValues(keys, settled, (key, reason): ItemResult => ({
+      item_key: key,
+      doi: itemMap.get(key)?.DOI ?? null,
+      status: "error",
+      reason: reason instanceof Error ? reason.message : String(reason),
+    }));
 
     let attached = 0;
     let notFound = 0;

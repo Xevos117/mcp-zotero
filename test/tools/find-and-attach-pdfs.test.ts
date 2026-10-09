@@ -248,13 +248,16 @@ describe("find_and_attach_pdfs (MCP)", () => {
   // BUG: find-and-attach-pdfs.ts:208 scarta i risultati "rejected" di
   // mapWithConcurrency: se la GET children di un item fallisce, l'item sparisce
   // da `results` e da tutti i contatori pur essendo contato in `processed`.
-  it.fails("FA-20 BUG errore sui children di un item: l'item compare in results con status 'error'", async () => {
+  it("FA-20 errore sui children di un item: l'item compare in results con status 'error'", async () => {
     library(h, [article("AAAA1111"), article("BBBB2222")]);
     h.net.on("GET", `${ZBASE}/items/BBBB2222/children`, zError(500));
     installUnpaywall(h.net, {});
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111", "BBBB2222"] });
     expect(out.json.results.map((r: Result) => r.item_key).sort()).toEqual(["AAAA1111", "BBBB2222"]);
     expect(byKey(out.json).BBBB2222.status).toBe("error");
+    expect(byKey(out.json).BBBB2222.reason).toContain("500");
+    expect(out.json.errors).toBeGreaterThanOrEqual(1);
+    expect(out.json.results).toHaveLength(out.json.processed);
   });
 
   it("FA-21 errore sui children di un item: gli altri item vengono comunque processati", async () => {

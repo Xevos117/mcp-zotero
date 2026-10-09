@@ -7,7 +7,7 @@ import { logger } from "../utils/logger.js";
 import { postInBatches } from "../utils/write-results.js";
 import { lookupOaPdf } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
-import { mapWithConcurrency, createCancellationToken } from "../utils/concurrency.js";
+import { mapWithConcurrency, createCancellationToken, settledValues } from "../utils/concurrency.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
 
 export const toolConfig = {
@@ -124,9 +124,13 @@ async function attachPdfsToItems(
     };
   }, undefined, cancelToken);
 
-  return settled
-    .filter((r): r is PromiseFulfilledResult<PdfAttachResult> => r.status === "fulfilled")
-    .map((r) => r.value);
+  return settledValues(itemsWithDoi, settled, (item, reason): PdfAttachResult => ({
+    item_key: item.item_key,
+    doi: item.doi,
+    pdf_attached: false,
+    source: null,
+    error: reason instanceof Error ? reason.message : String(reason),
+  }));
 }
 
 export async function handleAddItemsByDoi(
