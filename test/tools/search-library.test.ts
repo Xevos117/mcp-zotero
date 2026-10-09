@@ -3,10 +3,10 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectErrorJson,
   expectToolError,
   carriesApiKey,
   ZOTERO_ERROR_STATUSES,
+  expectEmptyResult,
 } from "../helpers/mcp-harness.js";
 import { networkError } from "../helpers/fake-net.js";
 import { ZBASE, zList, zError, article } from "../helpers/zotero-fake.js";
@@ -80,16 +80,16 @@ describe("search_library (MCP)", () => {
     expect(out.json[0]).not.toHaveProperty("dateAdded");
   });
 
-  it("SL-06 nessun risultato con query: errore strutturato con query e suggestion", async () => {
+  it("SL-06 nessun risultato con query: risultato vuoto con query e suggestion", async () => {
     h.net.on("GET", ITEMS, zList([]));
-    const json = expectErrorJson(await h.call("search_library", { query: "zzz" }), "No results found");
+    const json = expectEmptyResult(await h.call("search_library", { query: "zzz" }), "No results found");
     expect(json.query).toBe("zzz");
     expect(json.suggestion).toBeTypeOf("string");
   });
 
-  it("SL-07 libreria vuota senza query: errore strutturato 'No items found'", async () => {
+  it("SL-07 libreria vuota senza query: risultato vuoto 'No items found'", async () => {
     h.net.on("GET", ITEMS, zList([]));
-    expectErrorJson(await h.call("search_library", {}), "No items found");
+    expectEmptyResult(await h.call("search_library", {}), "No items found");
   });
 
   it("SL-08 unicode: query codificata correttamente e titoli/autori preservati", async () => {

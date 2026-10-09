@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { formatEmptyResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { formatCreators, formatTags } from "../utils/item-formatter.js";
 import { logger } from "../utils/logger.js";
 import { fetchAllPages } from "../utils/pagination.js";
@@ -37,7 +37,7 @@ export async function handleGetCollectionItems(
     );
 
     if (!allItems || allItems.length === 0) {
-      return formatErrorResponse("Collection is empty", {
+      return formatEmptyResult("Collection is empty", {
         collectionKey,
         suggestion: "Add some items to this collection in Zotero",
         status: "empty",
@@ -67,7 +67,7 @@ export async function handleGetCollectionItems(
       }));
 
     if (formatted.length === 0) {
-      return formatErrorResponse(
+      return formatEmptyResult(
         "No valid items found in collection",
         {
           collectionKey,

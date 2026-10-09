@@ -6,6 +6,7 @@ import {
   expectErrorJson,
   expectToolError,
   ZOTERO_ERROR_STATUSES,
+  expectEmptyResult,
 } from "../helpers/mcp-harness.js";
 import { networkError } from "../helpers/fake-net.js";
 import { ZBASE, zList, zError, zLibraryQuery, article, manyArticles } from "../helpers/zotero-fake.js";
@@ -80,9 +81,9 @@ describe("get_items_details (MCP)", () => {
     expect(h.net.calls).toHaveLength(0);
   });
 
-  it("GID-05 nessun item trovato → errore strutturato con le chiavi richieste", async () => {
+  it("GID-05 nessun item trovato → risultato vuoto con le chiavi richieste", async () => {
     h.net.on("GET", ITEMS, zList([]));
-    const json = expectErrorJson(await h.call("get_items_details", { item_keys: ["NOPE0001"] }), "No items found");
+    const json = expectEmptyResult(await h.call("get_items_details", { item_keys: ["NOPE0001"] }), "No items found");
     expect(json.item_keys).toEqual(["NOPE0001"]);
   });
 

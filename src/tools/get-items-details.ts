@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { formatEmptyResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
 import { logger } from "../utils/logger.js";
 import { fetchItemsByKeys } from "../utils/pagination.js";
@@ -55,7 +55,7 @@ export async function handleGetItemsDetails(
     );
 
     if (items.length === 0) {
-      return formatErrorResponse("No items found for the given keys", {
+      return formatEmptyResult("No items found for the given keys", {
         item_keys,
       });
     }

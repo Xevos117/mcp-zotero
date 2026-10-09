@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { logger } from "../../src/utils/logger.js";
-import { formatErrorResponse } from "../../src/utils/error-formatter.js";
+import { formatEmptyResult, formatErrorResponse } from "../../src/utils/error-formatter.js";
 import { extractPdfText } from "../../src/utils/pdf-text-extractor.js";
 import { isZoteroApiError } from "../../src/types/zotero-types.js";
 import { fetchWithRetry } from "../../src/utils/fetch-retry.js";
@@ -42,6 +42,12 @@ describe("formatErrorResponse", () => {
     expect(r.content[0].type).toBe("text");
     expect(JSON.parse(r.content[0].text)).toEqual({ error: "Oops", item_key: "K", nested: { a: 1 } });
     expect(r.isError).toBe(true);
+  });
+
+  it("H-02b formatEmptyResult: JSON {message, ...details} senza isError (risultato vuoto valido)", () => {
+    const r = formatEmptyResult("No results found", { query: "zzz" });
+    expect(JSON.parse(r.content[0].text)).toEqual({ message: "No results found", query: "zzz" });
+    expect((r as Record<string, unknown>).isError).toBeUndefined();
   });
 
   it("H-03 una chiave 'error' nei details sovrascrive il messaggio (pin)", () => {

@@ -78,7 +78,7 @@ describe("get_collections", () => {
     const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("No collections found");
+    expect(parsed.message).toBe("No collections found");
     expect(parsed.suggestion).toBeDefined();
   });
 
@@ -112,7 +112,7 @@ describe("get_collections", () => {
     const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("No collections found");
+    expect(parsed.message).toBe("No collections found");
     expect(parsed.suggestion).toContain("include_trashed");
   });
 });
@@ -168,7 +168,7 @@ describe("get_collection_items", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("Collection is empty");
+    expect(parsed.message).toBe("Collection is empty");
     expect(parsed.status).toBe("empty");
   });
 
@@ -355,7 +355,7 @@ describe("get_items_details", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("No items found for the given keys");
+    expect(parsed.message).toBe("No items found for the given keys");
   });
 });
 
@@ -454,7 +454,7 @@ describe("search_library", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("No results found");
+    expect(parsed.message).toBe("No results found");
     expect(parsed.query).toBe("nonexistent topic");
   });
 
@@ -463,7 +463,7 @@ describe("search_library", () => {
     const result = await handleToolCall("search_library", {}, mock, TEST_USER_ID);
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("No items found");
+    expect(parsed.message).toBe("No items found");
     expect(parsed.suggestion).toBeDefined();
   });
 });

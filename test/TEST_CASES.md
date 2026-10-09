@@ -31,7 +31,8 @@ processo server ucciso con SIGKILL se ancora vivo 5 s dopo la chiusura.
   è usata in un solo punto (`startHarness`). Le librerie di gruppo sono coperte dagli e2e in
   `test/e2e/group-library.e2e.test.ts`, da GUI-06/07, TL-08, H-19 e dai test unitari della PR #7 in `src/`.
 - **Errore strutturato** = risposta di `formatErrorResponse`: JSON `{ "error": ... }` con `isError: true`
-  (helper `expectErrorJson`). **Errore duro** = il tool lancia un'eccezione e l'SDK la converte in
+  (helper `expectErrorJson`). **Risultato vuoto** = nessun dato trovato (ricerca o collezione vuota):
+  `formatEmptyResult`, JSON `{ "message": ... }` senza `isError` (helper `expectEmptyResult`). **Errore duro** = il tool lancia un'eccezione e l'SDK la converte in
   `isError: true`. Un successo parziale (es. `add_items` con alcuni `failed`) non è un errore: `isError` assente.
 
 ### Bug corretti in PR #8 (ex `it.fails`)
@@ -49,7 +50,7 @@ test normali. Non restano `it.fails` nella suite.
 | IP-23 | `size_bytes: 0` dopo l'estrazione (unpdf fa il detach dell'ArrayBuffer) | `extractPdfText` passa a unpdf una copia |
 | FA-20 | task `rejected` scartati: item assente da `results` e contatori | `settledValues` (src/utils/concurrency.ts): risultato `error` per item |
 | IC-20 | `replace(".docx", …)` sulla prima occorrenza del path | `path.parse`/`path.format` sul basename |
-| H-02 e tutti gli errori strutturati | `formatErrorResponse` senza `isError` | `isError: true` |
+| H-02 e tutti gli errori strutturati | `formatErrorResponse` senza `isError` | `isError: true`; i risultati vuoti restano senza `isError` (`formatEmptyResult`, H-02b) |
 
 ---
 
@@ -61,7 +62,7 @@ test normali. Non restano `it.fails` nella suite.
 | SL-03 | query di soli spazi / con spazi | `q` omesso / trimmato |
 | SL-04 | limit 500 | limit=100 |
 | SL-05 | sort=title, asc, limit 5 | parametri inoltrati; nessun dateAdded |
-| SL-06/07 | risultato vuoto con/senza query | errore strutturato "No results found" (con query) / "No items found" |
+| SL-06/07 | risultato vuoto con/senza query | risultato vuoto (`message`, non isError) "No results found" (con query) / "No items found" |
 | SL-08 | query/titoli unicode | `q` decodificato identico, unicode preservato |
 | SL-09/10 | metadati mancanti, creator senza nome | fallback Untitled / No authors listed / No date |
 | SL-11 | sort, direction, limit, query non validi | isError con il nome del campo, nessuna chiamata HTTP |
@@ -76,7 +77,7 @@ test normali. Non restano `it.fails` nella suite.
 | GC-03 | Total-Results gonfiato | si ferma alla pagina vuota, nessun loop |
 | GC-04 | Total-Results assente | solo la prima pagina |
 | GC-05 | collezioni nel cestino | escluse di default, incluse con include_trashed |
-| GC-06/07 | tutte nel cestino / nessuna | errore strutturato (suggestion include_trashed / helpUrl) |
+| GC-06/07 | tutte nel cestino / nessuna | risultato vuoto (suggestion include_trashed / helpUrl) |
 | GC-08 | nomi unicode | preservati |
 | GC-09 | include_trashed non booleano | isError |
 | GC-10/11/12 | HTTP 4xx/5xx, errore sulla 2ª pagina, errore di rete | isError |
@@ -87,7 +88,7 @@ test normali. Non restano `it.fails` nella suite.
 | GCI-01 | item completo | total/returned + campi (tags, doi, url, publicationTitle) |
 | GCI-02/03 | allegati e note | esclusi di default (total_items = Total-Results), inclusi con excludeAttachments=false |
 | GCI-04 | item minimale | fallback |
-| GCI-05/06 | vuota / solo allegati | errore strutturato status `empty` / `invalid_items` |
+| GCI-05/06 | vuota / solo allegati | risultato vuoto status `empty` / `invalid_items` |
 | GCI-07 | 230 item | 3 pagine |
 | GCI-08 | 404 | errore strutturato `not_found` |
 | GCI-09/10 | HTTP 403/412/429/500/503, rete | isError |
@@ -100,7 +101,7 @@ test normali. Non restano `it.fails` nella suite.
 | GID-01 | 2 chiavi | una sola GET `itemKey=A,B`; mappa chiave → campi specifici del tipo |
 | GID-02 | abstract | escluso di default, incluso con include_abstract |
 | GID-03 | campi strutturali/vuoti | omessi |
-| GID-04/05 | `[]` / nessun item | errore strutturato (nessuna chiamata HTTP per `[]`) |
+| GID-04/05 | `[]` / nessun item | errore strutturato (nessuna chiamata HTTP) / risultato vuoto con le chiavi richieste |
 | GID-06 | chiavi in parte inesistenti | solo quelle trovate |
 | GID-07/08 | fallback, unicode | ok |
 | GID-09/10 | 30 chiavi, 60 chiavi | tutte restituite (GET a blocchi da 50 con limit) |
@@ -258,9 +259,10 @@ test normali. Non restano `it.fails` nella suite.
 | ID | Scenario | Atteso |
 |---|---|---|
 | FA-01 | item_keys, OA trovato | attached + conteggi; allegato figlio |
-| FA-02/03/04 | entrambi / nessuno / `[]` | errore strutturato |
+| FA-02/03 | entrambi / nessuno | errore strutturato |
+| FA-04 | `[]` | risultato vuoto "No items to process" |
 | FA-05 | collection_key (2 pagine, allegati e note) | 20 item processati |
-| FA-06 | collezione vuota | "No items to process" |
+| FA-06 | collezione vuota | risultato vuoto "No items to process" |
 | FA-07 | senza DOI / chiave fantasma | status error con motivo |
 | FA-08/09/10 | PDF esistente / solo snapshot HTML / skip=false | skipped / processato / nessuna richiesta children |
 | FA-11 | dry_run | available + pdf_url, nessun download |
@@ -312,6 +314,7 @@ test normali. Non restano `it.fails` nella suite.
 |---|---|---|
 | H-01 | logger | una riga JSON su stderr per chiamata, mai su stdout |
 | H-02/03 | formatErrorResponse | `{error, ...details}` con isError: true; una chiave `error` nei details vince |
+| H-02b | formatEmptyResult | `{message, ...details}` senza isError |
 | H-04/05 | extractPdfText con unpdf reale | testo e pagine / rifiuta un non-PDF |
 | H-06/07 | isZoteroApiError su ErrorResponse reale / errore di rete | true con status / false |
 | H-08/09/10 | contratto zotero-api-client | Total-Results e versione; `getData()` con tutti gli oggetti inviati, `getErrors()` con oggetti; DELETE `?itemKey` con If-Unmodified-Since-Version |

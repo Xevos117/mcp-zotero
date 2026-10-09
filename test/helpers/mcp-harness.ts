@@ -136,6 +136,22 @@ export function expectErrorJson(outcome: ToolOutcome, message: string | RegExp):
   return outcome.json;
 }
 
+/**
+ * "Risultato vuoto": nessun dato trovato (ricerca vuota, collezione vuota). Risposta normale di
+ * formatEmptyResult, JSON `{ message, ... }` senza isError.
+ */
+export function expectEmptyResult(outcome: ToolOutcome, message: string | RegExp): any {
+  expect(outcome.isError).toBe(false);
+  expect(outcome.json).toBeTypeOf("object");
+  expect(outcome.json.error).toBeUndefined();
+  if (typeof message === "string") {
+    expect(outcome.json.message).toContain(message);
+  } else {
+    expect(outcome.json.message).toMatch(message);
+  }
+  return outcome.json;
+}
+
 /** Errore "duro": il tool ha lanciato e l'SDK lo ha convertito in isError. */
 export function expectToolError(outcome: ToolOutcome, contains?: string | RegExp): void {
   expect(outcome.isError).toBe(true);

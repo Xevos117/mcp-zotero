@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { formatEmptyResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
 import { lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
@@ -83,7 +83,7 @@ export async function handleFindAndAttachPdfs(
     }
 
     if (keys.length === 0) {
-      return formatErrorResponse("No items to process");
+      return formatEmptyResult("No items to process");
     }
 
     // 2. Batch-fetch item metadata to get DOIs

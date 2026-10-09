@@ -4,6 +4,7 @@ import {
   startHarness,
   expectValidationError,
   expectErrorJson,
+  expectEmptyResult,
 } from "../helpers/mcp-harness.js";
 import { networkError, statusResponse } from "../helpers/fake-net.js";
 import {
@@ -81,8 +82,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(h.net.calls).toHaveLength(0);
   });
 
-  it("FA-04 item_keys vuoto → 'No items to process'", async () => {
-    expectErrorJson(await h.call("find_and_attach_pdfs", { item_keys: [] }), "No items to process");
+  it("FA-04 item_keys vuoto → risultato vuoto 'No items to process'", async () => {
+    expectEmptyResult(await h.call("find_and_attach_pdfs", { item_keys: [] }), "No items to process");
   });
 
   it("FA-05 collection_key: pagina la collezione (Total-Results) ed esclude allegati e note", async () => {
@@ -115,9 +116,9 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(out.json.not_found).toBe(120);
   });
 
-  it("FA-06 collezione vuota → 'No items to process'", async () => {
+  it("FA-06 collezione vuota → risultato vuoto 'No items to process'", async () => {
     h.net.on("GET", `${ZBASE}/collections/COL00001/items`, zList([]));
-    expectErrorJson(await h.call("find_and_attach_pdfs", { collection_key: "COL00001" }), "No items to process");
+    expectEmptyResult(await h.call("find_and_attach_pdfs", { collection_key: "COL00001" }), "No items to process");
   });
 
   it("FA-07 item senza DOI → status error 'No DOI'; chiave inesistente → 'Item not found'", async () => {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { formatEmptyResult } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
 import { fetchAllPages } from "../utils/pagination.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
@@ -34,7 +34,7 @@ export async function handleGetCollections(
     );
 
     if (!Array.isArray(allCollections) || allCollections.length === 0) {
-      return formatErrorResponse("No collections found", {
+      return formatEmptyResult("No collections found", {
         suggestion:
           "Create a collection in your Zotero library first",
         helpUrl: "https://www.zotero.org/support/collections",
@@ -48,7 +48,7 @@ export async function handleGetCollections(
       : allCollections.filter((c) => !(c as Record<string, unknown>).deleted);
 
     if (collections.length === 0) {
-      return formatErrorResponse("No collections found", {
+      return formatEmptyResult("No collections found", {
         suggestion:
           "All collections are in the trash. Use include_trashed=true to see them.",
       });

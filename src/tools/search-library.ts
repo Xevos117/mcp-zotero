@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
 import { logger } from "../utils/logger.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
@@ -72,13 +72,13 @@ export async function handleSearchLibrary(
 
     if (!Array.isArray(items) || items.length === 0) {
       if (query) {
-        return formatErrorResponse("No results found", {
+        return formatEmptyResult("No results found", {
           query,
           suggestion:
             "Try a different search term or verify your library contains matching items",
         });
       }
-      return formatErrorResponse("No items found", {
+      return formatEmptyResult("No items found", {
         suggestion: "Add some items to your Zotero library first",
       });
     }
