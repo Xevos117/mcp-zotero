@@ -58,3 +58,6 @@ local/
 !LICENSE
 !skills/**/*.md
 .claude/
+
+# Vitest 5 output (attachments, reports)
+.vitest/
