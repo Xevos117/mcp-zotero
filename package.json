@@ -26,7 +26,8 @@
     "test:watch": "vitest",
     "build": "tsc",
     "start": "node build/server.js",
-    "prepublishOnly": "npm test && npm run build"
+    "prepublishOnly": "npm test && npm run build",
+    "test:e2e": "npm run build && vitest run --config vitest.e2e.config.ts"
   },
   "keywords": [
     "mcp",
