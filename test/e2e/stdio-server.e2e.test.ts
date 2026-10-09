@@ -1,13 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { join } from "node:path";
 import { startFakeNetServer, FakeNetServer } from "./fake-net-server.js";
+import { SERVER, CALL_TIMEOUT_MS, Spawned, spawnServer, call, runUntilExit } from "./server-process.js";
 import { jsonResponse } from "../helpers/fake-net.js";
 import {
   ZBASE,
@@ -32,76 +29,7 @@ import { makeDocx, para, zcite, readDocumentXml } from "../helpers/fixtures.js";
  * Prerequisito: `npm run build` (lo fa `npm run test:e2e`).
  */
 
-const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
-const SERVER = join(ROOT, "build", "server.js");
-const PRELOAD = join(ROOT, "test", "e2e", "fetch-redirect.mjs");
-const CALL_TIMEOUT_MS = 15_000;
-const KILL_AFTER_MS = 5_000;
-
 const ITEMS = `${ZBASE}/items`;
-
-interface Spawned {
-  client: Client;
-  transport: StdioClientTransport;
-  stderr: () => string;
-  close(): Promise<void>;
-}
-
-async function spawnServer(fake: FakeNetServer, cwd: string, extraEnv: Record<string, string>): Promise<Spawned> {
-  const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: ["--import", PRELOAD, SERVER],
-    cwd, // cartella vuota: nessun .env raccolto da dotenv
-    env: {
-      PATH: process.env.PATH ?? "",
-      ZOTERO_API_KEY: "e2e-fake-key",
-      ZOTERO_USER_ID: USER_ID,
-      FAKE_NET_PORT: String(fake.port),
-      ...extraEnv,
-    },
-    stderr: "pipe",
-  });
-  let err = "";
-  transport.stderr?.on("data", (d: Buffer) => (err += d.toString()));
-  const client = new Client({ name: "e2e-client", version: "0.0.0" });
-  await client.connect(transport, { timeout: CALL_TIMEOUT_MS });
-  return {
-    client,
-    transport,
-    stderr: () => err,
-    async close() {
-      const pid = transport.pid;
-      await Promise.race([client.close(), new Promise((r) => setTimeout(r, KILL_AFTER_MS))]);
-      if (pid) {
-        try {
-          process.kill(pid, 0);
-          process.kill(pid, "SIGKILL"); // ancora vivo dopo il bound → kill forzato
-        } catch {
-          // già terminato
-        }
-      }
-    },
-  };
-}
-
-async function call(s: Spawned, name: string, args: Record<string, unknown>) {
-  try {
-    const r = (await s.client.callTool({ name, arguments: args }, undefined, { timeout: CALL_TIMEOUT_MS })) as {
-      content: Array<{ type: string; text: string }>;
-      isError?: boolean;
-    };
-    const text = r.content?.[0]?.text ?? "";
-    let json: any;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = undefined;
-    }
-    return { isError: r.isError === true, text, json };
-  } catch (e) {
-    return { isError: true, text: e instanceof Error ? e.message : String(e), json: undefined };
-  }
-}
 
 describe("e2e: build/server.js su stdio", () => {
   let fake: FakeNetServer;
@@ -328,23 +256,7 @@ describe("e2e: configurazione del processo", () => {
   });
 
   it("E2E-23 senza ZOTERO_API_KEY/ZOTERO_USER_ID il processo esce con codice 1 e logga l'errore", async () => {
-    const { code, stderr } = await new Promise<{ code: number | null; stderr: string }>((resolvePromise, reject) => {
-      const child = spawn(process.execPath, ["--import", PRELOAD, SERVER], {
-        cwd,
-        env: { PATH: process.env.PATH ?? "", FAKE_NET_PORT: String(fake.port) },
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      let err = "";
-      child.stderr.on("data", (d: Buffer) => (err += d.toString()));
-      const timer = setTimeout(() => {
-        child.kill("SIGKILL");
-        reject(new Error(`il server non è uscito entro ${KILL_AFTER_MS}ms`));
-      }, KILL_AFTER_MS);
-      child.on("exit", (c) => {
-        clearTimeout(timer);
-        resolvePromise({ code: c, stderr: err });
-      });
-    });
+    const { code, stderr } = await runUntilExit(fake, cwd, {});
     expect(code).toBe(1);
     expect(stderr).toMatch(/Missing ZOTERO_API_KEY/); // testo completo può cambiare con nuove variabili di libreria
   });

@@ -11,8 +11,10 @@ import { makePdf } from "./fixtures.js";
 
 export const UPLOAD_HOST = "zoterofilestorage.s3.amazonaws.com";
 export const UPLOAD_KEY = "UPLOADKEY123";
-export const FILE_ROUTE = new RegExp(`^${ZBASE.replace(/\./g, "\\.")}/items/[A-Z0-9]+/file$`);
-export const FULLTEXT_ROUTE = new RegExp(`^${ZBASE.replace(/\./g, "\\.")}/items/[A-Z0-9]+/fulltext$`);
+const fileRoute = (base: string) => new RegExp(`^${base.replace(/\./g, "\\.")}/items/[A-Z0-9]+/file$`);
+const fulltextRoute = (base: string) => new RegExp(`^${base.replace(/\./g, "\\.")}/items/[A-Z0-9]+/fulltext$`);
+export const FILE_ROUTE = fileRoute(ZBASE);
+export const FULLTEXT_ROUTE = fulltextRoute(ZBASE);
 
 export interface PipelineOptions {
   /** Status della richiesta di autorizzazione (default 200). */
@@ -22,10 +24,13 @@ export interface PipelineOptions {
   uploadStatus?: number | "network";
   registerStatus?: number | "network";
   fulltextStatus?: number;
+  /** Base host+path della libreria (default ZBASE, libreria utente). */
+  base?: string;
 }
 
 export function installUploadPipeline(net: FakeNet, opts: PipelineOptions = {}): void {
-  net.on("POST", FILE_ROUTE, (req: FakeRequest) => {
+  const base = opts.base ?? ZBASE;
+  net.on("POST", fileRoute(base), (req: FakeRequest) => {
     const form = req.form();
     if (form.has("upload")) {
       if (opts.registerStatus === "network") return networkError("register reset")(req, 0);
@@ -47,7 +52,7 @@ export function installUploadPipeline(net: FakeNet, opts: PipelineOptions = {}):
     if (opts.uploadStatus === "network") return networkError("upload reset")(req, 0);
     return statusResponse(opts.uploadStatus ?? 201);
   });
-  net.on("PUT", FULLTEXT_ROUTE, statusResponse(opts.fulltextStatus ?? 204));
+  net.on("PUT", fulltextRoute(base), statusResponse(opts.fulltextStatus ?? 204));
 }
 
 /** Route che serve un PDF (o altro contenuto) a un URL dato. */
