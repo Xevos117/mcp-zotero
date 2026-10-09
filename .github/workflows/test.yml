@@ -40,6 +40,10 @@ jobs:
         run: npm run smoke
         timeout-minutes: 2
 
+      - name: E2E tests (built server over stdio, fake Zotero API)
+        run: npx vitest run --config vitest.e2e.config.ts
+        timeout-minutes: 5
+
       - name: Validate packaging (npx compatibility)
         timeout-minutes: 5
         run: |
