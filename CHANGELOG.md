@@ -20,6 +20,17 @@ Toolchain and dependency upgrade, plus group library support. Tool names are unc
   - A per-call `library_type: "group"` without `library_id` is rejected instead of reusing the user ID; `library_type: "user"` on a group server falls back to `ZOTERO_USER_ID`.
   - `get_user_id` now also returns `library_type`, `library_id` and `library_path`; the skill script `inject.js` accepts `groups/<id>` / `users/<id>` (a bare numeric ID still means a user library), so skill-generated citations point at the right library.
 
+### Correzioni
+
+- **Tool errors now set `isError: true`** (MCP convention). Every structured error (`{ "error": ... }`) was previously returned as a normal result. Partial successes (`add_items`, `add_items_by_doi`, `find_and_attach_pdfs`, `delete_items` with `not_found`) are still normal results.
+- **Item-key lookups no longer lose items**: `get_items_details`, `delete_items` and `find_and_attach_pdfs` fetch keys in chunks of 50 with an explicit `limit`. Before, more than 25 keys silently dropped items (reported as `not_found` / "Item not found") and more than 50 failed the request.
+- **`add_items`**: results are matched to inputs by request index, so a failure no longer shifts the keys and titles of the following items; `failed[].error` is a readable `"code: message"` string; more than 50 items are written in batches of 50 (previously a 413 for the whole request).
+- **`add_items_by_doi`**: a partial write failure no longer hides the items that were created. `success` lists them and `failed` adds the rejected DOIs (`{ doi, error }`) to the unresolved ones, so a retry does not duplicate them. Writes are batched by 50 as well.
+- **`create_collection`, `add_linked_url_attachment`, PDF upload**: Zotero write errors are reported as text instead of `"[object Object]"`.
+- **`import_pdf_to_zotero` / `find_and_attach_pdfs`**: `size_bytes` is the real file size (it was 0 whenever the PDF text was extracted).
+- **`find_and_attach_pdfs`**: an item whose lookup fails (e.g. children request error) is reported with status `error` and counted, instead of disappearing from `results`. `add_items_by_doi` likewise reports a failed PDF attach in `pdf_results`.
+- **`inject_citations`**: the output path is derived from the file name only; a folder whose name contains `.docx` no longer produces a wrong path.
+
 ### Changed
 
 - **TypeScript 7.0** (native compiler), pinned as `^7.0.2` instead of `latest`. Emitted JavaScript is byte-identical to the TypeScript 5.9 build.
