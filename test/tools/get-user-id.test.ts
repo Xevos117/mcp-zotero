@@ -61,11 +61,10 @@ describe("get_user_id (MCP)", () => {
     });
   });
 
-  // BUG: con @modelcontextprotocol/sdk 1.27 una tools/call senza il campo
-  // `arguments` (opzionale per la spec MCP) su un tool senza parametri viene
-  // rifiutata con "expected object, received undefined". Origine: validazione
-  // dell'SDK sull'inputSchema `{}` registrato in tools/index.ts.
-  it.fails("GUI-05 BUG tools/call senza 'arguments' deve funzionare per un tool senza parametri", async () => {
+  // Con @modelcontextprotocol/sdk 1.27 una tools/call senza il campo `arguments`
+  // (opzionale per la spec MCP) veniva rifiutata con "expected object, received
+  // undefined". Corretto nell'SDK 1.32: validateToolInput usa `args ?? {}`.
+  it("GUI-05 tools/call senza 'arguments' funziona per un tool senza parametri", async () => {
     h = await startHarness();
     const out = await h.callWithoutArguments("get_user_id");
     expect(out.isError).toBe(false);
