@@ -12,7 +12,7 @@ describe("putFulltext", () => {
       vi.fn().mockResolvedValueOnce({ status: 204 })
     );
 
-    const result = await putFulltext("12345", "ITEM01", "api-key", "Some text", 3);
+    const result = await putFulltext("user", "12345", "ITEM01", "api-key", "Some text", 3);
 
     expect(result.success).toBe(true);
     expect(result.error).toBeUndefined();
@@ -41,7 +41,7 @@ describe("putFulltext", () => {
       vi.fn().mockResolvedValueOnce({ status: 403 })
     );
 
-    const result = await putFulltext("12345", "ITEM01", "bad-key", "text", 1);
+    const result = await putFulltext("user", "12345", "ITEM01", "bad-key", "text", 1);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("Fulltext PUT failed with status 403");
@@ -53,7 +53,7 @@ describe("putFulltext", () => {
       vi.fn().mockResolvedValueOnce({ status: 500 })
     );
 
-    const result = await putFulltext("12345", "ITEM01", "api-key", "text", 1);
+    const result = await putFulltext("user", "12345", "ITEM01", "api-key", "text", 1);
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("Fulltext PUT failed with status 500");
@@ -66,7 +66,7 @@ describe("putFulltext", () => {
     );
 
     await expect(
-      putFulltext("12345", "ITEM01", "api-key", "text", 1)
+      putFulltext("user", "12345", "ITEM01", "api-key", "text", 1)
     ).rejects.toThrow("Network error");
   });
 });

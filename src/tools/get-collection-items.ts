@@ -4,6 +4,7 @@ import { formatErrorResponse } from "../utils/error-formatter.js";
 import { formatCreators, formatTags } from "../utils/item-formatter.js";
 import { logger } from "../utils/logger.js";
 import { fetchAllPages } from "../utils/pagination.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_collection_items",
@@ -16,6 +17,7 @@ export const toolConfig = {
       .describe(
         "Exclude attachment and note items (default: true)"
       ),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -26,11 +28,12 @@ export async function handleGetCollectionItems(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { collectionKey, excludeAttachments } = CollectionItemsSchema.parse(args);
+  const { collectionKey, excludeAttachments, library_type, library_id } = CollectionItemsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   try {
     const { items: allItems, totalResults } = await fetchAllPages((params) =>
-      zoteroApi.library("user", userId).collections(collectionKey).items().get(params)
+      zoteroApi.library(libraryType, libraryId).collections(collectionKey).items().get(params)
     );
 
     if (!allItems || allItems.length === 0) {

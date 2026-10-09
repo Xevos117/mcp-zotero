@@ -3,6 +3,7 @@ import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "import_pdf_to_zotero",
@@ -35,6 +36,7 @@ export const toolConfig = {
       .array(z.string())
       .optional()
       .describe("Tags to apply to the attachment"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -45,8 +47,8 @@ export async function handleImportPdfToZotero(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { url, filename, title, content_type, parent_item, collections, tags } =
-    ImportPdfSchema.parse(args);
+  const { url, filename, title, content_type, parent_item, collections, tags, library_type, library_id } = ImportPdfSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const apiKey = process.env.ZOTERO_API_KEY;
   if (!apiKey) {
@@ -54,7 +56,7 @@ export async function handleImportPdfToZotero(
   }
 
   try {
-    const result = await downloadAndUploadPdf(zoteroApi, userId, apiKey, {
+    const result = await downloadAndUploadPdf(zoteroApi, libraryType, libraryId, apiKey, {
       url,
       parentItem: parent_item,
       collections,

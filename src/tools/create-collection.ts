@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "create_collection",
@@ -15,6 +16,7 @@ export const toolConfig = {
       .describe(
         "Zotero collection key of the parent collection. Get this from get_collections."
       ),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -25,7 +27,8 @@ export async function handleCreateCollection(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { name, parent_collection } = CreateCollectionSchema.parse(args);
+  const { name, parent_collection, library_type, library_id } = CreateCollectionSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (!name?.trim()) {
     return formatErrorResponse("Collection name is required");
@@ -38,7 +41,7 @@ export async function handleCreateCollection(
     }
 
     const response = await zoteroApi
-      .library("user", userId)
+      .library(libraryType, libraryId)
       .collections()
       .post([collectionData]);
 

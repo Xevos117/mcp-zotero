@@ -3,6 +3,7 @@ import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/z
 import { formatErrorResponse } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
 import { logger } from "../utils/logger.js";
+import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "search_library",
@@ -37,6 +38,7 @@ Use the returned item keys with get_items_details, get_item_fulltext, or inject_
       .optional()
       .default(25)
       .describe("Maximum number of items to return (default: 25, max: 100)"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -47,7 +49,8 @@ export async function handleSearchLibrary(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { query, sort, direction, limit } = SearchSchema.parse(args);
+  const { query, sort, direction, limit, library_type, library_id } = SearchSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const params: Record<string, string | number> = {
     sort,
@@ -61,7 +64,7 @@ export async function handleSearchLibrary(
 
   try {
     const response = await zoteroApi
-      .library("user", userId)
+      .library(libraryType, libraryId)
       .items()
       .get(params);
 
