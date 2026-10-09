@@ -278,7 +278,7 @@ describe("import_pdf_to_zotero (MCP)", () => {
   // BUG: pdf-uploader.ts:371/377 legge `buffer.length` DOPO extractPdfText():
   // unpdf/pdf.js trasferisce (detach) l'ArrayBuffer sottostante, quindi
   // size_bytes risulta 0 ogni volta che l'estrazione del testo riesce.
-  it.fails("IP-23 BUG size_bytes è la dimensione reale del PDF anche dopo l'estrazione del testo", async () => {
+  it("IP-23 size_bytes è la dimensione reale del PDF anche dopo l'estrazione del testo", async () => {
     const pdf = makePdf("size check");
     servePdf(h.net, PDF_URL, pdf);
     h.net.on("POST", ITEMS, zWrite({ keys: ["IMP00023"] }));

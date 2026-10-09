@@ -6,8 +6,9 @@ interface PdfTextResult {
 }
 
 export async function extractPdfText(buffer: Buffer): Promise<PdfTextResult> {
-  const uint8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-  const result = await extractText(uint8, { mergePages: true });
+  // unpdf transfers (detaches) the ArrayBuffer it receives: pass a copy so the caller's
+  // buffer stays intact (pdf-uploader reads its length afterwards for size_bytes)
+  const result = await extractText(new Uint8Array(buffer), { mergePages: true });
   return {
     text: result.text as string,
     totalPages: result.totalPages,
