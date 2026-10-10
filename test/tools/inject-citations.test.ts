@@ -110,6 +110,20 @@ describe("inject_citations (MCP)", () => {
     expect(h.net.requests("GET", ITEM_ROUTE)).toHaveLength(2);
   });
 
+  it('IC-22 keys="A, B" con spazi: chiavi ripulite, nessuna GET con spazio nel path', async () => {
+    serveItems(h, { SMITH001: SMITH, DOEROE01: DOE_ROE });
+    const input = await dir.file("spaces.docx", await makeDocx(para("S ", zcite({ keys: " SMITH001, DOEROE01 ," }))));
+    const out = await h.call("inject_citations", { file_path: input });
+    expect(out.isError).toBe(false);
+    expect(out.json).toMatchObject({ citations_found: 1, citations_injected: 1 });
+    const [c] = citations(await readDocumentXml(await readFile(out.json.output_path)));
+    expect(c.citationItems.map((ci: { uris: string[] }) => ci.uris[0])).toEqual([
+      `http://zotero.org/users/${USER_ID}/items/SMITH001`,
+      `http://zotero.org/users/${USER_ID}/items/DOEROE01`,
+    ]);
+    expect(h.net.unmatched).toEqual([]);
+  });
+
   it("IC-03 attributi locator/prefix/suffix nel field code", async () => {
     serveItems(h, { SMITH001: SMITH });
     const input = await dir.file(

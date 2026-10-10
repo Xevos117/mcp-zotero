@@ -44,11 +44,13 @@ function parseZciteMatches(documentXml: string): ZciteMatch[] {
       attrs[attrMatch[1]] = unescapeXml(attrMatch[2]);
     }
 
-    if (!attrs["keys"]) continue;
+    // Tolerate "KEY1, KEY2": a stray space would otherwise become part of the key (404 on fetch)
+    const keys = (attrs["keys"] ?? "").split(",").map((k) => k.trim()).filter(Boolean);
+    if (keys.length === 0) continue;
 
     matches.push({
       fullMatch,
-      keys: attrs["keys"].split(","),
+      keys,
       locator: attrs["locator"] || undefined,
       prefix: attrs["prefix"] || undefined,
       suffix: attrs["suffix"] || undefined,
