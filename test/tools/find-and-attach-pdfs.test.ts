@@ -7,6 +7,7 @@ import {
   expectEmptyResult,
 } from "../helpers/mcp-harness.js";
 import { networkError, statusResponse } from "../helpers/fake-net.js";
+import { makePdf } from "../helpers/fixtures.js";
 import {
   ZBASE,
   zList,
@@ -24,6 +25,7 @@ import {
   servePdf,
   oaGold,
   oaGreenLandingOnly,
+  oaPdfInLaterLocation,
   CLOSED,
   UNPAYWALL_EMAIL,
   UNPAYWALL_HOST,
@@ -70,6 +72,48 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(h.net.requests("GET", ITEMS)[0].url.searchParams.get("itemKey")).toBe("AAAA1111");
     const attach = h.net.requests("POST", ITEMS)[0].json<Array<Record<string, unknown>>>()[0];
     expect(attach).toMatchObject({ itemType: "attachment", parentItem: "AAAA1111" });
+  });
+
+  it("FA-26 PDF solo in una oa_location successiva (PLOS): allegato, filename dal DOI", async () => {
+    const plosPdf = "https://journals.plos.org/plosmedicine/article/file?id=10.1000/aaaa1111&type=printable";
+    library(h, [article("AAAA1111")]);
+    installUnpaywall(h.net, { "10.1000/aaaa1111": oaPdfInLaterLocation("https://doi.org/10.1000/aaaa1111", plosPdf) });
+    servePdf(h.net, plosPdf);
+    installUploadPipeline(h.net);
+
+    const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111"] });
+    expect(out.json.results).toEqual([
+      { item_key: "AAAA1111", doi: "10.1000/aaaa1111", status: "attached", source: "unpaywall_green", pdf_url: plosPdf },
+    ]);
+    const attach = h.net.requests("POST", ITEMS)[0].json<Array<Record<string, unknown>>>()[0];
+    expect(attach).toMatchObject({ filename: "10.1000_aaaa1111.pdf", title: "10.1000_aaaa1111.pdf" });
+  });
+
+  it("FA-27 URL senza .pdf con Content-Disposition: filename dall'header", async () => {
+    const url = "https://repo.example.org/bitstream/handle/123?download=1";
+    library(h, [article("AAAA1111")]);
+    installUnpaywall(h.net, { "10.1000/aaaa1111": oaGold(url) });
+    h.net.on("GET", "repo.example.org/bitstream/handle/123", () =>
+      new Response(new Uint8Array(makePdf("cd")), {
+        headers: { "Content-Type": "application/pdf", "Content-Disposition": 'attachment; filename="Lovelace 1843.pdf"' },
+      })
+    );
+    installUploadPipeline(h.net);
+
+    await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111"] });
+    const attach = h.net.requests("POST", ITEMS)[0].json<Array<Record<string, unknown>>>()[0];
+    expect(attach.filename).toBe("Lovelace 1843.pdf");
+  });
+
+  it("FA-28 solo landing page dell'editore: il motivo nomina l'editore, non un repository", async () => {
+    library(h, [article("AAAA1111")]);
+    const landing = "https://publisher.example.org/article/1";
+    const fx = oaPdfInLaterLocation(landing, "unused");
+    installUnpaywall(h.net, { "10.1000/aaaa1111": { ...fx, oa_locations: [fx.best_oa_location] } });
+
+    const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111"] });
+    expect(byKey(out.json).AAAA1111).toMatchObject({ status: "not_found", landing_url: landing });
+    expect(byKey(out.json).AAAA1111.reason).toContain("on the publisher's site");
   });
 
   it("FA-02 item_keys e collection_key insieme → errore strutturato, nessuna rete", async () => {

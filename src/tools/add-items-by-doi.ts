@@ -5,7 +5,7 @@ import { resolveDois } from "../utils/doi-resolver.js";
 import { cslToZoteroItem } from "../utils/csl-to-zotero.js";
 import { logger } from "../utils/logger.js";
 import { postInBatches } from "../utils/write-results.js";
-import { lookupOaPdf } from "../utils/unpaywall.js";
+import { landingPageOnlyReason, lookupOaPdf } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
 import { mapWithConcurrency, createCancellationToken, settledValues } from "../utils/concurrency.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
@@ -97,6 +97,7 @@ async function attachPdfsToItems(
       const uploadResult = await downloadAndUploadPdf(zoteroApi, libraryType, userId, apiKey, {
         url: oaResult.pdf_url,
         parentItem: item.item_key,
+        doi: item.doi,
       });
 
       if (!uploadResult.success && uploadResult.error.code === "storage_quota_exceeded") {
@@ -118,9 +119,7 @@ async function attachPdfsToItems(
       source: null,
       oa_status: oaResult.oa_status ?? undefined,
       landing_url: oaResult.landing_url ?? undefined,
-      error: oaResult.landing_url
-        ? "Open access copy exists at a repository but no direct PDF link is available. The user can download it manually from the landing page and use import_pdf_to_zotero to attach it."
-        : "No open access PDF found",
+      error: oaResult.landing_url ? landingPageOnlyReason(oaResult) : "No open access PDF found",
     };
   }, undefined, cancelToken);
 

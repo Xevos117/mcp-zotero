@@ -20,7 +20,8 @@ vi.mock("../utils/zotero-fulltext.js", () => ({
   putFulltext: vi.fn(),
 }));
 
-vi.mock("../utils/unpaywall.js", () => ({
+vi.mock("../utils/unpaywall.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/unpaywall.js")>()),
   lookupOaPdf: vi.fn(),
   lookupOaPdfWithFallbacks: vi.fn(),
 }));
@@ -312,6 +313,7 @@ describe("find_and_attach_pdfs handler", () => {
         found: false,
         pdf_url: null,
         landing_url: "https://europepmc.org/articles/PMC7164389",
+        landing_host_type: "repository",
         source: null,
         license: null,
         oa_status: "green",

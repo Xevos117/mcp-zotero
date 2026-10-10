@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
 import { formatEmptyResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
-import { lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
+import { landingPageOnlyReason, lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
 import { mapWithConcurrency, createCancellationToken, settledValues } from "../utils/concurrency.js";
 import { fetchAllPages, fetchItemsByKeys } from "../utils/pagination.js";
@@ -139,7 +139,7 @@ export async function handleFindAndAttachPdfs(
         if (primary.warning) {
           reason = primary.warning;
         } else if (primary.landing_url) {
-          reason = "Open access copy exists at a repository but no direct PDF link is available. If the user needs this PDF, they can download it manually from the landing page and use import_pdf_to_zotero to attach it.";
+          reason = landingPageOnlyReason(primary);
         } else if (primary.oa_status) {
           reason = `OA status: ${primary.oa_status}`;
         } else {
@@ -172,6 +172,7 @@ export async function handleFindAndAttachPdfs(
         const uploadResult = await downloadAndUploadPdf(zoteroApi, libraryType, libraryId, apiKey, {
           url: pdfUrl,
           parentItem: key,
+          doi,
         });
 
         if (uploadResult.success) {

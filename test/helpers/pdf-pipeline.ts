@@ -89,6 +89,13 @@ export function oaGreenLandingOnly(landing: string) {
   return { is_oa: true, oa_status: "green", best_oa_location: best, oa_locations: [best] };
 }
 
+/** Come 10.1371/journal.pmed.0020124 dal vivo: best_oa_location senza PDF, PDF in una location successiva. */
+export function oaPdfInLaterLocation(landing: string, pdfUrl: string) {
+  const best = { url_for_pdf: null, url: landing, host_type: "publisher", license: "cc-by", version: "publishedVersion" };
+  const repo = { url_for_pdf: pdfUrl, url: landing, host_type: "repository", license: "cc-by", version: "publishedVersion" };
+  return { is_oa: true, oa_status: "gold", best_oa_location: best, oa_locations: [best, repo] };
+}
+
 export const CLOSED = { is_oa: false, oa_status: "closed", best_oa_location: null, oa_locations: [] };
 
 /** Route Unpaywall: risposta per DOI (JSON, status HTTP o errore di rete); default closed. */
