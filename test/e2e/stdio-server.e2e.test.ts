@@ -49,8 +49,10 @@ describe("e2e: build/server.js su stdio", () => {
     if (cwd) await rm(cwd, { recursive: true, force: true });
   });
 
-  it("E2E-01 initialize: serverInfo, capability tools e istruzioni", () => {
+  it("E2E-01 initialize: serverInfo, capability tools e istruzioni", async () => {
+    const pkg = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
     expect(s.client.getServerVersion()?.name).toBe("zotero");
+    expect(s.client.getServerVersion()?.version).toBe(pkg.version);
     expect(s.client.getServerCapabilities()?.tools).toBeDefined();
     expect(s.client.getInstructions()).toContain("inject_citations");
   });
