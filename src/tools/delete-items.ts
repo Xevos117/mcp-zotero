@@ -9,7 +9,7 @@ import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/libr
 export const toolConfig = {
   name: "delete_items",
   description:
-    "Delete one or more items from your Zotero library permanently (moves to trash). Accepts up to 50 item keys per call. Requires UNSAFE_OPERATIONS environment variable set to 'items' or 'all'.",
+    "Delete one or more items from your Zotero library: they are permanently deleted (not moved to the Zotero trash). Accepts up to 50 item keys per call. Requires UNSAFE_OPERATIONS environment variable set to 'items' or 'all'.",
   inputSchema: {
     item_keys: z
       .array(z.string())

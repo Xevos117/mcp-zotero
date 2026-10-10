@@ -136,7 +136,7 @@ To enable deletion, set the `UNSAFE_OPERATIONS` environment variable to one of t
 
 - If `UNSAFE_OPERATIONS` is not set, empty, or set to an unrecognized value, it defaults to `none`.
 - The value is **case-insensitive** (e.g. `ALL`, `Items`, `NONE` all work).
-- `delete_items` moves items to the Zotero trash (recoverable from the Zotero desktop client).
+- `delete_items` deletes items **permanently**: the Zotero Web API multi-item DELETE does not move them to the Zotero trash, so they cannot be restored from the desktop client.
 - `delete_collection` removes the collection (folder) only — items inside it are **not** deleted and remain in your library.
 - The `all` value includes both item and collection deletion because managing collections inherently requires item-level access.
 
@@ -211,7 +211,7 @@ claude mcp add-json "zotero" '{"command":"npx","args":["tsx","src/server.ts"],"e
 
 | Tool | Description |
 |---|---|
-| `delete_items` | Delete up to 50 items per call (moves to Zotero trash). Requires `UNSAFE_OPERATIONS=items` or `all` |
+| `delete_items` | Permanently delete up to 50 items per call (not moved to the Zotero trash). Requires `UNSAFE_OPERATIONS=items` or `all` |
 | `delete_collection` | Delete a collection (folder). Items inside are kept. Requires `UNSAFE_OPERATIONS=all` |
 
 ### Citation & documents
