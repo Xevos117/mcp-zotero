@@ -14,6 +14,7 @@ import JSZip from "jszip";
 const EXPECTED_TOOLS = 15;
 const TIMEOUT_MS = 20_000;
 const root = fileURLToPath(new URL("..", import.meta.url));
+const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const stub = fileURLToPath(new URL("./smoke-fetch-stub.mjs", import.meta.url));
 const dumpIdx = process.argv.indexOf("--dump");
 const dumpFile = dumpIdx >= 0 ? process.argv[dumpIdx + 1] : undefined;
@@ -98,6 +99,9 @@ function runScenario({ name, env, prefix }, docxPath) {
         capabilities: {},
         clientInfo: { name: "smoke", version: "0" },
       });
+      if (init.serverInfo?.version !== pkg.version) {
+        throw new Error(`serverInfo.version ${init.serverInfo?.version} != package.json ${pkg.version}`);
+      }
       child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
 
       const { tools } = await request("tools/list", {});

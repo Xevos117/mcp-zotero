@@ -10,6 +10,9 @@ import { logger } from "./utils/logger.js";
 import { parseUnsafeOperations, UnsafeOperationsMode } from "./utils/unsafe-operations.js";
 import { getDefaultLibrary } from "./utils/library-context.js";
 
+// Report the package version in the MCP handshake (package.json sits one level above both src/ and build/).
+const { version: SERVER_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
+
 // Re-export for backward compatibility with existing tests
 export { formatErrorResponse } from "./utils/error-formatter.js";
 export { handleToolCall } from "./tools/index.js";
@@ -28,7 +31,7 @@ class ZoteroServer {
 
   constructor(options: ZoteroServerOptions = {}) {
     this.server = new McpServer(
-      { name: "zotero", version: "1.0.0" },
+      { name: "zotero", version: SERVER_VERSION },
       {
         capabilities: { tools: {} },
         instructions: [
