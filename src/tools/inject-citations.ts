@@ -13,7 +13,7 @@ WORKFLOW — how to create a Word document with live Zotero citations:
 1. Collect item keys: use add_items_by_doi (or search_library for existing items)
 2. Generate .docx: create a Word document (e.g. with the "docx" npm package) with <zcite keys="ITEMKEY"/> placeholders where citations should appear. Each <zcite> MUST be in its own dedicated TextRun — do NOT mix it with surrounding text.
 3. Call this tool with the .docx file path. It replaces every zcite tag with a Zotero field code and appends a bibliography.
-4. Tell the user to open the file in Word with the Zotero plugin and click Zotero → Refresh.
+4. Tell the user to open the file in Word with the Zotero plugin, click Zotero → Add/Edit Bibliography, then Zotero → Refresh.
 
 CITATION STYLES — ask the user which style they want before generating:
 - apa (default): author-year — (Smith, 2023)

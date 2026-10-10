@@ -299,6 +299,19 @@ test normali. Non restano `it.fails` nella suite.
 | IC-19 | output | zip valido con le altre parti |
 | IC-20 | cartella `x.docx.d/` | output accanto all'input |
 | IC-21 | file_path mancante o numero, style non valido | isError |
+| IC-22 | `keys=" A, B ,"` con spazi | chiavi ripulite, URI senza spazi, nessuna richiesta fuori route |
+| IC-23 | itemData | volume/issue/page/publisher/publisher-place inclusi, abstract escluso, cognome multiparola intatto |
+
+## Skill inject.js (`test/skills/inject-script.test.ts`, processo node reale)
+| ID | Scenario | Atteso |
+|---|---|---|
+| SK-01 | libreria `users/<id>`, id numerico, `groups/<id>` | URI `http://zotero.org/{path}/items/KEY`, itemData da metadata.json (DOI maiuscolo), ZOTERO_BIBL |
+| SK-02 | ieee con `num` | `[1]`, `[1,2]`, nessun warning |
+| SK-03 | vancouver senza `num` | WARNING su stderr |
+| SK-04 | `keys="A, B"` | chiavi ripulite |
+| SK-05 | chiave assente da metadata.json | WARNING che la nomina, exit 0 |
+| SK-06 | argomenti mancanti, libreria non valida, stile `mla`, file inesistenti | exit 1 con messaggio |
+| SK-07 | copia `inject.mjs` sotto `package.json` `"type": "commonjs"` | esegue senza SyntaxError/warning |
 
 ## tools/list (`tools-list.test.ts`)
 | ID | Scenario | Atteso |

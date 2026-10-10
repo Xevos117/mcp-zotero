@@ -9,7 +9,7 @@ import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/libr
 export const toolConfig = {
   name: "get_items_details",
   description:
-    "Get metadata for multiple Zotero items in a single call. Accepts an array of item keys and returns a map of key → metadata. Use this instead of calling get_item_details multiple times. Returns all type-specific fields (e.g. bookTitle for bookSection, proceedingsTitle for conferencePaper, university for thesis). Set include_abstract to include abstracts (excluded by default to keep responses lightweight).",
+    "Get metadata for multiple Zotero items in a single call. Accepts an array of item keys and returns a map of key → metadata. Use this instead of one call per item. Returns all type-specific fields (e.g. bookTitle for bookSection, proceedingsTitle for conferencePaper, university for thesis). Set include_abstract to include abstracts (excluded by default to keep responses lightweight).",
   inputSchema: {
     item_keys: z
       .array(z.string())

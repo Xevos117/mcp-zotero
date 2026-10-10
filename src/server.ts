@@ -38,7 +38,7 @@ class ZoteroServer {
           "1. Collect item keys: use add_items_by_doi for items with DOIs, add_items for items without DOIs (or search_library for existing items)",
           "2. Generate .docx: create a Word document with <zcite keys=\"ITEMKEY\"/> placeholders where citations should appear. Each <zcite> must be in its own TextRun.",
           "3. Call inject_citations with the .docx file path — it fetches metadata from Zotero automatically.",
-          "4. Tell the user to open in Word with Zotero plugin → click Zotero → Refresh.",
+          "4. Tell the user to open it in Word with the Zotero plugin → Zotero → Add/Edit Bibliography, then Zotero → Refresh.",
           "",
           "KEY NOTES:",
           "- add_items_by_doi auto-attaches OA PDFs via Unpaywall at no cost. Do not disable auto_attach_pdf unless it causes errors.",
