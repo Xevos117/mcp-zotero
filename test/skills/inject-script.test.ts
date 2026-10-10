@@ -4,6 +4,8 @@ import { copyFile, mkdir, readFile, symlink, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeDocx, para, zcite, readDocumentXml, tempDir, TempDir } from "../helpers/fixtures.js";
+import { startHarness } from "../helpers/mcp-harness.js";
+import { ZBASE, zLibraryQuery, zSingle, article } from "../helpers/zotero-fake.js";
 
 /**
  * Script standalone della skill (skills/zotero-skill-mcp-integrations/scripts/inject.js),
@@ -128,6 +130,49 @@ describe("skill inject.js (processo reale)", () => {
     const r = await run(argv(input, meta));
     expect(r.code).toBe(1);
     expect(r.stderr).toMatch(message);
+  });
+
+  it("SK-08 metadata da get_items_details → itemData e testo identici a inject_citations (cognomi multiparola, nome istituzionale, nessun autore)", async () => {
+    const items = [
+      article("KROON001", { title: "Insects", date: "2017-10-18", volume: "12", creators: [
+        { creatorType: "author", firstName: "Caspar A.", lastName: "Hallmann" },
+        { creatorType: "author", firstName: "Hans", lastName: "de Kroon" },
+      ] }),
+      { key: "SILVA001", itemType: "book", title: "Handbook", date: "2020", publisher: "Press",
+        creators: [{ creatorType: "author", firstName: "Paulo", lastName: "Caetano da Silva" }, { creatorType: "editor", firstName: "Ed", lastName: "Itor" }] },
+      { key: "CONSORT1", itemType: "report", title: "Consortium report", date: "2021", creators: [{ creatorType: "author", name: "Test Consortium" }] },
+      { key: "NOAUTH01", itemType: "document", title: "Anonymous memo", date: "2019", creators: [] },
+    ];
+    const h = await startHarness();
+    try {
+      h.net.on("GET", `${ZBASE}/items`, zLibraryQuery(items));
+      for (const it of items) h.net.on("GET", `${ZBASE}/items/${it.key}`, zSingle(it));
+      const keys = items.map((i) => i.key);
+      const details = await h.call("get_items_details", { item_keys: keys });
+      const metaPath = await dir.file("meta-live.json", JSON.stringify(details.json));
+      const body = para(zcite({ keys: "KROON001" })) + para(zcite({ keys: "SILVA001,CONSORT1" })) + para(zcite({ keys: "NOAUTH01" }));
+      const forTool = await dir.file("eq-tool.docx", await makeDocx(body));
+      const forScript = await dir.file("eq-script.docx", await makeDocx(body));
+
+      const tool = await h.call("inject_citations", { file_path: forTool });
+      expect(tool.isError).toBe(false);
+      const out = join(dir.path, "eq-script-out.docx");
+      const r = await run([forScript, out, metaPath, "424242"]);
+      expect(r.code).toBe(0);
+
+      const strip = (cites: Array<Record<string, any>>) =>
+        cites.map((c) => ({ text: c.properties.formattedCitation, items: c.citationItems.map((ci: any) => ({ uris: ci.uris, itemData: ci.itemData })) }));
+      const fromTool = strip(citations(await readDocumentXml(await readFile(tool.json.output_path))));
+      const fromScript = strip(citations(await readDocumentXml(await readFile(out))));
+      expect(fromScript).toEqual(fromTool);
+      expect(fromScript.map((c) => c.text)).toEqual([
+        "(Hallmann & de Kroon, 2017)",
+        "(Caetano da Silva, 2020; Test Consortium, 2021)",
+        '("Anonymous memo", 2019)',
+      ]);
+    } finally {
+      await h.close();
+    }
   });
 
   it('SK-07 copiato come inject.mjs in una cartella con package.json "type": "commonjs" funziona', async () => {

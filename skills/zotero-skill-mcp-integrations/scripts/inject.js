@@ -69,15 +69,45 @@ if (!/^(users|groups)\/\d+$/.test(libraryPath)) {
 // Zotero itemType → CSL type mapping
 // ---------------------------------------------------------------------------
 
+// Same table as src/utils/csl-to-zotero.ts (inject_citations), so both produce the same CSL type
 const ZOTERO_TO_CSL_TYPE = {
   journalArticle: "article-journal",
+  magazineArticle: "article-magazine",
+  newspaperArticle: "article-newspaper",
+  bill: "bill",
   book: "book",
+  tvBroadcast: "broadcast",
   bookSection: "chapter",
+  dataset: "dataset",
+  document: "document",
+  dictionaryEntry: "entry-dictionary",
+  encyclopediaArticle: "entry-encyclopedia",
+  artwork: "graphic",
+  hearing: "hearing",
+  interview: "interview",
+  case: "legal_case",
+  statute: "legislation",
+  manuscript: "manuscript",
+  map: "map",
+  film: "motion_picture",
   conferencePaper: "paper-conference",
+  patent: "patent",
+  letter: "personal_communication",
+  forumPost: "post",
+  blogPost: "post-weblog",
   report: "report",
+  computerProgram: "software",
+  audioRecording: "song",
+  presentation: "speech",
+  standard: "standard",
   thesis: "thesis",
   webpage: "webpage",
-  document: "dataset",
+  radioBroadcast: "broadcast",
+  videoRecording: "motion_picture",
+  preprint: "article",
+  podcast: "song",
+  email: "personal_communication",
+  instantMessage: "personal_communication",
 };
 
 // ---------------------------------------------------------------------------
@@ -91,7 +121,8 @@ const ZOTERO_TO_CSL_TYPE = {
  * @returns {Array<{family: string, given: string}>}
  */
 function parseAuthors(authorString) {
-  if (!authorString) return [];
+  // "No authors listed" is get_items_details' placeholder, not a name
+  if (!authorString || authorString === "No authors listed") return [];
   return authorString.split(",").map((name) => {
     const parts = name.trim().split(/\s+/);
     if (parts.length === 1) return { family: parts[0], given: "" };
@@ -122,9 +153,24 @@ function parseDate(dateString) {
  * @param {Record<string, unknown>} meta
  * @returns {Record<string, unknown>}
  */
+/**
+ * CSL authors from get_items_details' structured `creators` (same rule as the inject_citations
+ * MCP tool: creatorType "author" only, family = lastName or single-field name).
+ * @param {Array<Record<string, string>>} creators
+ * @returns {Array<{family: string, given: string}>}
+ */
+function authorsFromCreators(creators) {
+  return creators
+    .filter((c) => c.creatorType === "author")
+    .map((c) => ({ family: c.lastName ?? c.name ?? "", given: c.firstName ?? "" }));
+}
+
 function metadataToCsl(meta) {
   const cslType = ZOTERO_TO_CSL_TYPE[meta.itemType] ?? "article-journal";
-  const authors = parseAuthors(meta.authors);
+  // Prefer structured creators; the "authors" string cannot tell "de Kroon" from a middle name
+  const authors = Array.isArray(meta.creators)
+    ? authorsFromCreators(meta.creators)
+    : parseAuthors(meta.authors);
   const issued = parseDate(meta.date);
 
   /** @type {Record<string, unknown>} */

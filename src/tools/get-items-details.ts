@@ -68,6 +68,11 @@ export async function handleGetItemsDetails(
       title: item.title || "Untitled",
       authors: formatCreators(item.creators),
     };
+    // Structured names as stored in Zotero (firstName/lastName or single-field name): lets the
+    // skill's inject.js build CSL names exactly like inject_citations, multi-word surnames included
+    if (item.creators && item.creators.length > 0) {
+      entry.creators = item.creators;
+    }
 
     // Include all non-empty bibliographic fields from the Zotero response
     const raw = item as Record<string, unknown>;

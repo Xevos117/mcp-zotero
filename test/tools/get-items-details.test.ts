@@ -71,9 +71,22 @@ describe("get_items_details (MCP)", () => {
     );
     const out = await h.call("get_items_details", { item_keys: ["AAAA1111"] });
     const entry = out.json.AAAA1111;
-    for (const f of ["key", "version", "dateAdded", "dateModified", "collections", "tags", "relations", "creators", "extra", "series", "archive"]) {
+    for (const f of ["key", "version", "dateAdded", "dateModified", "collections", "tags", "relations", "extra", "series", "archive"]) {
       expect(entry).not.toHaveProperty(f);
     }
+  });
+
+  it("GID-15 creators strutturati accanto ad authors (cognomi multiparola, nome istituzionale)", async () => {
+    const creators = [
+      { creatorType: "author", firstName: "Hans", lastName: "de Kroon" },
+      { creatorType: "author", firstName: "Paulo", lastName: "Caetano da Silva" },
+      { creatorType: "editor", name: "Test Consortium" },
+    ];
+    h.net.on("GET", ITEMS, zLibraryQuery([article("AAAA1111", { creators }), article("NOCREAT1", { creators: [] })]));
+    const out = await h.call("get_items_details", { item_keys: ["AAAA1111", "NOCREAT1"] });
+    expect(out.json.AAAA1111.creators).toEqual(creators);
+    expect(out.json.AAAA1111.authors).toBe("Hans de Kroon, Paulo Caetano da Silva");
+    expect(out.json.NOCREAT1).not.toHaveProperty("creators");
   });
 
   it("GID-04 array vuoto → errore strutturato senza chiamate di rete", async () => {

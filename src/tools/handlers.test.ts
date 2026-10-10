@@ -309,7 +309,7 @@ describe("get_items_details", () => {
     expect(parsed["BS00001"].publisher).toBe("Publisher");
   });
 
-  it("excludes structural fields (key, version, collections, tags, creators)", async () => {
+  it("excludes structural fields (key, version, collections, tags) and keeps structured creators", async () => {
     const { mock } = createZoteroApiMock([fullItemFixture]);
     const result = await handleToolCall(
       "get_items_details",
@@ -323,7 +323,7 @@ describe("get_items_details", () => {
     expect(parsed["ABC12345"]).not.toHaveProperty("version");
     expect(parsed["ABC12345"]).not.toHaveProperty("collections");
     expect(parsed["ABC12345"]).not.toHaveProperty("tags");
-    expect(parsed["ABC12345"]).not.toHaveProperty("creators");
+    expect(parsed["ABC12345"].creators).toEqual(fullItemFixture.creators);
     expect(parsed["ABC12345"]).not.toHaveProperty("dateAdded");
     // authors is the formatted version of creators
     expect(parsed["ABC12345"].authors).toBe("John Smith, Jane Doe");
