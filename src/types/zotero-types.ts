@@ -32,6 +32,11 @@ export interface ZoteroItemData {
   collections?: string[];
   notes?: ZoteroNote[];
   publicationTitle?: string;
+  volume?: string;
+  issue?: string;
+  pages?: string;
+  publisher?: string;
+  place?: string;
   contentType?: string;
   parentCollection?: string;
   numItems?: number;

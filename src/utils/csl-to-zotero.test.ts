@@ -414,6 +414,21 @@ describe("zoteroItemToCsl", () => {
     expect(result.type).toBe("book");
   });
 
+  it("carries volume/issue/page/publisher/place and omits the abstract", () => {
+    const result = zoteroItemToCsl({
+      itemType: "journalArticle",
+      title: "Full",
+      volume: "12",
+      issue: "10",
+      pages: "1-9",
+      publisher: "PLOS",
+      place: "San Francisco",
+      abstractNote: "Long abstract",
+    });
+    expect(result).toMatchObject({ volume: "12", issue: "10", page: "1-9", publisher: "PLOS", "publisher-place": "San Francisco" });
+    expect(result).not.toHaveProperty("abstract");
+  });
+
   it("defaults unknown type to article-journal", () => {
     const result = zoteroItemToCsl({
       itemType: "unknownType",

@@ -222,7 +222,12 @@ export function zoteroItemToCsl(item: ZoteroItemData): CslItemData {
     issued,
     DOI: item.DOI,
     "container-title": item.publicationTitle,
+    volume: item.volume,
+    issue: item.issue,
+    page: item.pages,
+    publisher: item.publisher,
+    "publisher-place": item.place,
     URL: item.url,
-    abstract: item.abstractNote,
+    // abstract deliberately omitted: it bloats every field code (same choice as the skill's inject.js)
   };
 }

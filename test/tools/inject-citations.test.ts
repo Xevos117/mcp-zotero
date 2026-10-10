@@ -124,6 +124,34 @@ describe("inject_citations (MCP)", () => {
     expect(h.net.unmatched).toEqual([]);
   });
 
+  it("IC-23 itemData: volume/issue/page/publisher inclusi, abstract escluso (field code leggero)", async () => {
+    serveItems(h, {
+      FULL0001: article("FULL0001", {
+        title: "Full Record",
+        creators: [{ creatorType: "author", firstName: "Hans", lastName: "de Kroon" }],
+        date: "2017-10-18",
+        volume: "12",
+        issue: "10",
+        pages: "e0185809",
+        publisher: "PLOS",
+        place: "San Francisco",
+        abstractNote: "A long abstract that must not end up in the field code.",
+      }),
+    });
+    const input = await dir.file("full.docx", await makeDocx(para(zcite({ keys: "FULL0001" }))));
+    const out = await h.call("inject_citations", { file_path: input });
+    const [c] = citations(await readDocumentXml(await readFile(out.json.output_path)));
+    expect(c.citationItems[0].itemData).toMatchObject({
+      volume: "12",
+      issue: "10",
+      page: "e0185809",
+      publisher: "PLOS",
+      "publisher-place": "San Francisco",
+      author: [{ family: "de Kroon", given: "Hans" }],
+    });
+    expect(c.citationItems[0].itemData).not.toHaveProperty("abstract");
+  });
+
   it("IC-03 attributi locator/prefix/suffix nel field code", async () => {
     serveItems(h, { SMITH001: SMITH });
     const input = await dir.file(
