@@ -414,6 +414,11 @@ describe("zoteroItemToCsl", () => {
     expect(result.type).toBe("book");
   });
 
+  it("drops empty-string fields (the API sends every field of the type)", () => {
+    const result = zoteroItemToCsl({ itemType: "book", title: "B", DOI: "", url: "", issue: "", pages: "", place: "", publisher: "P" });
+    expect(JSON.parse(JSON.stringify(result))).toEqual({ type: "book", title: "B", publisher: "P" });
+  });
+
   it("carries volume/issue/page/publisher/place and omits the abstract", () => {
     const result = zoteroItemToCsl({
       itemType: "journalArticle",

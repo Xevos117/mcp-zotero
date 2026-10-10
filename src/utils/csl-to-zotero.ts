@@ -215,19 +215,21 @@ export function zoteroItemToCsl(item: ZoteroItemData): CslItemData {
     }
   }
 
+  // The Zotero API returns every field of the item type, empty ones as "": keep them out of the field code
+  const text = (v: string | undefined) => (v ? v : undefined);
   return {
     type: ZOTERO_TO_CSL_TYPE[item.itemType ?? ""] ?? "article-journal",
-    title: item.title,
+    title: text(item.title),
     author: authors.length > 0 ? authors : undefined,
     issued,
-    DOI: item.DOI,
-    "container-title": item.publicationTitle,
-    volume: item.volume,
-    issue: item.issue,
-    page: item.pages,
-    publisher: item.publisher,
-    "publisher-place": item.place,
-    URL: item.url,
+    DOI: text(item.DOI),
+    "container-title": text(item.publicationTitle),
+    volume: text(item.volume),
+    issue: text(item.issue),
+    page: text(item.pages),
+    publisher: text(item.publisher),
+    "publisher-place": text(item.place),
+    URL: text(item.url),
     // abstract deliberately omitted: it bloats every field code (same choice as the skill's inject.js)
   };
 }
