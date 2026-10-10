@@ -30,6 +30,8 @@ Toolchain and dependency upgrade, plus group library support. Tool names are unc
 - **`create_collection`, `add_linked_url_attachment`, PDF upload**: Zotero write errors are reported as text instead of `"[object Object]"`.
 - **`import_pdf_to_zotero` / `find_and_attach_pdfs`**: `size_bytes` is the real file size (it was 0 whenever the PDF text was extracted).
 - **`find_and_attach_pdfs`**: an item whose lookup fails (e.g. children request error) is reported with status `error` and counted, instead of disappearing from `results`. `add_items_by_doi` likewise reports a failed PDF attach in `pdf_results`.
+- **Open-access PDFs found in any Unpaywall location**: `find_and_attach_pdfs` and `add_items_by_doi` reported "no PDF" whenever `best_oa_location` had no `url_for_pdf`, even if another `oa_locations` entry had one (e.g. the PLOS printable PDF of 10.1371/journal.pmed.0020124). Like Zotero Desktop, the best location is tried first, then the others in order, without duplicates. The landing-page-only message now names the real host (publisher or repository).
+- **Attachment filenames**: PDFs from URLs without a `.pdf` path (e.g. PLOS `/article/file?id=…`) were all named `document.pdf`. The name now comes from the URL path when it ends in `.pdf`, else from the `Content-Disposition` filename, else from the DOI (`10.1371_journal.pmed.0020124.pdf`).
 - **`delete_items` description**: it said "permanently (moves to trash)", but the Web API multi-item DELETE removes items permanently without using the Zotero trash. The description and the README now say so.
 - **`inject_citations`**: the output path is derived from the file name only; a folder whose name contains `.docx` no longer produces a wrong path.
 
