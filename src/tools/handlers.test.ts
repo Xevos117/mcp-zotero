@@ -984,8 +984,8 @@ describe("add_items_by_doi", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.success).toHaveLength(1);
     expect(parsed.success[0].item_key).toBe("SURV01");
-    expect(parsed.pdf_attach_error).toContain("PDF attachment failed");
-    expect(parsed.pdf_attach_error).toContain("Items were created successfully");
+    // The shared pipeline turns the failure into a per-item result instead of pdf_attach_error
+    expect(parsed.pdf_results[0]).toMatchObject({ status: "error", pdf_attached: false, error: "Unpaywall unreachable" });
 
     process.env = ORIGINAL_ENV;
   });

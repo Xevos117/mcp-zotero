@@ -5,10 +5,8 @@ import { resolveDois } from "../utils/doi-resolver.js";
 import { cslToZoteroItem } from "../utils/csl-to-zotero.js";
 import { logger } from "../utils/logger.js";
 import { postInBatches } from "../utils/write-results.js";
-import { landingPageOnlyReason, lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
-import { PdfUrlFailure, uploadFirstAvailablePdf } from "../utils/pdf-fallback.js";
-import { mapWithConcurrency, createCancellationToken, settledValues } from "../utils/concurrency.js";
-import { getLibraryType, resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
+import { OaPdfResult, attachOpenAccessPdfs } from "../utils/oa-pdf.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "add_items_by_doi",
@@ -50,88 +48,11 @@ WORKFLOW TIPS:
 
 const AddItemsByDoiSchema = z.object(toolConfig.inputSchema);
 
-interface PdfAttachResult {
-  item_key: string;
-  doi: string;
-  pdf_attached: boolean;
-  source: string | null;
-  oa_status?: string;
-  landing_url?: string;
-  /** URL that was attached, or every URL tried when none worked. */
-  pdf_url?: string;
-  failed_urls?: PdfUrlFailure[];
-  error?: string;
-}
-
-interface CreatedItem {
-  doi: string;
-  item_key: string;
-  title: string;
-}
-
-async function attachPdfsToItems(
-  items: CreatedItem[],
-  zoteroApi: ZoteroApiInterface,
-  libraryType: LibraryType,
-  userId: string,
-  apiKey: string
-): Promise<PdfAttachResult[]> {
-  const itemsWithDoi = items.filter((item) => item.doi);
-  if (itemsWithDoi.length === 0) return [];
-
-  // Probe Unpaywall config with the first DOI — if email is bad, skip entirely
-  const probe = await lookupOaPdfWithFallbacks(itemsWithDoi[0].doi);
-  if (probe.primary.warning) {
-    return [{
-      item_key: itemsWithDoi[0].item_key,
-      doi: itemsWithDoi[0].doi,
-      pdf_attached: false,
-      source: null,
-      error: probe.primary.warning,
-    }];
-  }
-
-  // Email is valid — process all items in parallel (reuse probe for first)
-  const cancelToken = createCancellationToken();
-
-  const settled = await mapWithConcurrency(itemsWithDoi, async (item, i): Promise<PdfAttachResult> => {
-    const { primary: oaResult, fallback_urls } = i === 0 ? probe : await lookupOaPdfWithFallbacks(item.doi);
-    if (oaResult.found && oaResult.pdf_url) {
-      const attempt = await uploadFirstAvailablePdf(
-        zoteroApi,
-        libraryType,
-        userId,
-        apiKey,
-        [oaResult.pdf_url, ...fallback_urls],
-        { parentItem: item.item_key, doi: item.doi }
-      );
-      if (!attempt.attached && attempt.quotaExceeded) {
-        cancelToken.cancelled = true;
-      }
-      const base = { item_key: item.item_key, doi: item.doi, source: oaResult.source };
-      return attempt.attached
-        ? { ...base, pdf_attached: true, pdf_url: attempt.pdfUrl }
-        : { ...base, pdf_attached: false, failed_urls: attempt.failedUrls, error: attempt.message };
-    }
-    return {
-      item_key: item.item_key,
-      doi: item.doi,
-      pdf_attached: false,
-      source: null,
-      oa_status: oaResult.oa_status ?? undefined,
-      landing_url: oaResult.landing_url ?? undefined,
-      error: oaResult.landing_url ? landingPageOnlyReason(oaResult) : "No open access PDF found",
-    };
-  }, undefined, cancelToken);
-
-  return settledValues(itemsWithDoi, settled, (item, reason): PdfAttachResult => ({
-    item_key: item.item_key,
-    doi: item.doi,
-    pdf_attached: false,
-    source: null,
-    error: reason instanceof Error ? reason.message : String(reason),
-  }));
-}
+/**
+ * Shared pipeline result, plus the fields earlier versions returned: `pdf_attached`, `pdf_url`
+ * (attached URL) and `error` (reason when nothing was attached).
+ */
+type PdfAttachResult = OaPdfResult & { pdf_attached: boolean; pdf_url?: string; error?: string };
 
 export async function handleAddItemsByDoi(
   zoteroApi: ZoteroApiInterface,
@@ -182,22 +103,22 @@ export async function handleAddItemsByDoi(
     });
 
     let pdf_results: PdfAttachResult[] | undefined;
-    let pdf_attach_error: string | undefined;
-    if (auto_attach_pdf) {
-      const apiKey = process.env.ZOTERO_API_KEY;
-      if (apiKey) {
-        try {
-          pdf_results = await attachPdfsToItems(success, zoteroApi, libraryType, libraryId, apiKey);
-        } catch (err) {
-          pdf_attach_error = `PDF attachment failed: ${err instanceof Error ? err.message : String(err)}. Items were created successfully.`;
-          logger.error("PDF attach phase failed", { error: pdf_attach_error });
-        }
-      }
+    const apiKey = process.env.ZOTERO_API_KEY;
+    if (auto_attach_pdf && apiKey) {
+      const targets = success.filter((s) => s.doi).map((s) => ({ itemKey: s.item_key, doi: s.doi }));
+      const results = await attachOpenAccessPdfs(targets, {
+        zoteroApi,
+        library: { type: libraryType, id: libraryId },
+        apiKey,
+      });
+      pdf_results = results.map((r) =>
+        r.status === "attached"
+          ? { ...r, pdf_attached: true, pdf_url: r.url_used }
+          : { ...r, pdf_attached: false, error: r.reason }
+      );
     }
 
-    const quotaHit = pdf_results?.some((r) =>
-      r.error?.includes("storage quota")
-    );
+    const quotaHit = pdf_results?.some((r) => r.status === "quota_exceeded");
 
     return {
       content: [
@@ -208,7 +129,6 @@ export async function handleAddItemsByDoi(
               success,
               failed,
               ...(pdf_results !== undefined ? { pdf_results } : {}),
-              ...(pdf_attach_error !== undefined ? { pdf_attach_error } : {}),
               ...(quotaHit
                 ? {
                     storage_quota_warning:

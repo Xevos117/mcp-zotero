@@ -195,6 +195,9 @@ test normali. Non restano `it.fails` nella suite.
 | AID-22 | quota piena su 12 DOI | upload successivi saltati |
 | AID-23 | un download 404 | risultati per singolo item |
 | AID-24 | ZOTERO_API_KEY assente | item creati, fase PDF saltata |
+| AID-25 | PDF primario 403, fallback disponibile | allegato il fallback: status attached, url_used = pdf_url, filename, size_bytes; nessun allegato orfano |
+| AID-26 | tutti gli URL falliscono | pdf_attached false, "Download failed for all 2 URL(s)", failed_urls con 403 e 404 |
+| AID-27 | stesso scenario della pipeline condivisa | campi per PDF identici a `attachOpenAccessPdf` chiamata direttamente |
 
 ## add_linked_url_attachment (`add-linked-url-attachment.test.ts`)
 | ID | Scenario | Atteso |
@@ -269,7 +272,7 @@ test normali. Non restano `it.fails` nella suite.
 | FA-07 | senza DOI / chiave fantasma | status error con motivo |
 | FA-08/09/10 | PDF esistente / solo snapshot HTML / skip=false | skipped / processato / nessuna richiesta children |
 | FA-11 | dry_run | available + pdf_url, nessun download |
-| FA-12 | closed / green con landing | not_found con oa_status / landing_url |
+| FA-12 | closed / green con landing | not_found "No open access PDF found" con oa_status / landing_page_only con landing_url (entrambi contati in not_found) |
 | FA-13 | Unpaywall 404/500/rete | not_found |
 | FA-14 | UNPAYWALL_EMAIL non valida | not_found con warning, nessuna chiamata a Unpaywall |
 | FA-15/16 | URL di fallback / tutti falliti | attached con il fallback / "Download failed for all 2 URL(s)" |
@@ -280,6 +283,22 @@ test normali. Non restano `it.fails` nella suite.
 | FA-22/25 | 120 item_keys / collezione di 120 | tutti processati, nessun "Item not found" |
 | FA-23 | ZOTERO_API_KEY assente | errore strutturato |
 | FA-24 | item_keys, collection_key, dry_run, skip non validi | isError |
+| FA-26 | PDF solo in una oa_location successiva (PLOS) | attached dal repository, filename dal DOI |
+| FA-27 | URL senza .pdf con Content-Disposition | filename dall'header |
+| FA-28 | solo landing page dell'editore | landing_page_only, il motivo nomina l'editore |
+| FA-29 | stesso scenario della pipeline condivisa | campi per PDF identici a `attachOpenAccessPdf` chiamata direttamente |
+
+## Pipeline PDF open access condivisa (`test/utils/oa-pdf.test.ts`)
+`attachOpenAccessPdf` (src/utils/oa-pdf.ts) è l'unico percorso usato da add_items_by_doi e find_and_attach_pdfs.
+| ID | Scenario | Atteso |
+|---|---|---|
+| OA-01 | primario 403, fallback ok | attached con url_used, filename, size_bytes, attachment_key, fulltext_indexed; una sola POST di allegato |
+| OA-02 | tutti gli URL falliscono | error "Download failed for all 2 URL(s)", failed_urls nell'ordine provato |
+| OA-03 | solo landing page | landing_page_only con landing_url e host reale nel motivo |
+| OA-04 | PDF già presente (skipIfPdfExists) | skipped, Unpaywall non interrogato |
+| OA-05 | contenuto non PDF (HTML) | error "HTML page instead of a PDF", nessun allegato |
+| OA-06 | quota storage piena | quota_exceeded, token di cancellazione impostato, fallback non provato |
+| OA-07 | dry run | available con url_used, nessun download |
 
 ## inject_citations (`inject-citations.test.ts`, .docx reali in una cartella tmp)
 | ID | Scenario | Atteso |

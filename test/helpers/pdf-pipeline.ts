@@ -110,3 +110,32 @@ export function installUnpaywall(net: FakeNet, byDoi: Record<string, UnpaywallFi
 }
 
 export { ZOTERO_HOST, USER_ID };
+
+/** Campi del risultato della pipeline condivisa (src/utils/oa-pdf.ts) che non dipendono dal tool chiamante. */
+const SHARED_PDF_FIELDS = [
+  "status",
+  "reason",
+  "source",
+  "url_used",
+  "filename",
+  "size_bytes",
+  "fulltext_indexed",
+  "landing_url",
+  "oa_status",
+  "failed_urls",
+] as const;
+
+export function sharedPdfFields(result: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(SHARED_PDF_FIELDS.filter((f) => f in result).map((f) => [f, result[f]]));
+}
+
+/** Stesso scenario eseguito direttamente sulla pipeline condivisa, per confrontarlo con l'output dei tool. */
+export async function runSharedPipeline(doi: string, itemKey = "DIRECT01"): Promise<Record<string, unknown>> {
+  const { attachOpenAccessPdf } = await import("../../src/utils/oa-pdf.js");
+  const { createZoteroClient, TEST_API_KEY } = await import("./mcp-harness.js");
+  const result = await attachOpenAccessPdf(
+    { itemKey, doi },
+    { zoteroApi: createZoteroClient(), library: { type: "user", id: USER_ID }, apiKey: TEST_API_KEY }
+  );
+  return result as unknown as Record<string, unknown>;
+}

@@ -2,9 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
 import { formatEmptyResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
-import { landingPageOnlyReason, lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
-import { PdfUrlFailure, uploadFirstAvailablePdf } from "../utils/pdf-fallback.js";
-import { mapWithConcurrency, createCancellationToken, settledValues } from "../utils/concurrency.js";
+import { OaPdfResult, OaPdfTarget, attachOpenAccessPdfs } from "../utils/oa-pdf.js";
 import { fetchAllPages, fetchItemsByKeys } from "../utils/pagination.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
@@ -35,17 +33,8 @@ export const toolConfig = {
 
 const FindAndAttachPdfsSchema = z.object(toolConfig.inputSchema);
 
-interface ItemResult {
-  item_key: string;
-  doi: string | null;
-  status: "attached" | "available" | "not_found" | "skipped" | "error" | "quota_exceeded";
-  reason?: string;
-  source?: string;
-  pdf_url?: string;
-  landing_url?: string;
-  oa_status?: string;
-  failed_urls?: PdfUrlFailure[];
-}
+/** Shared pipeline result, plus `pdf_url` kept as an alias of `url_used` for existing clients. */
+type ItemResult = OaPdfResult & { pdf_url?: string };
 
 export async function handleFindAndAttachPdfs(
   zoteroApi: ZoteroApiInterface,
@@ -100,103 +89,29 @@ export async function handleFindAndAttachPdfs(
       }
     }
 
-    // 3. Process each item in parallel
-    const cancelToken = createCancellationToken();
-
-    const settled = await mapWithConcurrency(keys, async (key): Promise<ItemResult> => {
+    // 3. Items without metadata or DOI are reported directly; the others go through the shared pipeline
+    const preResults = new Map<string, ItemResult>();
+    const targets: OaPdfTarget[] = [];
+    for (const key of keys) {
       const item = itemMap.get(key);
-      if (!item) {
-        return { item_key: key, doi: null, status: "error", reason: "Item not found" };
-      }
+      if (!item) preResults.set(key, { item_key: key, doi: null, status: "error", reason: "Item not found" });
+      else if (!item.DOI) preResults.set(key, { item_key: key, doi: null, status: "error", reason: "No DOI" });
+      else targets.push({ itemKey: key, doi: item.DOI });
+    }
 
-      const doi = item.DOI ?? null;
-      if (!doi) {
-        return { item_key: key, doi: null, status: "error", reason: "No DOI" };
-      }
-
-      // Check for existing attachments
-      if (skip_if_attachment_exists) {
-        const childrenResponse = await zoteroApi
-          .library(libraryType, libraryId)
-          .items(key)
-          .children()
-          .get();
-        const children = childrenResponse.getData() as ZoteroItemData[];
-        const childrenArray = Array.isArray(children) ? children : [children];
-        const hasPdf = childrenArray.some(
-          (child) =>
-            child.itemType === "attachment" && child.contentType === "application/pdf"
-        );
-        if (hasPdf) {
-          return { item_key: key, doi, status: "skipped", reason: "PDF attachment already exists" };
-        }
-      }
-
-      // Lookup OA PDF
-      const { primary, fallback_urls } = await lookupOaPdfWithFallbacks(doi);
-
-      if (!primary.found || !primary.pdf_url) {
-        let reason: string;
-        if (primary.warning) {
-          reason = primary.warning;
-        } else if (primary.landing_url) {
-          reason = landingPageOnlyReason(primary);
-        } else if (primary.oa_status) {
-          reason = `OA status: ${primary.oa_status}`;
-        } else {
-          reason = "No open access PDF found";
-        }
-        return {
-          item_key: key,
-          doi,
-          status: "not_found",
-          reason,
-          ...(primary.landing_url ? { landing_url: primary.landing_url } : {}),
-          ...(primary.oa_status ? { oa_status: primary.oa_status } : {}),
-        };
-      }
-
-      if (dry_run) {
-        return {
-          item_key: key,
-          doi,
-          status: "available",
-          source: primary.source ?? undefined,
-          pdf_url: primary.pdf_url,
-        };
-      }
-
-      const attempt = await uploadFirstAvailablePdf(
-        zoteroApi,
-        libraryType,
-        libraryId,
-        apiKey,
-        [primary.pdf_url, ...fallback_urls],
-        { parentItem: key, doi }
-      );
-      if (attempt.attached) {
-        return { item_key: key, doi, status: "attached", source: primary.source ?? undefined, pdf_url: attempt.pdfUrl };
-      }
-      if (attempt.quotaExceeded) {
-        cancelToken.cancelled = true;
-        return { item_key: key, doi, status: "quota_exceeded", reason: attempt.message };
-      }
-      return {
-        item_key: key,
-        doi,
-        status: "error",
-        reason: attempt.message,
-        source: primary.source ?? undefined,
-        failed_urls: attempt.failedUrls,
-      };
-    }, undefined, cancelToken);
-
-    const results = settledValues(keys, settled, (key, reason): ItemResult => ({
-      item_key: key,
-      doi: itemMap.get(key)?.DOI ?? null,
-      status: "error",
-      reason: reason instanceof Error ? reason.message : String(reason),
-    }));
+    const pipelineResults = await attachOpenAccessPdfs(targets, {
+      zoteroApi,
+      library: { type: libraryType, id: libraryId },
+      apiKey,
+      skipIfPdfExists: skip_if_attachment_exists,
+      dryRun: dry_run,
+    });
+    const byKey = new Map(pipelineResults.map((r) => [r.item_key, r]));
+    const results: ItemResult[] = keys.flatMap((key) => {
+      const r = preResults.get(key) ?? byKey.get(key);
+      if (!r) return []; // not started: storage quota exhausted
+      return [r.url_used ? { ...r, pdf_url: r.url_used } : r];
+    });
 
     let attached = 0;
     let notFound = 0;
@@ -205,7 +120,7 @@ export async function handleFindAndAttachPdfs(
     let quotaExceeded = 0;
     for (const r of results) {
       if (r.status === "attached") attached++;
-      else if (r.status === "not_found") notFound++;
+      else if (r.status === "not_found" || r.status === "landing_page_only") notFound++;
       else if (r.status === "skipped") skipped++;
       else if (r.status === "error") errors++;
       else if (r.status === "quota_exceeded") quotaExceeded++;

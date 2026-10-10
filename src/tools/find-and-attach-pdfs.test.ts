@@ -334,7 +334,7 @@ describe("find_and_attach_pdfs handler", () => {
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.not_found).toBe(1);
-    expect(parsed.results[0].status).toBe("not_found");
+    expect(parsed.results[0].status).toBe("landing_page_only");
     expect(parsed.results[0].landing_url).toBe("https://europepmc.org/articles/PMC7164389");
     expect(parsed.results[0].oa_status).toBe("green");
     expect(parsed.results[0].reason).toContain("repository");

@@ -30,6 +30,8 @@ import {
   UNPAYWALL_EMAIL,
   UNPAYWALL_HOST,
   FILE_ROUTE,
+  sharedPdfFields,
+  runSharedPipeline,
 } from "../helpers/pdf-pipeline.js";
 
 const ITEMS = `${ZBASE}/items`;
@@ -67,7 +69,18 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(out.isError).toBe(false);
     expect(out.json).toMatchObject({ processed: 1, attached: 1, not_found: 0, skipped: 0, errors: 0, quota_exceeded: 0, dry_run: false });
     expect(out.json.results).toEqual([
-      { item_key: "AAAA1111", doi: "10.1000/aaaa1111", status: "attached", source: "unpaywall_gold", pdf_url: "https://oa.example.org/a.pdf" },
+      {
+        item_key: "AAAA1111",
+        doi: "10.1000/aaaa1111",
+        status: "attached",
+        source: "unpaywall_gold",
+        url_used: "https://oa.example.org/a.pdf",
+        pdf_url: "https://oa.example.org/a.pdf",
+        filename: "a.pdf",
+        size_bytes: expect.any(Number),
+        attachment_key: expect.any(String),
+        fulltext_indexed: true,
+      },
     ]);
     expect(h.net.requests("GET", ITEMS)[0].url.searchParams.get("itemKey")).toBe("AAAA1111");
     const attach = h.net.requests("POST", ITEMS)[0].json<Array<Record<string, unknown>>>()[0];
@@ -83,7 +96,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
 
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111"] });
     expect(out.json.results).toEqual([
-      { item_key: "AAAA1111", doi: "10.1000/aaaa1111", status: "attached", source: "unpaywall_green", pdf_url: plosPdf },
+      expect.objectContaining({ item_key: "AAAA1111", doi: "10.1000/aaaa1111", status: "attached", source: "unpaywall_green", url_used: plosPdf, pdf_url: plosPdf }),
     ]);
     const attach = h.net.requests("POST", ITEMS)[0].json<Array<Record<string, unknown>>>()[0];
     expect(attach).toMatchObject({ filename: "10.1000_aaaa1111.pdf", title: "10.1000_aaaa1111.pdf" });
@@ -112,8 +125,21 @@ describe("find_and_attach_pdfs (MCP)", () => {
     installUnpaywall(h.net, { "10.1000/aaaa1111": { ...fx, oa_locations: [fx.best_oa_location] } });
 
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111"] });
-    expect(byKey(out.json).AAAA1111).toMatchObject({ status: "not_found", landing_url: landing });
+    expect(byKey(out.json).AAAA1111).toMatchObject({ status: "landing_page_only", landing_url: landing });
     expect(byKey(out.json).AAAA1111.reason).toContain("on the publisher's site");
+  });
+
+  it("FA-29 stesso scenario della pipeline condivisa → stesso risultato per PDF (via attachOpenAccessPdf)", async () => {
+    library(h, [article("AAAA1111")]);
+    installUnpaywall(h.net, { "10.1000/aaaa1111": oaGold("https://oa.example.org/a.pdf", ["https://repo.example.org/a.pdf"]) });
+    h.net.on("GET", "oa.example.org/a.pdf", statusResponse(403));
+    servePdf(h.net, "https://repo.example.org/a.pdf");
+    installUploadPipeline(h.net);
+
+    const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111"], skip_if_attachment_exists: false });
+    const direct = await runSharedPipeline("10.1000/aaaa1111");
+    expect(direct.status).toBe("attached");
+    expect(sharedPdfFields(out.json.results[0])).toEqual(sharedPdfFields(direct));
   });
 
   it("FA-02 item_keys e collection_key insieme → errore strutturato, nessuna rete", async () => {
@@ -206,7 +232,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(h.net.requests("POST", ITEMS)).toHaveLength(0);
   });
 
-  it("FA-12 Unpaywall: closed → 'OA status: closed'; green solo landing → landing_url", async () => {
+  it("FA-12 Unpaywall: closed → not_found con oa_status; green solo landing → landing_page_only (contati in not_found)", async () => {
     library(h, [article("AAAA1111"), article("BBBB2222")]);
     installUnpaywall(h.net, {
       "10.1000/aaaa1111": CLOSED,
@@ -214,8 +240,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
     });
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111", "BBBB2222"] });
     const r = byKey(out.json);
-    expect(r.AAAA1111).toMatchObject({ status: "not_found", reason: "OA status: closed", oa_status: "closed" });
-    expect(r.BBBB2222).toMatchObject({ status: "not_found", landing_url: "https://repo.example.org/h/2", oa_status: "green" });
+    expect(r.AAAA1111).toMatchObject({ status: "not_found", reason: "No open access PDF found", oa_status: "closed" });
+    expect(r.BBBB2222).toMatchObject({ status: "landing_page_only", landing_url: "https://repo.example.org/h/2", oa_status: "green" });
     expect(out.json.not_found).toBe(2);
   });
 

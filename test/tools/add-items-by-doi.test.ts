@@ -19,6 +19,8 @@ import {
   UNPAYWALL_HOST,
   FILE_ROUTE,
   itemKeyOf,
+  sharedPdfFields,
+  runSharedPipeline,
 } from "../helpers/pdf-pipeline.js";
 
 const ITEMS = `${ZBASE}/items`;
@@ -349,7 +351,13 @@ describe("add_items_by_doi (MCP)", () => {
         {
           item_key: "PAPER000",
           doi: "10.1/a",
+          status: "attached",
           source: "unpaywall_gold",
+          url_used: "https://repo.example.org/a.pdf",
+          filename: "a.pdf",
+          size_bytes: expect.any(Number),
+          attachment_key: "ATTACH00",
+          fulltext_indexed: true,
           pdf_attached: true,
           pdf_url: "https://repo.example.org/a.pdf",
         },
@@ -377,6 +385,20 @@ describe("add_items_by_doi (MCP)", () => {
         ],
       });
       expect(h.net.requests("POST", FILE_ROUTE)).toHaveLength(0);
+    });
+
+    it("AID-27 stesso scenario della pipeline condivisa → stesso risultato per PDF (via attachOpenAccessPdf)", async () => {
+      h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a") }));
+      h.net.on("POST", ITEMS, itemsAndAttachments());
+      installUnpaywall(h.net, { "10.1/a": oaGold("https://oa.example.org/a.pdf", ["https://repo.example.org/a.pdf"]) });
+      h.net.on("GET", "oa.example.org/a.pdf", statusResponse(403));
+      servePdf(h.net, "https://repo.example.org/a.pdf");
+      installUploadPipeline(h.net);
+
+      const out = await h.call("add_items_by_doi", { dois: ["10.1/a"] });
+      const direct = await runSharedPipeline("10.1/a");
+      expect(direct.status).toBe("attached");
+      expect(sharedPdfFields(out.json.pdf_results[0])).toEqual(sharedPdfFields(direct));
     });
 
     it("AID-24 ZOTERO_API_KEY assente nell'ambiente → item creati, fase PDF saltata", async () => {
