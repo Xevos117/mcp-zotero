@@ -65,8 +65,9 @@ describe("attachOpenAccessPdf (pipeline PDF open access condivisa)", () => {
 
     const r = await attachOpenAccessPdf(TARGET, opts);
     expect(r.status).toBe("error");
-    expect(r.reason).toBe("Download failed for all 2 URL(s)");
+    expect(r.reason).toBe("Download failed for all 2 URL(s): oa.example.org 403, repo.example.org 404");
     expect(r.failed_urls?.map((f) => f.url)).toEqual([PRIMARY, FALLBACK]);
+    expect(r.failed_urls?.map((f) => f.status)).toEqual([403, 404]);
     expect(r.failed_urls?.[0].error).toContain("403");
     expect(net.requests("POST", ITEMS)).toHaveLength(0);
   });
@@ -92,7 +93,9 @@ describe("attachOpenAccessPdf (pipeline PDF open access condivisa)", () => {
     servePdf(net, PRIMARY, Buffer.from("<!doctype html><html>login</html>"), "text/html");
     const r = await attachOpenAccessPdf(TARGET, opts);
     expect(r.status).toBe("error");
-    expect(r.reason).toContain("HTML page instead of a PDF");
+    expect(r.reason).toBe("Download failed for all 1 URL(s): oa.example.org not_pdf");
+    expect(r.failed_urls?.[0]).not.toHaveProperty("status");
+    expect(r.failed_urls?.[0].error).toContain("HTML page instead of a PDF");
     expect(net.requests("POST", ITEMS)).toHaveLength(0);
   });
 

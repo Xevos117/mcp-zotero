@@ -273,7 +273,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(out.json.results[0]).toMatchObject({ status: "attached", pdf_url: "https://repo.example.org/copy.pdf" });
   });
 
-  it("FA-16 tutti gli URL falliscono → error 'Download failed for all 2 URL(s)'", async () => {
+  it("FA-16 tutti gli URL falliscono → error con host e status di ogni URL", async () => {
     library(h, [article("AAAA1111")]);
     installUnpaywall(h.net, {
       "10.1000/aaaa1111": oaGold("https://publisher.example.org/a.pdf", ["https://repo.example.org/b.pdf"]),
@@ -281,7 +281,11 @@ describe("find_and_attach_pdfs (MCP)", () => {
     h.net.on("GET", "publisher.example.org/a.pdf", statusResponse(500));
     h.net.on("GET", "repo.example.org/b.pdf", networkError());
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111"] });
-    expect(out.json.results[0]).toMatchObject({ status: "error", reason: "Download failed for all 2 URL(s)" });
+    expect(out.json.results[0]).toMatchObject({
+      status: "error",
+      reason: "Download failed for all 2 URL(s): publisher.example.org 500, repo.example.org network_error",
+    });
+    expect(out.json.results[0].failed_urls[0]).toMatchObject({ status: 500 });
     expect(out.json.results[0].failed_urls.map((f: { url: string }) => f.url)).toHaveLength(2);
   });
 

@@ -14,7 +14,21 @@ import { errorMessage } from "./error-formatter.js";
 
 export interface PdfUrlFailure {
   url: string;
+  /** HTTP status of the failing request, when there was one (download or Zotero upload step). */
+  status?: number;
   error: string;
+}
+
+/** "host 403" for an HTTP download failure, "host not_pdf" / "host upload_failed 500" otherwise. */
+function failureLabel(url: string, code: string, status: number | undefined): string {
+  let host = url;
+  try {
+    host = new URL(url).host;
+  } catch {
+    // keep the raw URL
+  }
+  if (code === "download_failed" && status !== undefined) return `${host} ${status}`;
+  return status !== undefined ? `${host} ${code} ${status}` : `${host} ${code}`;
 }
 
 export type OaPdfStatus =
@@ -87,6 +101,7 @@ export async function attachOpenAccessPdf(target: OaPdfTarget, opts: OaPdfOption
   }
 
   const failed_urls: PdfUrlFailure[] = [];
+  const labels: string[] = [];
   for (const url of [primary.pdf_url, ...fallback_urls]) {
     const upload = await downloadAndUploadPdf(opts.zoteroApi, opts.library.type, opts.library.id, opts.apiKey, {
       url,
@@ -105,7 +120,9 @@ export async function attachOpenAccessPdf(target: OaPdfTarget, opts: OaPdfOption
         fulltext_indexed: upload.fulltextIndexed,
       };
     }
-    failed_urls.push({ url, error: upload.error.message });
+    const { status, code, message } = upload.error;
+    failed_urls.push(status !== undefined ? { url, status, error: message } : { url, error: message });
+    labels.push(failureLabel(url, code, status));
     if (upload.error.code === "storage_quota_exceeded") {
       // No other URL can fix a full storage quota
       if (opts.cancel) opts.cancel.cancelled = true;
@@ -113,7 +130,8 @@ export async function attachOpenAccessPdf(target: OaPdfTarget, opts: OaPdfOption
     }
   }
 
-  const reason = failed_urls.length === 1 ? failed_urls[0].error : `Download failed for all ${failed_urls.length} URL(s)`;
+  // Per-URL host and status in the reason itself, so "why did it fail" survives any result mapping
+  const reason = `Download failed for all ${failed_urls.length} URL(s): ${labels.join(", ")}`;
   return { ...base, status: "error", source, reason, failed_urls };
 }
 

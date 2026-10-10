@@ -378,10 +378,10 @@ describe("add_items_by_doi (MCP)", () => {
       expect(out.isError).toBe(false);
       expect(out.json.pdf_results[0]).toMatchObject({
         pdf_attached: false,
-        error: "Download failed for all 2 URL(s)",
+        error: "Download failed for all 2 URL(s): oa.example.org 403, repo.example.org 404",
         failed_urls: [
-          { url: "https://oa.example.org/a.pdf", error: expect.stringContaining("403") },
-          { url: "https://repo.example.org/a.pdf", error: expect.stringContaining("404") },
+          { url: "https://oa.example.org/a.pdf", status: 403, error: expect.stringContaining("403") },
+          { url: "https://repo.example.org/a.pdf", status: 404, error: expect.stringContaining("404") },
         ],
       });
       expect(h.net.requests("POST", FILE_ROUTE)).toHaveLength(0);
