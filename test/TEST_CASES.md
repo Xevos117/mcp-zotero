@@ -111,6 +111,7 @@ test normali. Non restano `it.fails` nella suite.
 | GID-11 | 20 chiavi | una GET, tutte restituite |
 | GID-12 | item_keys mancante/stringa/numeri, include_abstract non booleano | isError |
 | GID-13/14 | HTTP 4xx/5xx, rete | isError |
+| GID-15 | creators strutturati (cognomi multiparola, editor istituzionale) | `creators` come in Zotero accanto ad `authors`; assente se vuoto |
 
 ## get_item_fulltext (`get-item-fulltext.test.ts`)
 | ID | Scenario | Atteso |
@@ -196,7 +197,7 @@ test normali. Non restano `it.fails` nella suite.
 | AID-23 | un download 404 | risultati per singolo item |
 | AID-24 | ZOTERO_API_KEY assente | item creati, fase PDF saltata |
 | AID-25 | PDF primario 403, fallback disponibile | allegato il fallback: status attached, url_used = pdf_url, filename, size_bytes; nessun allegato orfano |
-| AID-26 | tutti gli URL falliscono | pdf_attached false, "Download failed for all 2 URL(s)", failed_urls con 403 e 404 |
+| AID-26 | tutti gli URL falliscono | pdf_attached false, "Download failed for all 2 URL(s): oa.example.org 403, repo.example.org 404", failed_urls con status 403 e 404 |
 | AID-27 | stesso scenario della pipeline condivisa | campi per PDF identici a `attachOpenAccessPdf` chiamata direttamente |
 
 ## add_linked_url_attachment (`add-linked-url-attachment.test.ts`)
@@ -275,7 +276,7 @@ test normali. Non restano `it.fails` nella suite.
 | FA-12 | closed / green con landing | not_found "No open access PDF found" con oa_status / landing_page_only con landing_url (entrambi contati in not_found) |
 | FA-13 | Unpaywall 404/500/rete | not_found |
 | FA-14 | UNPAYWALL_EMAIL non valida | not_found con warning, nessuna chiamata a Unpaywall |
-| FA-15/16 | URL di fallback / tutti falliti | attached con il fallback / "Download failed for all 2 URL(s)" |
+| FA-15/16 | URL di fallback / tutti falliti | attached con il fallback / reason "…: publisher.example.org 500, repo.example.org network_error" |
 | FA-17 | **quota storage** | quota_exceeded, warning, item rimanenti saltati |
 | FA-18/19 | GET metadati 4xx/5xx, rete sulla collezione | errore strutturato con details |
 | FA-20 | children 500 su un item | l'item compare in results come error, contato in errors |
@@ -293,10 +294,10 @@ test normali. Non restano `it.fails` nella suite.
 | ID | Scenario | Atteso |
 |---|---|---|
 | OA-01 | primario 403, fallback ok | attached con url_used, filename, size_bytes, attachment_key, fulltext_indexed; una sola POST di allegato |
-| OA-02 | tutti gli URL falliscono | error "Download failed for all 2 URL(s)", failed_urls nell'ordine provato |
+| OA-02 | tutti gli URL falliscono | reason con host e status di ogni URL, failed_urls nell'ordine provato con `status` |
 | OA-03 | solo landing page | landing_page_only con landing_url e host reale nel motivo |
 | OA-04 | PDF già presente (skipIfPdfExists) | skipped, Unpaywall non interrogato |
-| OA-05 | contenuto non PDF (HTML) | error "HTML page instead of a PDF", nessun allegato |
+| OA-05 | contenuto non PDF (HTML) | reason "…: oa.example.org not_pdf", dettaglio "HTML page instead of a PDF" in failed_urls, nessun allegato |
 | OA-06 | quota storage piena | quota_exceeded, token di cancellazione impostato, fallback non provato |
 | OA-07 | dry run | available con url_used, nessun download |
 
@@ -331,6 +332,7 @@ test normali. Non restano `it.fails` nella suite.
 | SK-05 | chiave assente da metadata.json | WARNING che la nomina, exit 0 |
 | SK-06 | argomenti mancanti, libreria non valida, stile `mla`, file inesistenti | exit 1 con messaggio |
 | SK-07 | copia `inject.mjs` sotto `package.json` `"type": "commonjs"` | esegue senza SyntaxError/warning |
+| SK-08 | metadata.json da get_items_details (cognomi multiparola, nome istituzionale, nessun autore) | itemData e testo identici a inject_citations |
 
 ## tools/list (`tools-list.test.ts`)
 | ID | Scenario | Atteso |

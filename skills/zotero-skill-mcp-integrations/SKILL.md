@@ -203,20 +203,20 @@ The script also accepts the canonical inject.js field names and a lowercase `doi
 | `page` | `pages` |
 | `publisher` | `publisher` |
 | `URL` | `url` |
+| `author` (CSL names) | `creators` (preferred) or `authors` |
 
 **Do NOT include `abstract`** — it bloats field codes.
 
 #### Authors format
 
-The `authors` field is a **comma-separated string** of `"FirstName LastName"` names, e.g.:
+`get_items_details` returns both:
 
-```
-"John Smith, Jane Doe, Paulo Caetano da Silva"
-```
+- `creators`: the structured names stored in Zotero, e.g. `[{ "creatorType": "author", "firstName": "Paulo", "lastName": "Caetano da Silva" }, { "creatorType": "author", "name": "WHO" }]`
+- `authors`: the same names as a display string, `"Paulo Caetano da Silva, WHO"`
 
-This is the exact format returned by `get_items_details`. The inject script parses each comma-separated token by splitting on whitespace — the **last word** becomes the family name, everything before it becomes the given name. For example, `"Paulo Caetano da Silva"` → `{ family: "Silva", given: "Paulo Caetano da" }`.
+Keep `creators` in `metadata.json`: the script uses it when present (authors only, `lastName` or single-field `name` as family name, `firstName` as given name), exactly like the `inject_citations` MCP tool, so multi-word surnames such as `"de Kroon"` or `"Caetano da Silva"` stay intact.
 
-Multi-word surnames (`"de Kroon"`, `"Caetano da Silva"`) are therefore split wrongly in the provisional citation text (`(Silva, 2020)`). The field code still points at the real Zotero item, so **Zotero → Refresh** shows the correct names; the `inject_citations` MCP tool reads the exact creator names from Zotero and does not have this limitation.
+If you write metadata by hand without `creators`, the `authors` string is used instead: each comma-separated token is split on whitespace and the **last word** becomes the family name (`"Paulo Caetano da Silva"` → `{ family: "Silva", given: "Paulo Caetano da" }`). Prefer `creators` whenever a surname has more than one word.
 
 #### Example metadata.json
 
@@ -225,6 +225,11 @@ Multi-word surnames (`"de Kroon"`, `"Caetano da Silva"`) are therefore split wro
   "EUHUT5K3": {
     "title": "Attention Is All You Need",
     "authors": "Ashish Vaswani, Noam Shazeer, Niki Parmar",
+    "creators": [
+      { "creatorType": "author", "firstName": "Ashish", "lastName": "Vaswani" },
+      { "creatorType": "author", "firstName": "Noam", "lastName": "Shazeer" },
+      { "creatorType": "author", "firstName": "Niki", "lastName": "Parmar" }
+    ],
     "date": "2017",
     "DOI": "10.48550/arXiv.1706.03762",
     "itemType": "journalArticle",

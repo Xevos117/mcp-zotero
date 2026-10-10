@@ -15,6 +15,7 @@ Toolchain and dependency upgrade, plus group library support. Tool names are unc
 - **Group library support** ([#7](https://github.com/Xevos117/mcp-zotero/pull/7), by @chrisawai):
   - `ZOTERO_LIBRARY_TYPE` (`user` default, or `group`) and `ZOTERO_LIBRARY_ID` route every Zotero Web API call, the PDF upload/fulltext URLs and the citation field-code URIs (`http://zotero.org/groups/<id>/items/<key>`) to the configured library. User-library deployments are unchanged.
   - Optional per-call `library_type` / `library_id` arguments on every tool (except `get_user_id`) let one server instance target several libraries.
+- **`get_items_details` returns structured `creators`** (as stored in Zotero, `firstName`/`lastName` or single-field `name`) next to the `authors` string. Additive: existing fields are unchanged. The skill's `inject.js` uses them, so its citations match `inject_citations` for multi-word surnames ("de Kroon", "Caetano da Silva"), which the `authors` string cannot represent.
 - Fixes on top of #7:
   - `ZOTERO_LIBRARY_TYPE=group` without `ZOTERO_LIBRARY_ID` now fails at startup instead of silently using the user ID as a group ID; an empty `ZOTERO_LIBRARY_TYPE` means `user`; library IDs must be numeric (they are interpolated into API URLs).
   - A per-call `library_type: "group"` without `library_id` is rejected instead of reusing the user ID; `library_type: "user"` on a group server falls back to `ZOTERO_USER_ID`.
@@ -38,7 +39,11 @@ Toolchain and dependency upgrade, plus group library support. Tool names are unc
   - `find_and_attach_pdfs`: copies reachable only through a landing page now have `status: "landing_page_only"` instead of `"not_found"` (still counted in the `not_found` total); the closed-access reason is "No open access PDF found" (the OA status stays in `oa_status`) instead of "OA status: closed";
   - `add_items_by_doi`: without a valid `UNPAYWALL_EMAIL` every item gets its own entry with the warning (was a single entry); an unexpected failure is reported on the item (`status: "error"`) instead of the top-level `pdf_attach_error`, which is no longer returned; `source: null` is omitted.
 - **`delete_items` description**: it said "permanently (moves to trash)", but the Web API multi-item DELETE removes items permanently without using the Zotero trash. The description and the README now say so.
-- **`inject_citations`**: the output path is derived from the file name only; a folder whose name contains `.docx` no longer produces a wrong path.
+- **`inject_citations`**: the output path is derived from the file name only; a folder whose name contains `.docx` no longer produces a wrong path. `<zcite keys="A, B"/>` (space after the comma) is accepted: keys are trimmed, where the space used to end up in the item URL (404, whole injection failed).
+- **Citation field codes** (`inject_citations`): the embedded `itemData` now carries `volume`, `issue`, `page`, `publisher` and `publisher-place`, no longer embeds the abstract, and drops empty fields.
+- **PDF download failures name the cause**: when every URL fails, `reason` lists each host with its HTTP status or error code (`Download failed for all 1 URL(s): www.nejm.org 403`), and every `failed_urls` entry keeps the HTTP `status` when there was one. Before, a single failed URL gave only its message and several gave "Download failed for all N URL(s)".
+- **`get_items_details`**: the description no longer mentions a non-existent `get_item_details` tool.
+- **Skill script `inject.js`**: unknown styles are rejected (they were accepted silently), keys are trimmed, cited keys missing from `metadata.json` produce a warning, the "No authors listed" placeholder is no longer parsed as a name, and the Zotero→CSL type table matches `inject_citations`. `SKILL.md` tells Claude to copy the script as `inject.mjs` (as `.js` it fails under a `package.json` with `"type": "commonjs"`).
 
 ### Changed
 
