@@ -3,7 +3,9 @@
 // Standalone citation injection script for Claude skill usage.
 // Reads a .docx with <zcite> tags and a metadata.json, injects Zotero field codes.
 //
-// Usage: node inject.js <input.docx> <output.docx> <metadata.json> <userId|libraryPath> [style]
+// Usage: node inject.mjs <input.docx> <output.docx> <metadata.json> <userId|libraryPath> [style]
+// (ES module: copy it as inject.mjs so Node never treats it as CommonJS, whatever the
+// nearest package.json says.)
 //
 // <libraryPath> is "users/<id>" or "groups/<id>" (library_path from get_user_id);
 // a bare numeric ID is treated as a user ID for backward compatibility.
@@ -50,6 +52,11 @@ if (args.length < 4) {
 }
 
 const [inputPath, outputPath, metadataPath, libraryArg, style = "apa"] = args;
+const STYLES = ["apa", "ieee", "vancouver", "harvard", "chicago"];
+if (!STYLES.includes(style)) {
+  console.error(`Invalid style '${style}': expected one of ${STYLES.join(", ")}`);
+  process.exit(1);
+}
 const libraryPath = /^\d+$/.test(libraryArg) ? `users/${libraryArg}` : libraryArg;
 if (!/^(users|groups)\/\d+$/.test(libraryPath)) {
   console.error(
@@ -516,11 +523,13 @@ function parseZciteMatches(documentXml) {
       attrs[attrMatch[1]] = unescapeXml(attrMatch[2]);
     }
 
-    if (!attrs["keys"]) continue;
+    // Tolerate "KEY1, KEY2": a stray space would otherwise become part of the key (404 on fetch)
+    const keys = (attrs["keys"] ?? "").split(",").map((k) => k.trim()).filter(Boolean);
+    if (keys.length === 0) continue;
 
     matches.push({
       fullMatch,
-      keys: attrs["keys"].split(","),
+      keys,
       locator: attrs["locator"] || undefined,
       prefix: attrs["prefix"] || undefined,
       suffix: attrs["suffix"] || undefined,
@@ -644,6 +653,14 @@ async function main() {
         `WARNING: Style '${style}' requires 'num' attribute on <zcite> tags. Found ${withNum}/${matches.length} tags with num.`
       );
     }
+  }
+
+  // 4c. Warn about cited keys missing from metadata.json (they would render as "Unknown, n.d.")
+  const missingKeys = [...new Set(matches.flatMap((m) => m.keys))].filter((k) => !cslData.has(k));
+  if (missingKeys.length > 0) {
+    console.error(
+      `WARNING: ${missingKeys.length} cited key(s) not found in metadata.json: ${missingKeys.join(", ")}. Their citations will show "Unknown" until Zotero refreshes them.`
+    );
   }
 
   // 5. Replace each zcite tag with a field code
