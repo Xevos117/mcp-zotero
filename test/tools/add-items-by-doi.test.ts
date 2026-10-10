@@ -336,6 +336,49 @@ describe("add_items_by_doi (MCP)", () => {
       expect(h.net.requests("POST", FILE_ROUTE).map(itemKeyOf)).not.toContain("PAPER001");
     });
 
+    it("AID-25 PDF primario 403: si prova il fallback, pdf_results riporta l'URL allegato", async () => {
+      h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a") }));
+      h.net.on("POST", ITEMS, itemsAndAttachments());
+      installUnpaywall(h.net, { "10.1/a": oaGold("https://oa.example.org/a.pdf", ["https://repo.example.org/a.pdf"]) });
+      h.net.on("GET", "oa.example.org/a.pdf", statusResponse(403));
+      servePdf(h.net, "https://repo.example.org/a.pdf");
+      installUploadPipeline(h.net);
+
+      const out = await h.call("add_items_by_doi", { dois: ["10.1/a"] });
+      expect(out.json.pdf_results).toEqual([
+        {
+          item_key: "PAPER000",
+          doi: "10.1/a",
+          source: "unpaywall_gold",
+          pdf_attached: true,
+          pdf_url: "https://repo.example.org/a.pdf",
+        },
+      ]);
+      // un solo allegato creato (auth + registrazione dell'upload): il download fallito non lascia item orfani
+      expect([...new Set(h.net.requests("POST", FILE_ROUTE).map(itemKeyOf))]).toEqual(["ATTACH00"]);
+    });
+
+    it("AID-26 tutti gli URL falliscono: pdf_results elenca ogni URL con il suo errore", async () => {
+      h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a") }));
+      h.net.on("POST", ITEMS, itemsAndAttachments());
+      installUnpaywall(h.net, { "10.1/a": oaGold("https://oa.example.org/a.pdf", ["https://repo.example.org/a.pdf"]) });
+      h.net.on("GET", "oa.example.org/a.pdf", statusResponse(403));
+      h.net.on("GET", "repo.example.org/a.pdf", statusResponse(404));
+      installUploadPipeline(h.net);
+
+      const out = await h.call("add_items_by_doi", { dois: ["10.1/a"] });
+      expect(out.isError).toBe(false);
+      expect(out.json.pdf_results[0]).toMatchObject({
+        pdf_attached: false,
+        error: "Download failed for all 2 URL(s)",
+        failed_urls: [
+          { url: "https://oa.example.org/a.pdf", error: expect.stringContaining("403") },
+          { url: "https://repo.example.org/a.pdf", error: expect.stringContaining("404") },
+        ],
+      });
+      expect(h.net.requests("POST", FILE_ROUTE)).toHaveLength(0);
+    });
+
     it("AID-24 ZOTERO_API_KEY assente nell'ambiente → item creati, fase PDF saltata", async () => {
       await h.close();
       h = await startHarness({ unpaywallEmail: UNPAYWALL_EMAIL, envApiKey: "" });

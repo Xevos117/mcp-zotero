@@ -256,6 +256,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
     h.net.on("GET", "repo.example.org/b.pdf", networkError());
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAA1111"] });
     expect(out.json.results[0]).toMatchObject({ status: "error", reason: "Download failed for all 2 URL(s)" });
+    expect(out.json.results[0].failed_urls.map((f: { url: string }) => f.url)).toHaveLength(2);
   });
 
   it("FA-17 quota storage piena → quota_exceeded, warning, gli item non ancora avviati vengono saltati", async () => {

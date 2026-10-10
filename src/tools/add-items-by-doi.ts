@@ -5,8 +5,8 @@ import { resolveDois } from "../utils/doi-resolver.js";
 import { cslToZoteroItem } from "../utils/csl-to-zotero.js";
 import { logger } from "../utils/logger.js";
 import { postInBatches } from "../utils/write-results.js";
-import { landingPageOnlyReason, lookupOaPdf } from "../utils/unpaywall.js";
-import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
+import { landingPageOnlyReason, lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
+import { PdfUrlFailure, uploadFirstAvailablePdf } from "../utils/pdf-fallback.js";
 import { mapWithConcurrency, createCancellationToken, settledValues } from "../utils/concurrency.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
 
@@ -57,6 +57,9 @@ interface PdfAttachResult {
   source: string | null;
   oa_status?: string;
   landing_url?: string;
+  /** URL that was attached, or every URL tried when none worked. */
+  pdf_url?: string;
+  failed_urls?: PdfUrlFailure[];
   error?: string;
 }
 
@@ -77,14 +80,14 @@ async function attachPdfsToItems(
   if (itemsWithDoi.length === 0) return [];
 
   // Probe Unpaywall config with the first DOI — if email is bad, skip entirely
-  const probe = await lookupOaPdf(itemsWithDoi[0].doi);
-  if (probe.warning) {
+  const probe = await lookupOaPdfWithFallbacks(itemsWithDoi[0].doi);
+  if (probe.primary.warning) {
     return [{
       item_key: itemsWithDoi[0].item_key,
       doi: itemsWithDoi[0].doi,
       pdf_attached: false,
       source: null,
-      error: probe.warning,
+      error: probe.primary.warning,
     }];
   }
 
@@ -92,25 +95,23 @@ async function attachPdfsToItems(
   const cancelToken = createCancellationToken();
 
   const settled = await mapWithConcurrency(itemsWithDoi, async (item, i): Promise<PdfAttachResult> => {
-    const oaResult = i === 0 ? probe : await lookupOaPdf(item.doi);
+    const { primary: oaResult, fallback_urls } = i === 0 ? probe : await lookupOaPdfWithFallbacks(item.doi);
     if (oaResult.found && oaResult.pdf_url) {
-      const uploadResult = await downloadAndUploadPdf(zoteroApi, libraryType, userId, apiKey, {
-        url: oaResult.pdf_url,
-        parentItem: item.item_key,
-        doi: item.doi,
-      });
-
-      if (!uploadResult.success && uploadResult.error.code === "storage_quota_exceeded") {
+      const attempt = await uploadFirstAvailablePdf(
+        zoteroApi,
+        libraryType,
+        userId,
+        apiKey,
+        [oaResult.pdf_url, ...fallback_urls],
+        { parentItem: item.item_key, doi: item.doi }
+      );
+      if (!attempt.attached && attempt.quotaExceeded) {
         cancelToken.cancelled = true;
       }
-
-      return {
-        item_key: item.item_key,
-        doi: item.doi,
-        pdf_attached: uploadResult.success,
-        source: oaResult.source,
-        error: uploadResult.success ? undefined : uploadResult.error.message,
-      };
+      const base = { item_key: item.item_key, doi: item.doi, source: oaResult.source };
+      return attempt.attached
+        ? { ...base, pdf_attached: true, pdf_url: attempt.pdfUrl }
+        : { ...base, pdf_attached: false, failed_urls: attempt.failedUrls, error: attempt.message };
     }
     return {
       item_key: item.item_key,

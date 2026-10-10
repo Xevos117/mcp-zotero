@@ -3,7 +3,7 @@ import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/z
 import { formatEmptyResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { logger } from "../utils/logger.js";
 import { landingPageOnlyReason, lookupOaPdfWithFallbacks } from "../utils/unpaywall.js";
-import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
+import { PdfUrlFailure, uploadFirstAvailablePdf } from "../utils/pdf-fallback.js";
 import { mapWithConcurrency, createCancellationToken, settledValues } from "../utils/concurrency.js";
 import { fetchAllPages, fetchItemsByKeys } from "../utils/pagination.js";
 import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
@@ -44,6 +44,7 @@ interface ItemResult {
   pdf_url?: string;
   landing_url?: string;
   oa_status?: string;
+  failed_urls?: PdfUrlFailure[];
 }
 
 export async function handleFindAndAttachPdfs(
@@ -165,43 +166,28 @@ export async function handleFindAndAttachPdfs(
         };
       }
 
-      // Try primary URL, then fallbacks
-      const urlsToTry = [primary.pdf_url, ...fallback_urls];
-
-      for (const pdfUrl of urlsToTry) {
-        const uploadResult = await downloadAndUploadPdf(zoteroApi, libraryType, libraryId, apiKey, {
-          url: pdfUrl,
-          parentItem: key,
-          doi,
-        });
-
-        if (uploadResult.success) {
-          return {
-            item_key: key,
-            doi,
-            status: "attached",
-            source: primary.source ?? undefined,
-            pdf_url: pdfUrl,
-          };
-        }
-
-        if (!uploadResult.success && uploadResult.error.code === "storage_quota_exceeded") {
-          cancelToken.cancelled = true;
-          return {
-            item_key: key,
-            doi,
-            status: "quota_exceeded",
-            reason: uploadResult.error.message,
-          };
-        }
+      const attempt = await uploadFirstAvailablePdf(
+        zoteroApi,
+        libraryType,
+        libraryId,
+        apiKey,
+        [primary.pdf_url, ...fallback_urls],
+        { parentItem: key, doi }
+      );
+      if (attempt.attached) {
+        return { item_key: key, doi, status: "attached", source: primary.source ?? undefined, pdf_url: attempt.pdfUrl };
       }
-
+      if (attempt.quotaExceeded) {
+        cancelToken.cancelled = true;
+        return { item_key: key, doi, status: "quota_exceeded", reason: attempt.message };
+      }
       return {
         item_key: key,
         doi,
         status: "error",
-        reason: `Download failed for all ${urlsToTry.length} URL(s)`,
+        reason: attempt.message,
         source: primary.source ?? undefined,
+        failed_urls: attempt.failedUrls,
       };
     }, undefined, cancelToken);
 

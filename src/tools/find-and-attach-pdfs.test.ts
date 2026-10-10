@@ -22,7 +22,6 @@ vi.mock("../utils/zotero-fulltext.js", () => ({
 
 vi.mock("../utils/unpaywall.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/unpaywall.js")>()),
-  lookupOaPdf: vi.fn(),
   lookupOaPdfWithFallbacks: vi.fn(),
 }));
 

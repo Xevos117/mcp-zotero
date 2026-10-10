@@ -26,14 +26,10 @@ vi.mock("../utils/zotero-fulltext.js", () => ({
 
 vi.mock("../utils/unpaywall.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/unpaywall.js")>()),
-  lookupOaPdf: vi.fn().mockResolvedValue({
-    found: false,
-    pdf_url: null,
-    source: null,
-    license: null,
-    oa_status: null,
+  lookupOaPdfWithFallbacks: vi.fn().mockResolvedValue({
+    primary: { found: false, pdf_url: null, source: null, license: null, oa_status: null },
+    fallback_urls: [],
   }),
-  lookupOaPdfWithFallbacks: vi.fn(),
 }));
 
 vi.mock("../utils/pdf-uploader.js", () => ({
@@ -697,7 +693,7 @@ describe("add_items_by_doi", () => {
     process.env = { ...ORIGINAL_ENV, ZOTERO_API_KEY: "test-api-key" };
 
     const { resolveDois } = await import("../utils/doi-resolver.js");
-    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
     const { downloadAndUploadPdf } = await import("../utils/pdf-uploader.js");
 
     vi.mocked(resolveDois).mockResolvedValueOnce({
@@ -714,13 +710,13 @@ describe("add_items_by_doi", () => {
       failed: [],
     });
 
-    vi.mocked(lookupOaPdf).mockResolvedValueOnce({
+    vi.mocked(lookupOaPdfWithFallbacks).mockResolvedValueOnce({ fallback_urls: [], primary: {
       found: true,
       pdf_url: "https://journal.org/oa.pdf",
       source: "unpaywall_gold",
       license: "cc-by",
       oa_status: "gold",
-    });
+    } });
 
     vi.mocked(downloadAndUploadPdf).mockResolvedValueOnce({
       success: true,
@@ -756,7 +752,7 @@ describe("add_items_by_doi", () => {
     process.env = { ...ORIGINAL_ENV, ZOTERO_API_KEY: "test-api-key" };
 
     const { resolveDois } = await import("../utils/doi-resolver.js");
-    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
 
     vi.mocked(resolveDois).mockResolvedValueOnce({
       success: [
@@ -772,7 +768,7 @@ describe("add_items_by_doi", () => {
       failed: [],
     });
 
-    vi.mocked(lookupOaPdf).mockResolvedValueOnce({
+    vi.mocked(lookupOaPdfWithFallbacks).mockResolvedValueOnce({ fallback_urls: [], primary: {
       found: false,
       pdf_url: null,
       landing_url: "https://europepmc.org/articles/PMC7164389",
@@ -780,7 +776,7 @@ describe("add_items_by_doi", () => {
       source: null,
       license: null,
       oa_status: "green",
-    });
+    } });
 
     const writeData = {
       isSuccess: true,
@@ -807,7 +803,7 @@ describe("add_items_by_doi", () => {
 
   it("does not attach PDF when auto_attach_pdf is false", async () => {
     const { resolveDois } = await import("../utils/doi-resolver.js");
-    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
 
     vi.mocked(resolveDois).mockResolvedValueOnce({
       success: [
@@ -830,7 +826,7 @@ describe("add_items_by_doi", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    vi.mocked(lookupOaPdf).mockClear();
+    vi.mocked(lookupOaPdfWithFallbacks).mockClear();
 
     const result = await handleToolCall(
       "add_items_by_doi",
@@ -842,7 +838,7 @@ describe("add_items_by_doi", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.success).toHaveLength(1);
     expect(parsed.pdf_results).toBeUndefined();
-    expect(vi.mocked(lookupOaPdf)).not.toHaveBeenCalled();
+    expect(vi.mocked(lookupOaPdfWithFallbacks)).not.toHaveBeenCalled();
   });
 
   it("throws when Zotero API write fails (isSuccess false)", async () => {
@@ -953,7 +949,7 @@ describe("add_items_by_doi", () => {
     process.env = { ...ORIGINAL_ENV, ZOTERO_API_KEY: "test-api-key" };
 
     const { resolveDois } = await import("../utils/doi-resolver.js");
-    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
 
     vi.mocked(resolveDois).mockResolvedValueOnce({
       success: [
@@ -969,8 +965,8 @@ describe("add_items_by_doi", () => {
       failed: [],
     });
 
-    // Make lookupOaPdf throw to simulate a network failure
-    vi.mocked(lookupOaPdf).mockRejectedValueOnce(new Error("Unpaywall unreachable"));
+    // Make lookupOaPdfWithFallbacks throw to simulate a network failure
+    vi.mocked(lookupOaPdfWithFallbacks).mockRejectedValueOnce(new Error("Unpaywall unreachable"));
 
     const writeData = {
       isSuccess: true,
@@ -999,7 +995,7 @@ describe("add_items_by_doi", () => {
     process.env = { ...ORIGINAL_ENV, ZOTERO_API_KEY: "test-api-key" };
 
     const { resolveDois } = await import("../utils/doi-resolver.js");
-    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
     const { downloadAndUploadPdf } = await import("../utils/pdf-uploader.js");
 
     vi.mocked(resolveDois).mockResolvedValueOnce({
@@ -1016,13 +1012,13 @@ describe("add_items_by_doi", () => {
       failed: [],
     });
 
-    vi.mocked(lookupOaPdf).mockResolvedValueOnce({
+    vi.mocked(lookupOaPdfWithFallbacks).mockResolvedValueOnce({ fallback_urls: [], primary: {
       found: true,
       pdf_url: "https://journal.org/paper.pdf",
       source: "unpaywall_gold",
       license: "cc-by",
       oa_status: "gold",
-    });
+    } });
 
     vi.mocked(downloadAndUploadPdf).mockResolvedValueOnce({
       success: false,

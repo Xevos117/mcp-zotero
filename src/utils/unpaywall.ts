@@ -113,11 +113,6 @@ export async function lookupOaPdfWithFallbacks(doi: string): Promise<{
   };
 }
 
-/** First open-access PDF location for a DOI (see lookupOaPdfWithFallbacks). */
-export async function lookupOaPdf(doi: string): Promise<OaPdfLookupResult> {
-  return (await lookupOaPdfWithFallbacks(doi)).primary;
-}
-
 /** Reason shown when an OA copy only has a landing page, naming where it is actually hosted. */
 export function landingPageOnlyReason(result: OaPdfLookupResult): string {
   const where =
