@@ -147,9 +147,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(h.net.requests("GET", ITEMS)[0].url.searchParams.get("itemKey")!.split(",")).toHaveLength(20);
   });
 
-  // BUG: find-and-attach-pdfs.ts:91 — con una collezione di 120 item la GET
-  // metadati invia 120 chiavi in un solo itemKey (max 50 per l'API Zotero, e
-  // comunque limit di default 25) → il tool fallisce o perde item.
+  // Ex bug di main: la GET metadati inviava le 120 chiavi in un solo itemKey e l'API ne
+  // restituisce al massimo 100 per pagina → 20 item finivano in "Item not found".
   it("FA-25 collection_key con 120 item: tutti processati", async () => {
     const articles = manyArticles(120, "C");
     h.net.on("GET", `${ZBASE}/collections/COL00001/items`, zLibraryQuery(articles));
@@ -314,11 +313,10 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(byKey(out.json).AAAA1111.status).toBe("not_found");
   });
 
-  // BUG: find-and-attach-pdfs.ts:91 — la GET metadati non passa `limit` (default
-  // Zotero 25) né divide le chiavi in blocchi da 50: con >25 item quelli oltre il
-  // 25° risultano "Item not found".
-  it("FA-22 30 item_keys: nessuno risulta 'Item not found'", async () => {
-    const lib = manyArticles(30);
+  // Ex bug di main: oltre 100 item_keys quelli oltre il 100° risultavano "Item not found"
+  // (pagina massima dell'API per itemKey).
+  it("FA-22 120 item_keys: nessuno risulta 'Item not found'", async () => {
+    const lib = manyArticles(120);
     library(h, lib);
     installUnpaywall(h.net, {});
     const out = await h.call("find_and_attach_pdfs", { item_keys: lib.map((i) => i.key), skip_if_attachment_exists: false });

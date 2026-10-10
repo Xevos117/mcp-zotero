@@ -17,8 +17,11 @@ processo server ucciso con SIGKILL se ancora vivo 5 s dopo la chiusura.
   (`test/helpers/fake-net.ts`): ogni richiesta viene registrata e quelle senza route falliscono, quindi
   la rete reale non viene mai raggiunta. Le asserzioni guardano il risultato che vede il client MCP
   (`isError`, testo/JSON) e le richieste HTTP prodotte (metodo, path, query, header, body).
-- **Fake Zotero** (`test/helpers/zotero-fake.ts`): risposte in formato Web API v3; `zLibraryQuery` emula
-  il comportamento del server su `itemKey` (al massimo 50 chiavi), `limit` (25 di default, 100 al massimo) e `start`.
+- **Fake Zotero** (`test/helpers/zotero-fake.ts`): risposte in formato Web API v3, allineate al comportamento
+  osservato dal vivo su api.zotero.org (vedi l'intestazione del file). `zLibraryQuery`: con `itemKey` pagina di
+  min(N, 100) item e `Total-Results` = N, nessun rifiuto oltre 50 chiavi, HTTP 500 se l'URL supera 4000 caratteri;
+  senza `itemKey` `limit` 25 di default, 100 al massimo; `start`. `zCollectionNotFound`: 404 text/plain
+  "Collection not found". `zSingle`: `Last-Modified-Version` = versione dell'item.
 - **E2E** (`test/e2e/`): avvia `node --import test/e2e/fetch-redirect.mjs build/server.js` su stdio.
   Il preload reindirizza ogni fetch esterna verso un proxy HTTP locale servito dalla stessa FakeNet.
   L'endpoint di zotero-api-client non è configurabile, ma il client usa il `fetch` globale, quindi
@@ -42,7 +45,7 @@ test normali. Non restano `it.fails` nella suite.
 
 | ID | Problema originale | Correzione |
 |---|---|---|
-| GID-09/10, DI-09, FA-22/25 | GET per `itemKey` senza `limit` né chunking: >25 chiavi perse, >50 richiesta rifiutata | `fetchItemsByKeys` (src/utils/pagination.ts): blocchi da 50 con `limit` esplicito |
+| GID-09/10, FA-22/25 (+DI-09 regressione) | GET per `itemKey` con tutte le chiavi e senza `limit`: oltre 100 chiavi gli item in più andavano persi (pagina massima dell'API), con centinaia di chiavi HTTP 500 per URL troppo lungo | `fetchItemsByKeys` (src/utils/pagination.ts): blocchi da 50 con `limit` esplicito |
 | AI-09 | risultati della scrittura associati per posizione tra i soli successi: key/title all'item sbagliato | `postInBatches` (src/utils/write-results.ts): mapping per indice di richiesta |
 | AI-10, CC-07, ALU-06 | errori `{key,code,message}` come oggetto grezzo o `"[object Object]"` (anche in pdf-uploader) | `formatWriteError`/`formatWriteErrors`: `"code: message"` |
 | AI-13 (+AI-13b), AID-12b | >50 oggetti → 413 sull'intera richiesta | `postInBatches`: batch da 50, indici dell'input originale |
@@ -104,7 +107,7 @@ test normali. Non restano `it.fails` nella suite.
 | GID-04/05 | `[]` / nessun item | errore strutturato (nessuna chiamata HTTP) / risultato vuoto con le chiavi richieste |
 | GID-06 | chiavi in parte inesistenti | solo quelle trovate |
 | GID-07/08 | fallback, unicode | ok |
-| GID-09/10 | 30 chiavi, 60 chiavi | tutte restituite (GET a blocchi da 50 con limit) |
+| GID-09/10 | 120 chiavi, 482 chiavi | tutte restituite (GET a blocchi da 50 con limit 50/50/20; nessun 500 per URL lungo) |
 | GID-11 | 20 chiavi | una GET, tutte restituite |
 | GID-12 | item_keys mancante/stringa/numeri, include_abstract non booleano | isError |
 | GID-13/14 | HTTP 4xx/5xx, rete | isError |
@@ -229,7 +232,7 @@ test normali. Non restano `it.fails` nella suite.
 | DI-06 | 412 | version_conflict |
 | DI-07 | versione assente | errore strutturato |
 | DI-08 | 20 chiavi | una GET + una DELETE |
-| DI-09 | 30 chiavi | tutte cancellate |
+| DI-09 | 50 chiavi (massimo per chiamata) | tutte cancellate, GET di verifica con limit=50 |
 | DI-10/11/12 | 4xx/5xx su GET o DELETE, rete | isError |
 | DI-13/14 | mancante, `[]`, stringa, 51 chiavi / esattamente 50 | isError / accettato |
 | DI-15 | validazione prima del guard | isError |
@@ -274,7 +277,7 @@ test normali. Non restano `it.fails` nella suite.
 | FA-18/19 | GET metadati 4xx/5xx, rete sulla collezione | errore strutturato con details |
 | FA-20 | children 500 su un item | l'item compare in results come error, contato in errors |
 | FA-21 | children 500 su un item | gli altri item vengono processati |
-| FA-22/25 | 30 item_keys / collezione di 120 | tutti processati |
+| FA-22/25 | 120 item_keys / collezione di 120 | tutti processati, nessun "Item not found" |
 | FA-23 | ZOTERO_API_KEY assente | errore strutturato |
 | FA-24 | item_keys, collection_key, dry_run, skip non validi | isError |
 
@@ -351,8 +354,8 @@ Server avviato con `ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID=777` (e `ZOTE
 | E2E-G14 | `ZOTERO_LIBRARY_ID` non numerico / `ZOTERO_LIBRARY_TYPE` sconosciuto | exit code 1 con messaggio dedicato |
 
 ## Lacune note
-- Il comportamento reale di api.zotero.org (limite di 50 chiavi, limit di default 25, 413 oltre 50 oggetti
-  in scrittura) è emulato secondo la documentazione v3, non verificato contro il server: non esistono credenziali.
+- Il fake segue il comportamento osservato nel test dal vivo del 2026-10-10 (itemKey, 404 delle collezioni,
+  versioni, DELETE definitiva). Il 413 oltre 50 oggetti in scrittura resta emulato secondo la documentazione v3.
 - `src/server.ts` non esporta la classe `ZoteroServer`; costruttore e lettura dell'env sono coperti solo dagli e2e.
 - `fetchWithRetry` con 503 e backoff esponenziale reale (secondi) non viene esercitato a livello di tool, per
   restare veloci. I retry sono già coperti dai test unitari esistenti e da H-11..13.

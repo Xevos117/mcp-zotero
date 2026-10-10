@@ -12,6 +12,7 @@ import {
   ZBASE,
   zList,
   zError,
+  zCollectionNotFound,
   zLibraryQuery,
   article,
   pdfAttachment,
@@ -122,7 +123,7 @@ describe("get_collection_items (MCP)", () => {
   });
 
   it("GCI-08 404 → errore strutturato status 'not_found'", async () => {
-    h.net.on("GET", COLL_ITEMS, zError(404, "Collection not found"));
+    h.net.on("GET", COLL_ITEMS, zCollectionNotFound());
     const json = expectErrorJson(
       await h.call("get_collection_items", { collectionKey: "COL00001" }),
       "Collection is empty or not accessible"

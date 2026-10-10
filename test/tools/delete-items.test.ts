@@ -101,17 +101,18 @@ describe("delete_items (MCP)", () => {
       expect(h.net.requests("DELETE", ITEMS)).toHaveLength(1);
     });
 
-    // BUG: delete-items.ts:47 non passa `limit` alla GET di verifica; l'API Zotero
-    // restituisce al massimo 25 item di default → con 26-50 chiavi le restanti
-    // vengono riportate come not_found e NON cancellate.
-    it("DI-09 30 chiavi esistenti: tutte cancellate (limit di default Zotero = 25)", async () => {
+    // Dal vivo una GET con itemKey non applica il default di 25: con il massimo di 50 chiavi
+    // per chiamata delete_items non perdeva item nemmeno su main. Resta come regressione
+    // sul caso limite, con limit esplicito nella GET di verifica.
+    it("DI-09 50 chiavi esistenti: tutte cancellate, GET di verifica con limit=50", async () => {
       h = await startHarness({ unsafeOps: "items" });
-      const lib = manyArticles(30);
+      const lib = manyArticles(50);
       h.net.on("GET", ITEMS, zLibraryQuery(lib));
       h.net.on("DELETE", ITEMS, zDeleted());
       const out = await h.call("delete_items", { item_keys: lib.map((i) => i.key) });
       expect(out.json.not_found).toBeUndefined();
-      expect(deletedKeys(h)).toHaveLength(30);
+      expect(deletedKeys(h)).toHaveLength(50);
+      expect(h.net.requests("GET", ITEMS)[0].url.searchParams.get("limit")).toBe("50");
     });
 
     it.each([403, 404, 429, 500, 503])("DI-10 HTTP %i sulla GET → isError", async (status) => {

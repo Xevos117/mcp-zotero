@@ -106,23 +106,25 @@ describe("get_items_details (MCP)", () => {
     expect(out.json.UNI00001.publicationTitle).toBe("Revue française");
   });
 
-  // BUG: get-items-details.ts:51 non passa `limit` → l'API Zotero applica il
-  // default di 25 risultati e gli item oltre il 25° vengono persi in silenzio.
-  it("GID-09 30 chiavi: tutte e 30 restituite (limit di default Zotero = 25)", async () => {
-    const lib = manyArticles(30);
+  // Ex bug di main: tutte le chiavi in un solo itemKey senza limit. Dal vivo l'API restituisce
+  // al massimo 100 item per pagina (Total-Results = N), quindi oltre 100 chiavi gli item in più
+  // andavano persi; ora blocchi da 50 con limit esplicito.
+  it("GID-09 120 chiavi: tutte restituite, GET a blocchi da 50 con limit", async () => {
+    const lib = manyArticles(120);
     h.net.on("GET", ITEMS, zLibraryQuery(lib));
     const out = await h.call("get_items_details", { item_keys: lib.map((i) => i.key) });
-    expect(Object.keys(out.json)).toHaveLength(30);
+    expect(Object.keys(out.json)).toHaveLength(120);
+    expect(h.net.requests("GET", ITEMS).map((r) => r.url.searchParams.get("limit"))).toEqual(["50", "50", "20"]);
   });
 
-  // BUG: get-items-details.ts:51 invia tutte le chiavi in un solo itemKey; l'API
-  // Zotero accetta al massimo 50 chiavi per richiesta → serve chunking.
-  it("GID-10 60 chiavi: restituite tutte (itemKey max 50 per richiesta)", async () => {
-    const lib = manyArticles(60);
+  // Ex bug di main: con centinaia di chiavi l'URL diventa enorme e l'API risponde 500
+  // (osservato dal vivo con 482 chiavi).
+  it("GID-10 482 chiavi: nessun HTTP 500 per URL troppo lungo, tutte restituite", async () => {
+    const lib = manyArticles(482);
     h.net.on("GET", ITEMS, zLibraryQuery(lib));
     const out = await h.call("get_items_details", { item_keys: lib.map((i) => i.key) });
     expect(out.isError).toBe(false);
-    expect(Object.keys(out.json)).toHaveLength(60);
+    expect(Object.keys(out.json)).toHaveLength(482);
   });
 
   it("GID-11 batch entro il limite di pagina (20 chiavi) → una sola GET, tutte restituite", async () => {
