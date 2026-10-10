@@ -1,4 +1,5 @@
 import { ZoteroItemData, ZoteroWriteError, ZoteroWriteResponse } from "../types/zotero-types.js";
+import { errorMessage } from "./error-formatter.js";
 
 /** Zotero Web API limit on the number of objects in a single write request. */
 export const MAX_OBJECTS_PER_WRITE = 50;
@@ -43,7 +44,7 @@ export async function postInBatches(
       response = await post(batch);
     } catch (err) {
       firstError ??= err;
-      const error = err instanceof Error ? err.message : String(err);
+      const error = errorMessage(err);
       batch.forEach((_, i) => result.failed.push({ index: offset + i, error }));
       continue;
     }

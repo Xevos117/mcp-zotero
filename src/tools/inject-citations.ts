@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { injectCitations } from "../citation-injector/injector.js";
-import { logger } from "../utils/logger.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
@@ -66,35 +65,16 @@ export async function handleInjectCitations(
     });
   }
 
-  try {
-    const result = await injectCitations(file_path, zoteroApi, libraryType, libraryId, style);
+  const result = await injectCitations(file_path, zoteroApi, libraryType, libraryId, style);
 
-    const responseObj: Record<string, unknown> = {
-      output_path: result.outputPath,
-      citations_found: result.found,
-      citations_injected: result.injected,
-    };
-    if (result.warnings.length > 0) {
-      responseObj.warnings = result.warnings;
-    }
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(responseObj, null, 2),
-        },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "inject_citations",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
+  const responseObj: Record<string, unknown> = {
+    output_path: result.outputPath,
+    citations_found: result.found,
+    citations_injected: result.injected,
+  };
+  if (result.warnings.length > 0) {
+    responseObj.warnings = result.warnings;
   }
+
+  return formatJsonResult(responseObj);
 }

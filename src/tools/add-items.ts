@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
-import { logger } from "../utils/logger.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { postInBatches } from "../utils/write-results.js";
 import {
   ZOTERO_ITEM_TYPES,
@@ -10,7 +9,7 @@ import {
   TITLE_FIELD_NAME,
   ZoteroItemType,
 } from "../utils/zotero-item-types.js";
-import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 const CreatorSchema = z
   .object({
@@ -154,48 +153,25 @@ export async function handleAddItems(
     return payload;
   });
 
-  try {
-    const write = await postInBatches(
-      (batch) => zoteroApi.library(libraryType, libraryId).items().post(batch),
-      payloads
-    );
+  const write = await postInBatches(
+    (batch) => zoteroApi.library(libraryType, libraryId).items().post(batch),
+    payloads
+  );
 
-    const success = write.created.map(({ index, entity }) => ({
-      index,
-      item_key: entity.key as string,
-      title: entity.title ?? items[index].title,
-      item_type: items[index].itemType,
-    }));
-    const failed = write.failed.map(({ index, error }) => ({ index, title: items[index].title, error }));
+  const success = write.created.map(({ index, entity }) => ({
+    index,
+    item_key: entity.key as string,
+    title: entity.title ?? items[index].title,
+    item_type: items[index].itemType,
+  }));
+  const failed = write.failed.map(({ index, error }) => ({ index, title: items[index].title, error }));
 
-    if (success.length === 0 && failed.length > 0) {
-      return formatErrorResponse("All items failed to create", { failed });
-    }
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              success,
-              ...(failed.length > 0 ? { failed } : {}),
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "add_items",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
+  if (success.length === 0 && failed.length > 0) {
+    return formatErrorResponse("All items failed to create", { failed });
   }
+
+  return formatJsonResult({
+    success,
+    ...(failed.length > 0 ? { failed } : {}),
+  });
 }

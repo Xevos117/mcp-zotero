@@ -1,10 +1,9 @@
 import { z } from "zod";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
-import { logger } from "../utils/logger.js";
 import { fetchItemsByKeys } from "../utils/pagination.js";
-import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "delete_items",
@@ -85,14 +84,7 @@ export async function handleDeleteItems(
       result.not_found = notFoundKeys;
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(result, null, 2),
-        },
-      ],
-    };
+    return formatJsonResult(result);
   } catch (err) {
     if (isZoteroApiError(err)) {
       if (err.response.status === 412) {
@@ -104,12 +96,6 @@ export async function handleDeleteItems(
           }
         );
       }
-      logger.error("Tool execution failed", {
-        tool: "delete_items",
-        status: err.response.status,
-        errorMessage: err.message,
-        url: err.response.url,
-      });
     }
     throw err;
   }

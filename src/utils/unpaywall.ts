@@ -1,5 +1,6 @@
 import { fetchWithRetry } from "./fetch-retry.js";
 import { logger } from "./logger.js";
+import { errorMessage } from "./error-formatter.js";
 
 export interface UnpaywallOaLocation {
   url_for_pdf: string | null;
@@ -65,7 +66,7 @@ export async function lookupOaPdfWithFallbacks(doi: string): Promise<{
   try {
     response = await fetchWithRetry(url);
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     logger.error("Unpaywall API network error", { doi, error: detail });
     return { primary: { ...UNAVAILABLE_RESULT }, fallback_urls: [] };
   }

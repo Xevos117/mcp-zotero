@@ -1,9 +1,8 @@
 import { z } from "zod";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatEmptyResult } from "../utils/error-formatter.js";
-import { logger } from "../utils/logger.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { formatJsonResult, formatEmptyResult } from "../utils/error-formatter.js";
 import { fetchAllPages } from "../utils/pagination.js";
-import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_collections",
@@ -28,46 +27,30 @@ export async function handleGetCollections(
   const { include_trashed, library_type, library_id } = GetCollectionsSchema.parse(args);
   const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
-  try {
-    const { items: allCollections } = await fetchAllPages((params) =>
-      zoteroApi.library(libraryType, libraryId).collections().get(params)
-    );
+  const { items: allCollections } = await fetchAllPages((params) =>
+    zoteroApi.library(libraryType, libraryId).collections().get(params)
+  );
 
-    if (!Array.isArray(allCollections) || allCollections.length === 0) {
-      return formatEmptyResult("No collections found", {
-        suggestion:
-          "Create a collection in your Zotero library first",
-        helpUrl: "https://www.zotero.org/support/collections",
-      });
-    }
-
-    // Zotero API returns deleted collections despite not requesting them —
-    // filter client-side as a workaround
-    const collections = include_trashed
-      ? allCollections
-      : allCollections.filter((c) => !(c as Record<string, unknown>).deleted);
-
-    if (collections.length === 0) {
-      return formatEmptyResult("No collections found", {
-        suggestion:
-          "All collections are in the trash. Use include_trashed=true to see them.",
-      });
-    }
-
-    return {
-      content: [
-        { type: "text", text: JSON.stringify(collections, null, 2) },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "get_collections",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
+  if (!Array.isArray(allCollections) || allCollections.length === 0) {
+    return formatEmptyResult("No collections found", {
+      suggestion:
+        "Create a collection in your Zotero library first",
+      helpUrl: "https://www.zotero.org/support/collections",
+    });
   }
+
+  // Zotero API returns deleted collections despite not requesting them —
+  // filter client-side as a workaround
+  const collections = include_trashed
+    ? allCollections
+    : allCollections.filter((c) => !(c as Record<string, unknown>).deleted);
+
+  if (collections.length === 0) {
+    return formatEmptyResult("No collections found", {
+      suggestion:
+        "All collections are in the trash. Use include_trashed=true to see them.",
+    });
+  }
+
+  return formatJsonResult(collections);
 }

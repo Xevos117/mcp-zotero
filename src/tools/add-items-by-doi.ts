@@ -1,9 +1,8 @@
 import { z } from "zod";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { resolveDois } from "../utils/doi-resolver.js";
 import { cslToZoteroItem } from "../utils/csl-to-zotero.js";
-import { logger } from "../utils/logger.js";
 import { postInBatches } from "../utils/write-results.js";
 import { OaPdfResult, attachOpenAccessPdfs } from "../utils/oa-pdf.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
@@ -66,91 +65,68 @@ export async function handleAddItemsByDoi(
     return formatErrorResponse("At least one DOI is required");
   }
 
-  try {
-    const resolved = await resolveDois(dois);
+  const resolved = await resolveDois(dois);
 
-    if (resolved.success.length === 0) {
-      return formatErrorResponse("All DOI resolutions failed", {
-        failed: resolved.failed,
-      });
-    }
-
-    const zoteroItems = resolved.success.map((r) =>
-      cslToZoteroItem(r.data, {
-        collectionKey: collection_key,
-        tags,
-      })
-    );
-
-    const write = await postInBatches(
-      (batch) => zoteroApi.library(libraryType, libraryId).items().post(batch),
-      zoteroItems
-    );
-    // Report resolution and write failures together, so a partial write never hides created items
-    const failed = [
-      ...resolved.failed,
-      ...write.failed.map(({ index, error }) => ({ doi: resolved.success[index].doi, error })),
-    ];
-
-    if (write.created.length === 0) {
-      const errorMessages = write.failed.map(({ index, error }) => `Item ${index}: ${error}`).join("; ");
-      return formatErrorResponse(`Zotero API write failed: ${errorMessages}`, { failed });
-    }
-
-    const success = write.created.map(({ index, entity }) => {
-      const { doi, data } = resolved.success[index];
-      return { doi, item_key: entity.key as string, title: entity.title ?? data.title ?? "Untitled" };
+  if (resolved.success.length === 0) {
+    return formatErrorResponse("All DOI resolutions failed", {
+      failed: resolved.failed,
     });
-
-    let pdf_results: PdfAttachResult[] | undefined;
-    const apiKey = process.env.ZOTERO_API_KEY;
-    if (auto_attach_pdf && apiKey) {
-      const targets = success.filter((s) => s.doi).map((s) => ({ itemKey: s.item_key, doi: s.doi }));
-      const results = await attachOpenAccessPdfs(targets, {
-        zoteroApi,
-        library: { type: libraryType, id: libraryId },
-        apiKey,
-      });
-      pdf_results = results.map((r) =>
-        r.status === "attached"
-          ? { ...r, pdf_attached: true, pdf_url: r.url_used }
-          : { ...r, pdf_attached: false, error: r.reason }
-      );
-    }
-
-    const quotaHit = pdf_results?.some((r) => r.status === "quota_exceeded");
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              success,
-              failed,
-              ...(pdf_results !== undefined ? { pdf_results } : {}),
-              ...(quotaHit
-                ? {
-                    storage_quota_warning:
-                      "Zotero storage quota is full. Some PDF attachments were skipped. All items were created successfully (metadata only). Free up space at https://www.zotero.org/settings/storage or upgrade your plan.",
-                  }
-                : {}),
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "add_items_by_doi",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
   }
+
+  const zoteroItems = resolved.success.map((r) =>
+    cslToZoteroItem(r.data, {
+      collectionKey: collection_key,
+      tags,
+    })
+  );
+
+  const write = await postInBatches(
+    (batch) => zoteroApi.library(libraryType, libraryId).items().post(batch),
+    zoteroItems
+  );
+  // Report resolution and write failures together, so a partial write never hides created items
+  const failed = [
+    ...resolved.failed,
+    ...write.failed.map(({ index, error }) => ({ doi: resolved.success[index].doi, error })),
+  ];
+
+  if (write.created.length === 0) {
+    const errorMessages = write.failed.map(({ index, error }) => `Item ${index}: ${error}`).join("; ");
+    return formatErrorResponse(`Zotero API write failed: ${errorMessages}`, { failed });
+  }
+
+  const success = write.created.map(({ index, entity }) => {
+    const { doi, data } = resolved.success[index];
+    return { doi, item_key: entity.key as string, title: entity.title ?? data.title ?? "Untitled" };
+  });
+
+  let pdf_results: PdfAttachResult[] | undefined;
+  const apiKey = process.env.ZOTERO_API_KEY;
+  if (auto_attach_pdf && apiKey) {
+    const targets = success.filter((s) => s.doi).map((s) => ({ itemKey: s.item_key, doi: s.doi }));
+    const results = await attachOpenAccessPdfs(targets, {
+      zoteroApi,
+      library: { type: libraryType, id: libraryId },
+      apiKey,
+    });
+    pdf_results = results.map((r) =>
+      r.status === "attached"
+        ? { ...r, pdf_attached: true, pdf_url: r.url_used }
+        : { ...r, pdf_attached: false, error: r.reason }
+    );
+  }
+
+  const quotaHit = pdf_results?.some((r) => r.status === "quota_exceeded");
+
+  return formatJsonResult({
+    success,
+    failed,
+    ...(pdf_results !== undefined ? { pdf_results } : {}),
+    ...(quotaHit
+      ? {
+          storage_quota_warning:
+            "Zotero storage quota is full. Some PDF attachments were skipped. All items were created successfully (metadata only). Free up space at https://www.zotero.org/settings/storage or upgrade your plan.",
+        }
+      : {}),
+  });
 }

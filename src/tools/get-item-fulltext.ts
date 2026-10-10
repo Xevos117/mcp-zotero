@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, ZoteroFulltextResponse, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
-import { logger } from "../utils/logger.js";
-import { getLibraryType, resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
+import { resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
+import { findPdfAttachment, isPdfAttachment } from "../utils/attachments.js";
 
 export const toolConfig = {
   name: "get_item_fulltext",
@@ -44,24 +44,11 @@ export async function handleGetItemFulltext(
     const itemData = itemResponse.getData() as ZoteroItemData;
 
     // If the item itself is a PDF attachment, use it directly
-    if (itemData.itemType === "attachment" && itemData.contentType === "application/pdf") {
+    if (isPdfAttachment(itemData)) {
       return fetchFulltext(item_key, item_key, libraryType, libraryId, apiKey, max_characters);
     }
 
-    // Fetch children to find PDF attachment
-    const childrenResponse = await zoteroApi
-      .library(libraryType, libraryId)
-      .items(item_key)
-      .children()
-      .get();
-
-    const children = childrenResponse.getData();
-    const childList = Array.isArray(children) ? children : [children];
-
-    const pdfAttachment = childList.find(
-      (child: ZoteroItemData) =>
-        child.itemType === "attachment" && child.contentType === "application/pdf"
-    );
+    const pdfAttachment = await findPdfAttachment(zoteroApi, { type: libraryType, id: libraryId }, item_key);
 
     if (!pdfAttachment?.key) {
       // Provide context-aware error messages
@@ -86,12 +73,6 @@ export async function handleGetItemFulltext(
       if (err.response?.status === 404) {
         return formatErrorResponse("Item not found", { item_key });
       }
-      logger.error("Tool execution failed", {
-        tool: "get_item_fulltext",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
     }
     throw err;
   }
@@ -143,7 +124,5 @@ async function fetchFulltext(
     ...(data.totalPages !== undefined && { totalPages: data.totalPages }),
   };
 
-  return {
-    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-  };
+  return formatJsonResult(result);
 }

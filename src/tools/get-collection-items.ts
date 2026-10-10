@@ -1,10 +1,9 @@
 import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
-import { formatEmptyResult, formatErrorResponse } from "../utils/error-formatter.js";
+import { formatJsonResult, formatErrorResponse, formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators, formatTags } from "../utils/item-formatter.js";
-import { logger } from "../utils/logger.js";
 import { fetchAllPages } from "../utils/pagination.js";
-import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_collection_items",
@@ -78,22 +77,11 @@ export async function handleGetCollectionItems(
       );
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              total_items: totalResults,
-              returned_items: formatted.length,
-              items: formatted,
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
+    return formatJsonResult({
+      total_items: totalResults,
+      returned_items: formatted.length,
+      items: formatted,
+    });
   } catch (err) {
     if (isZoteroApiError(err)) {
       if (err.response?.status === 404) {
@@ -107,13 +95,6 @@ export async function handleGetCollectionItems(
           }
         );
       }
-
-      logger.error("Tool execution failed", {
-        tool: "get_collection_items",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
     }
     throw err;
   }

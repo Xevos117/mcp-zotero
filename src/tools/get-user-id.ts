@@ -1,5 +1,6 @@
 import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { resolveLibrary } from "../utils/library-context.js";
+import { formatJsonResult } from "../utils/error-formatter.js";
 
 export const toolConfig = {
   name: "get_user_id",
@@ -16,12 +17,5 @@ export async function handleGetUserId(
   const { type, id } = resolveLibrary({}, userId);
   // For group libraries `userId` holds the group ID, so report the real user ID separately
   const user_id = type === "user" ? id : process.env.ZOTERO_USER_ID || null;
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify({ user_id, library_type: type, library_id: id, library_path: `${type}s/${id}` }),
-      },
-    ],
-  };
+  return formatJsonResult({ user_id, library_type: type, library_id: id, library_path: `${type}s/${id}` });
 }

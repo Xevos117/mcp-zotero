@@ -5,6 +5,7 @@ import { extractPdfText } from "./pdf-text-extractor.js";
 import { putFulltext } from "./zotero-fulltext.js";
 import { formatWriteErrors } from "./write-results.js";
 import { LibraryType } from "./library-context.js";
+import { errorMessage } from "./error-formatter.js";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
@@ -123,7 +124,7 @@ export async function downloadAndUploadPdf(
       },
     });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     return {
       success: false,
       error: {
@@ -218,7 +219,7 @@ export async function downloadAndUploadPdf(
       .items()
       .post([itemData]);
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     return {
       success: false,
       error: {
@@ -264,7 +265,7 @@ export async function downloadAndUploadPdf(
       body: authBody.toString(),
     });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     return {
       success: false,
       itemKey,
@@ -317,7 +318,7 @@ export async function downloadAndUploadPdf(
         body: uploadBody,
       });
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = errorMessage(err);
       return {
         success: false,
         itemKey,
@@ -353,7 +354,7 @@ export async function downloadAndUploadPdf(
         body: `upload=${auth.uploadKey}`,
       });
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = errorMessage(err);
       return {
         success: false,
         itemKey,

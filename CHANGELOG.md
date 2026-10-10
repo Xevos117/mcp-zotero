@@ -51,6 +51,8 @@ Toolchain and dependency upgrade, plus group library support. Tool names are unc
 - Minor updates: `@modelcontextprotocol/sdk` 1.32.1, `zod` 4.6.5, `fast-xml-parser` 5.11.2, `jszip` 3.10.2, `@types/node` 26.
 - `npm audit`: 0 vulnerabilities (transitive fixes for the SDK's HTTP-transport dependencies).
 
+- **Internal: shared tool plumbing.** Duplicated code across tools was unified without changing the MCP surface (tools/list is identical): one tool registry and one wrapper that logs Zotero API errors for every tool (`src/tools/index.ts`, replacing 14 copies of the same catch/log/rethrow block); `formatJsonResult` for every JSON result; `errorMessage` for thrown values; `asArray` for single/array responses; `findPdfAttachment` shared by `get_item_fulltext` and the open-access PDF pipeline.
+
 ### CI
 
 - `actions/checkout` and `actions/setup-node` v4 → v7.

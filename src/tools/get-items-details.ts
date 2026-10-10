@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatEmptyResult, formatErrorResponse } from "../utils/error-formatter.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse, formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
-import { logger } from "../utils/logger.js";
 import { fetchItemsByKeys } from "../utils/pagination.js";
-import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_items_details",
@@ -48,59 +47,43 @@ export async function handleGetItemsDetails(
     return formatErrorResponse("At least one item key is required");
   }
 
-  try {
-    const { items } = await fetchItemsByKeys(
-      (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
-      item_keys
-    );
+  const { items } = await fetchItemsByKeys(
+    (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
+    item_keys
+  );
 
-    if (items.length === 0) {
-      return formatEmptyResult("No items found for the given keys", {
-        item_keys,
-      });
-    }
-
-    const result: Record<string, Record<string, unknown>> = {};
-    for (const item of items) {
-      const key = item.key;
-      if (!key) continue;
-
-      const entry: Record<string, unknown> = {
-        itemType: item.itemType || "document",
-        title: item.title || "Untitled",
-        authors: formatCreators(item.creators),
-      };
-
-      // Include all non-empty bibliographic fields from the Zotero response
-      const raw = item as Record<string, unknown>;
-      for (const [field, value] of Object.entries(raw)) {
-        if (SKIP_FIELDS.has(field)) continue;
-        if (field in entry) continue;
-        if (value === undefined || value === null || value === "" || value === false) continue;
-        entry[field] = value;
-      }
-
-      if (include_abstract && item.abstractNote) {
-        entry.abstractNote = item.abstractNote;
-      }
-
-      result[key] = entry;
-    }
-
-    return {
-      content: [
-        { type: "text", text: JSON.stringify(result, null, 2) },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "get_items_details",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
+  if (items.length === 0) {
+    return formatEmptyResult("No items found for the given keys", {
+      item_keys,
+    });
   }
+
+  const result: Record<string, Record<string, unknown>> = {};
+  for (const item of items) {
+    const key = item.key;
+    if (!key) continue;
+
+    const entry: Record<string, unknown> = {
+      itemType: item.itemType || "document",
+      title: item.title || "Untitled",
+      authors: formatCreators(item.creators),
+    };
+
+    // Include all non-empty bibliographic fields from the Zotero response
+    const raw = item as Record<string, unknown>;
+    for (const [field, value] of Object.entries(raw)) {
+      if (SKIP_FIELDS.has(field)) continue;
+      if (field in entry) continue;
+      if (value === undefined || value === null || value === "" || value === false) continue;
+      entry[field] = value;
+    }
+
+    if (include_abstract && item.abstractNote) {
+      entry.abstractNote = item.abstractNote;
+    }
+
+    result[key] = entry;
+  }
+
+  return formatJsonResult(result);
 }

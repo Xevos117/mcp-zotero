@@ -1,6 +1,7 @@
 import { CslItemData } from "../types/csl-types.js";
 import { mapWithConcurrency } from "./concurrency.js";
 import { fetchWithRetry } from "./fetch-retry.js";
+import { errorMessage } from "./error-formatter.js";
 
 export async function resolveDoi(doi: string): Promise<CslItemData> {
   const response = await fetchWithRetry(`https://doi.org/${encodeURIComponent(doi)}`, {
@@ -41,7 +42,7 @@ export async function resolveDois(
     if (r.status === "fulfilled") {
       result.success.push({ doi, data: r.value });
     } else {
-      const message = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      const message = errorMessage(r.reason);
       result.failed.push({ doi, error: message });
     }
   }

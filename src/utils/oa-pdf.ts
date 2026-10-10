@@ -1,8 +1,10 @@
-import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { findPdfAttachment } from "./attachments.js";
 import { CancellationToken, createCancellationToken, mapWithConcurrency, settledValues } from "./concurrency.js";
 import { LibraryType } from "./library-context.js";
 import { downloadAndUploadPdf } from "./pdf-uploader.js";
 import { landingPageOnlyReason, lookupOaPdfWithFallbacks } from "./unpaywall.js";
+import { errorMessage } from "./error-formatter.js";
 
 /**
  * Shared open-access PDF pipeline used by add_items_by_doi and find_and_attach_pdfs:
@@ -60,22 +62,11 @@ export interface OaPdfOptions {
   cancel?: CancellationToken;
 }
 
-function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
-async function hasPdfAttachment({ zoteroApi, library }: OaPdfOptions, itemKey: string): Promise<boolean> {
-  const response = await zoteroApi.library(library.type, library.id).items(itemKey).children().get();
-  const data = response.getData() as ZoteroItemData | ZoteroItemData[];
-  const children = Array.isArray(data) ? data : [data];
-  return children.some((child) => child?.itemType === "attachment" && child.contentType === "application/pdf");
-}
-
 /** Find and attach the open-access PDF of one item. */
 export async function attachOpenAccessPdf(target: OaPdfTarget, opts: OaPdfOptions): Promise<OaPdfResult> {
   const base = { item_key: target.itemKey, doi: target.doi };
 
-  if (opts.skipIfPdfExists && (await hasPdfAttachment(opts, target.itemKey))) {
+  if (opts.skipIfPdfExists && (await findPdfAttachment(opts.zoteroApi, opts.library, target.itemKey))) {
     return { ...base, status: "skipped", reason: "PDF attachment already exists" };
   }
 
@@ -142,6 +133,6 @@ export async function attachOpenAccessPdfs(targets: OaPdfTarget[], opts: OaPdfOp
     item_key: target.itemKey,
     doi: target.doi,
     status: "error",
-    reason: errorText(reason),
+    reason: errorMessage(reason),
   }));
 }

@@ -1,9 +1,8 @@
 import { z } from "zod";
-import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
-import { formatEmptyResult } from "../utils/error-formatter.js";
+import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
+import { formatJsonResult, formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
-import { logger } from "../utils/logger.js";
-import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "search_library",
@@ -62,50 +61,34 @@ export async function handleSearchLibrary(
     params.q = query.trim();
   }
 
-  try {
-    const response = await zoteroApi
-      .library(libraryType, libraryId)
-      .items()
-      .get(params);
+  const response = await zoteroApi
+    .library(libraryType, libraryId)
+    .items()
+    .get(params);
 
-    const items = response.getData();
+  const items = response.getData();
 
-    if (!Array.isArray(items) || items.length === 0) {
-      if (query) {
-        return formatEmptyResult("No results found", {
-          query,
-          suggestion:
-            "Try a different search term or verify your library contains matching items",
-        });
-      }
-      return formatEmptyResult("No items found", {
-        suggestion: "Add some items to your Zotero library first",
+  if (!Array.isArray(items) || items.length === 0) {
+    if (query) {
+      return formatEmptyResult("No results found", {
+        query,
+        suggestion:
+          "Try a different search term or verify your library contains matching items",
       });
     }
-
-    const formatted = items.map((item: ZoteroItemData) => ({
-      title: item.title || "Untitled",
-      authors: formatCreators(item.creators),
-      date: item.date || "No date",
-      key: item.key,
-      itemType: item.itemType,
-      ...(sort === "dateAdded" && { dateAdded: item.dateAdded || null }),
-    }));
-
-    return {
-      content: [
-        { type: "text", text: JSON.stringify(formatted, null, 2) },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "search_library",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
+    return formatEmptyResult("No items found", {
+      suggestion: "Add some items to your Zotero library first",
+    });
   }
+
+  const formatted = items.map((item: ZoteroItemData) => ({
+    title: item.title || "Untitled",
+    authors: formatCreators(item.creators),
+    date: item.date || "No date",
+    key: item.key,
+    itemType: item.itemType,
+    ...(sort === "dateAdded" && { dateAdded: item.dateAdded || null }),
+  }));
+
+  return formatJsonResult(formatted);
 }

@@ -350,6 +350,7 @@ test normali. Non restano `it.fails` nella suite.
 | H-01 | logger | una riga JSON su stderr per chiamata, mai su stdout |
 | H-02/03 | formatErrorResponse | `{error, ...details}` con isError: true; una chiave `error` nei details vince |
 | H-02b | formatEmptyResult | `{message, ...details}` senza isError |
+| H-02c | formatJsonResult, errorMessage | JSON indentato senza isError; messaggio di qualsiasi valore lanciato |
 | H-04/05 | extractPdfText con unpdf reale | testo e pagine / rifiuta un non-PDF |
 | H-06/07 | isZoteroApiError su ErrorResponse reale / errore di rete | true con status / false |
 | H-08/09/10 | contratto zotero-api-client | Total-Results e versione; `getData()` con tutti gli oggetti inviati, `getErrors()` con oggetti; DELETE `?itemKey` con If-Unmodified-Since-Version |

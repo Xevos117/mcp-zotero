@@ -1,9 +1,8 @@
 import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteCollections } from "../utils/unsafe-operations.js";
-import { logger } from "../utils/logger.js";
-import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "delete_collection",
@@ -61,22 +60,11 @@ export async function handleDeleteCollection(
       .version(version)
       .delete();
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              deleted: true,
-              collection_key,
-              name: collection.name || collection_key,
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
+    return formatJsonResult({
+      deleted: true,
+      collection_key,
+      name: collection.name || collection_key,
+    });
   } catch (err) {
     if (isZoteroApiError(err)) {
       if (err.response.status === 404) {
@@ -94,12 +82,6 @@ export async function handleDeleteCollection(
           }
         );
       }
-      logger.error("Tool execution failed", {
-        tool: "delete_collection",
-        status: err.response.status,
-        errorMessage: err.message,
-        url: err.response.url,
-      });
     }
     throw err;
   }

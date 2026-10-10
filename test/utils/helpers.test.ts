@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { logger } from "../../src/utils/logger.js";
-import { formatEmptyResult, formatErrorResponse } from "../../src/utils/error-formatter.js";
+import { errorMessage, formatEmptyResult, formatErrorResponse, formatJsonResult } from "../../src/utils/error-formatter.js";
 import { extractPdfText } from "../../src/utils/pdf-text-extractor.js";
 import { isZoteroApiError } from "../../src/types/zotero-types.js";
 import { fetchWithRetry } from "../../src/utils/fetch-retry.js";
@@ -48,6 +48,14 @@ describe("formatErrorResponse", () => {
     const r = formatEmptyResult("No results found", { query: "zzz" });
     expect(JSON.parse(r.content[0].text)).toEqual({ message: "No results found", query: "zzz" });
     expect((r as Record<string, unknown>).isError).toBeUndefined();
+  });
+
+  it("H-02c formatJsonResult: corpo serializzato come JSON indentato, senza isError; errorMessage", () => {
+    const r = formatJsonResult({ a: [1] });
+    expect(r.content).toEqual([{ type: "text", text: JSON.stringify({ a: [1] }, null, 2) }]);
+    expect((r as Record<string, unknown>).isError).toBeUndefined();
+    expect(errorMessage(new Error("boom"))).toBe("boom");
+    expect(errorMessage("plain")).toBe("plain");
   });
 
   it("H-03 una chiave 'error' nei details sovrascrive il messaggio (pin)", () => {

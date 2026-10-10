@@ -1,10 +1,9 @@
 import { z } from "zod";
-import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
-import { formatEmptyResult, formatErrorResponse } from "../utils/error-formatter.js";
-import { logger } from "../utils/logger.js";
+import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse, formatEmptyResult, errorMessage, logToolError } from "../utils/error-formatter.js";
 import { OaPdfResult, OaPdfTarget, attachOpenAccessPdfs } from "../utils/oa-pdf.js";
 import { fetchAllPages, fetchItemsByKeys } from "../utils/pagination.js";
-import { getLibraryType, resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "find_and_attach_pdfs",
@@ -126,43 +125,24 @@ export async function handleFindAndAttachPdfs(
       else if (r.status === "quota_exceeded") quotaExceeded++;
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              processed: keys.length,
-              attached,
-              not_found: notFound,
-              skipped,
-              errors,
-              quota_exceeded: quotaExceeded,
-              dry_run,
-              ...(quotaExceeded > 0
-                ? {
-                    storage_quota_warning:
-                      "Zotero storage quota is full. Remaining PDF uploads were skipped. Free up space at https://www.zotero.org/settings/storage or upgrade your plan.",
-                  }
-                : {}),
-              results,
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
+    return formatJsonResult({
+      processed: keys.length,
+      attached,
+      not_found: notFound,
+      skipped,
+      errors,
+      quota_exceeded: quotaExceeded,
+      dry_run,
+      ...(quotaExceeded > 0
+        ? {
+            storage_quota_warning:
+              "Zotero storage quota is full. Remaining PDF uploads were skipped. Free up space at https://www.zotero.org/settings/storage or upgrade your plan.",
+          }
+        : {}),
+      results,
+    });
   } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "find_and_attach_pdfs",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    const message = err instanceof Error ? err.message : String(err);
-    return formatErrorResponse("find_and_attach_pdfs failed", { details: message });
+    logToolError("find_and_attach_pdfs", err);
+    return formatErrorResponse("find_and_attach_pdfs failed", { details: errorMessage(err) });
   }
 }
