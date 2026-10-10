@@ -16,33 +16,43 @@ jobs:
   # ── 1. Run tests before publishing anything ──────────────────
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
+        timeout-minutes: 5
       - run: npm run build
+        timeout-minutes: 3
       - run: npm test
+        timeout-minutes: 5
+      - run: npm run smoke
+        timeout-minutes: 2
 
   # ── 2. Publish to npm ───────────────────────────────────────
   npm-publish:
     needs: test
     runs-on: ubuntu-latest
     environment: release
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
 
       - run: npm ci
+        timeout-minutes: 5
       - run: npm run build
+        timeout-minutes: 3
       - run: npm publish --access public
+        timeout-minutes: 5
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -50,8 +60,9 @@ jobs:
   skill-zips:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Create skill zip archives
         run: |

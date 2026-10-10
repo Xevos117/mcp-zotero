@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, ZoteroFulltextResponse, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
-import { logger } from "../utils/logger.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
+import { resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
+import { findPdfAttachment, isPdfAttachment } from "../utils/attachments.js";
 
 export const toolConfig = {
   name: "get_item_fulltext",
@@ -14,6 +15,7 @@ export const toolConfig = {
       .optional()
       .default(50000)
       .describe("Maximum characters to return (default: 50000, 0 = no limit)"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -24,7 +26,8 @@ export async function handleGetItemFulltext(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { item_key, max_characters } = GetItemFulltextSchema.parse(args);
+  const { item_key, max_characters, library_type, library_id } = GetItemFulltextSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const apiKey = process.env.ZOTERO_API_KEY;
   if (!apiKey) {
@@ -34,31 +37,18 @@ export async function handleGetItemFulltext(
   try {
     // Fetch parent item metadata for context
     const itemResponse = await zoteroApi
-      .library("user", userId)
+      .library(libraryType, libraryId)
       .items(item_key)
       .get();
 
     const itemData = itemResponse.getData() as ZoteroItemData;
 
     // If the item itself is a PDF attachment, use it directly
-    if (itemData.itemType === "attachment" && itemData.contentType === "application/pdf") {
-      return fetchFulltext(item_key, item_key, userId, apiKey, max_characters);
+    if (isPdfAttachment(itemData)) {
+      return fetchFulltext(item_key, item_key, libraryType, libraryId, apiKey, max_characters);
     }
 
-    // Fetch children to find PDF attachment
-    const childrenResponse = await zoteroApi
-      .library("user", userId)
-      .items(item_key)
-      .children()
-      .get();
-
-    const children = childrenResponse.getData();
-    const childList = Array.isArray(children) ? children : [children];
-
-    const pdfAttachment = childList.find(
-      (child: ZoteroItemData) =>
-        child.itemType === "attachment" && child.contentType === "application/pdf"
-    );
+    const pdfAttachment = await findPdfAttachment(zoteroApi, { type: libraryType, id: libraryId }, item_key);
 
     if (!pdfAttachment?.key) {
       // Provide context-aware error messages
@@ -77,18 +67,12 @@ export async function handleGetItemFulltext(
       return formatErrorResponse("No PDF attachment found for this item.", { item_key });
     }
 
-    return fetchFulltext(item_key, pdfAttachment.key, userId, apiKey, max_characters);
+    return fetchFulltext(item_key, pdfAttachment.key, libraryType, libraryId, apiKey, max_characters);
   } catch (err) {
     if (isZoteroApiError(err)) {
       if (err.response?.status === 404) {
         return formatErrorResponse("Item not found", { item_key });
       }
-      logger.error("Tool execution failed", {
-        tool: "get_item_fulltext",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
     }
     throw err;
   }
@@ -97,11 +81,12 @@ export async function handleGetItemFulltext(
 async function fetchFulltext(
   itemKey: string,
   attachmentKey: string,
+  libraryType: LibraryType,
   userId: string,
   apiKey: string,
   maxCharacters: number
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const url = `https://api.zotero.org/users/${userId}/items/${attachmentKey}/fulltext`;
+  const url = `https://api.zotero.org/${libraryType}s/${userId}/items/${attachmentKey}/fulltext`;
   const response = await fetch(url, {
     headers: { "Zotero-API-Key": apiKey },
   });
@@ -139,7 +124,5 @@ async function fetchFulltext(
     ...(data.totalPages !== undefined && { totalPages: data.totalPages }),
   };
 
-  return {
-    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-  };
+  return formatJsonResult(result);
 }

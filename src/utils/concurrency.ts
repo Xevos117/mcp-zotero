@@ -48,3 +48,16 @@ export async function mapWithConcurrency<T, R>(
 
   return results;
 }
+
+/**
+ * Collect mapWithConcurrency results in input order: fulfilled values as they are, rejected ones
+ * converted by `onRejected` so no item silently disappears. Slots never started because of
+ * cancellation are skipped (flatMap does not visit array holes).
+ */
+export function settledValues<T, R>(
+  items: T[],
+  settled: PromiseSettledResult<R>[],
+  onRejected: (item: T, reason: unknown) => R
+): R[] {
+  return settled.flatMap((r, i) => (r.status === "fulfilled" ? [r.value] : [onRejected(items[i], r.reason)]));
+}

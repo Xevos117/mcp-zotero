@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { formatJsonResult, formatErrorResponse, formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators, formatTags } from "../utils/item-formatter.js";
-import { logger } from "../utils/logger.js";
 import { fetchAllPages } from "../utils/pagination.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_collection_items",
@@ -16,6 +16,7 @@ export const toolConfig = {
       .describe(
         "Exclude attachment and note items (default: true)"
       ),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -26,15 +27,16 @@ export async function handleGetCollectionItems(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { collectionKey, excludeAttachments } = CollectionItemsSchema.parse(args);
+  const { collectionKey, excludeAttachments, library_type, library_id } = CollectionItemsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   try {
     const { items: allItems, totalResults } = await fetchAllPages((params) =>
-      zoteroApi.library("user", userId).collections(collectionKey).items().get(params)
+      zoteroApi.library(libraryType, libraryId).collections(collectionKey).items().get(params)
     );
 
     if (!allItems || allItems.length === 0) {
-      return formatErrorResponse("Collection is empty", {
+      return formatEmptyResult("Collection is empty", {
         collectionKey,
         suggestion: "Add some items to this collection in Zotero",
         status: "empty",
@@ -64,7 +66,7 @@ export async function handleGetCollectionItems(
       }));
 
     if (formatted.length === 0) {
-      return formatErrorResponse(
+      return formatEmptyResult(
         "No valid items found in collection",
         {
           collectionKey,
@@ -75,22 +77,11 @@ export async function handleGetCollectionItems(
       );
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              total_items: totalResults,
-              returned_items: formatted.length,
-              items: formatted,
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
+    return formatJsonResult({
+      total_items: totalResults,
+      returned_items: formatted.length,
+      items: formatted,
+    });
   } catch (err) {
     if (isZoteroApiError(err)) {
       if (err.response?.status === 404) {
@@ -104,13 +95,6 @@ export async function handleGetCollectionItems(
           }
         );
       }
-
-      logger.error("Tool execution failed", {
-        tool: "get_collection_items",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
     }
     throw err;
   }

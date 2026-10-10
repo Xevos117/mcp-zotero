@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapWithConcurrency, DEFAULT_CONCURRENCY, createCancellationToken } from "./concurrency.js";
+import { mapWithConcurrency, DEFAULT_CONCURRENCY, createCancellationToken, settledValues } from "./concurrency.js";
 
 describe("mapWithConcurrency", () => {
   it("returns fulfilled results for all items", async () => {
@@ -183,5 +183,26 @@ describe("mapWithConcurrency", () => {
     expect(cancel.cancelled).toBe(false);
     const fulfilled = results.filter((r) => r?.status === "fulfilled");
     expect(fulfilled).toHaveLength(3);
+  });
+});
+
+describe("settledValues", () => {
+  it("keeps fulfilled values, converts rejections and skips never-started slots", async () => {
+    const cancel = createCancellationToken();
+    const settled = await mapWithConcurrency(
+      ["a", "b", "c", "d"],
+      async (item) => {
+        if (item === "b") throw new Error("boom");
+        if (item === "c") cancel.cancelled = true;
+        return item.toUpperCase();
+      },
+      1,
+      cancel
+    );
+    expect(settledValues(["a", "b", "c", "d"], settled, (item, reason) => `${item}:${(reason as Error).message}`)).toEqual([
+      "A",
+      "b:boom",
+      "C",
+    ]);
   });
 });

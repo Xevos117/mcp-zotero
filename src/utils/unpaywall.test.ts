@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { lookupOaPdf, lookupOaPdfWithFallbacks } from "./unpaywall.js";
+import { landingPageOnlyReason, lookupOaPdfWithFallbacks } from "./unpaywall.js";
+
+/** Primary location only (the old lookupOaPdf API). */
+const lookupPrimary = async (doi: string) => (await lookupOaPdfWithFallbacks(doi)).primary;
 
 const ORIGINAL_ENV = process.env;
 
@@ -12,7 +15,7 @@ afterEach(() => {
   process.env = ORIGINAL_ENV;
 });
 
-describe("lookupOaPdf", () => {
+describe("lookupOaPdfWithFallbacks: primary", () => {
   it("returns found=true for gold OA with PDF URL", async () => {
     vi.stubGlobal(
       "fetch",
@@ -34,7 +37,7 @@ describe("lookupOaPdf", () => {
       })
     );
 
-    const result = await lookupOaPdf("10.1234/test");
+    const result = await lookupPrimary("10.1234/test");
     expect(result.found).toBe(true);
     expect(result.pdf_url).toBe("https://journal.org/article.pdf");
     expect(result.source).toBe("unpaywall_gold");
@@ -63,7 +66,7 @@ describe("lookupOaPdf", () => {
       })
     );
 
-    const result = await lookupOaPdf("10.1234/test");
+    const result = await lookupPrimary("10.1234/test");
     expect(result.found).toBe(true);
     expect(result.pdf_url).toBe("https://repo.org/paper.pdf");
     expect(result.source).toBe("unpaywall_green");
@@ -85,7 +88,7 @@ describe("lookupOaPdf", () => {
       })
     );
 
-    const result = await lookupOaPdf("10.1234/closed");
+    const result = await lookupPrimary("10.1234/closed");
     expect(result.found).toBe(false);
     expect(result.pdf_url).toBeNull();
     expect(result.oa_status).toBe("closed");
@@ -113,7 +116,7 @@ describe("lookupOaPdf", () => {
       })
     );
 
-    const result = await lookupOaPdf("10.1234/no-pdf");
+    const result = await lookupPrimary("10.1234/no-pdf");
     expect(result.found).toBe(false);
     expect(result.pdf_url).toBeNull();
     expect(result.landing_url).toBe("https://publisher.org/article/123");
@@ -142,7 +145,7 @@ describe("lookupOaPdf", () => {
       })
     );
 
-    const result = await lookupOaPdf("10.1126/science.abb4808");
+    const result = await lookupPrimary("10.1126/science.abb4808");
     expect(result.found).toBe(false);
     expect(result.pdf_url).toBeNull();
     expect(result.landing_url).toBe("https://europepmc.org/articles/PMC7164389");
@@ -165,7 +168,7 @@ describe("lookupOaPdf", () => {
       })
     );
 
-    const result = await lookupOaPdf("10.1234/closed");
+    const result = await lookupPrimary("10.1234/closed");
     expect(result.found).toBe(false);
     expect(result.landing_url).toBeNull();
   });
@@ -176,7 +179,7 @@ describe("lookupOaPdf", () => {
       vi.fn().mockResolvedValueOnce({ ok: false, status: 404 })
     );
 
-    const result = await lookupOaPdf("10.9999/nonexistent");
+    const result = await lookupPrimary("10.9999/nonexistent");
     expect(result.found).toBe(false);
   });
 
@@ -186,7 +189,7 @@ describe("lookupOaPdf", () => {
       vi.fn().mockRejectedValueOnce(new TypeError("fetch failed"))
     );
 
-    const result = await lookupOaPdf("10.1234/test");
+    const result = await lookupPrimary("10.1234/test");
     expect(result.found).toBe(false);
   });
 
@@ -206,7 +209,7 @@ describe("lookupOaPdf", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await lookupOaPdf("10.1234/test");
+    await lookupPrimary("10.1234/test");
 
     const calledUrl = fetchMock.mock.calls[0][0] as string;
     expect(calledUrl).toContain("email=user%40university.edu");
@@ -219,7 +222,7 @@ describe("lookupOaPdf", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await lookupOaPdf("10.1234/test");
+    const result = await lookupPrimary("10.1234/test");
     expect(result.found).toBe(false);
     expect(result.warning).toContain("UNPAYWALL_EMAIL");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -231,7 +234,7 @@ describe("lookupOaPdf", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await lookupOaPdf("10.1234/test");
+    const result = await lookupPrimary("10.1234/test");
     expect(result.found).toBe(false);
     expect(result.warning).toContain("UNPAYWALL_EMAIL");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -330,5 +333,78 @@ describe("lookupOaPdfWithFallbacks", () => {
     expect(result.primary.found).toBe(false);
     expect(result.primary.warning).toContain("UNPAYWALL_EMAIL");
     expect(result.fallback_urls).toEqual([]);
+  });
+});
+
+describe("Unpaywall locations beyond best_oa_location", () => {
+  // Shape of 10.1371/journal.pmed.0020124 observed live: the best location is the publisher landing
+  // page without url_for_pdf, the PLOS printable PDF is listed in another location.
+  const plos = {
+    doi: "10.1371/journal.pmed.0020124",
+    is_oa: true,
+    oa_status: "gold",
+    best_oa_location: {
+      url_for_pdf: null,
+      url: "https://doi.org/10.1371/journal.pmed.0020124",
+      host_type: "publisher",
+      license: "cc-by",
+      version: "publishedVersion",
+    },
+    oa_locations: [
+      {
+        url_for_pdf: null,
+        url: "https://doi.org/10.1371/journal.pmed.0020124",
+        host_type: "publisher",
+        license: "cc-by",
+        version: "publishedVersion",
+      },
+      {
+        url_for_pdf: "https://journals.plos.org/plosmedicine/article/file?id=10.1371/journal.pmed.0020124&type=printable",
+        url: "https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.0020124",
+        host_type: "repository",
+        license: "cc-by",
+        version: "publishedVersion",
+      },
+      {
+        url_for_pdf: "https://europepmc.org/articles/pmc1182327?pdf=render",
+        url: "https://europepmc.org/articles/pmc1182327",
+        host_type: "repository",
+        license: "cc-by",
+        version: "publishedVersion",
+      },
+      {
+        url_for_pdf: "https://europepmc.org/articles/pmc1182327?pdf=render",
+        url: "https://europepmc.org/articles/pmc1182327",
+        host_type: "repository",
+        license: null,
+        version: "publishedVersion",
+      },
+    ],
+  };
+  const stub = (body: unknown) =>
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(body) }));
+
+  it("primary is the PDF in a later location when best_oa_location has none", async () => {
+    stub(plos);
+    const result = await lookupPrimary(plos.doi);
+    expect(result.found).toBe(true);
+    expect(result.pdf_url).toBe(plos.oa_locations[1].url_for_pdf);
+    expect(result.source).toBe("unpaywall_green");
+  });
+
+  it("lookupOaPdfWithFallbacks keeps the location order and de-duplicates PDF URLs", async () => {
+    stub(plos);
+    const result = await lookupOaPdfWithFallbacks(plos.doi);
+    expect(result.primary.pdf_url).toBe(plos.oa_locations[1].url_for_pdf);
+    expect(result.fallback_urls).toEqual(["https://europepmc.org/articles/pmc1182327?pdf=render"]);
+  });
+
+  it("names the real host of a landing-page-only copy", async () => {
+    stub({ ...plos, oa_locations: [plos.oa_locations[0]] });
+    const result = await lookupPrimary(plos.doi);
+    expect(result.found).toBe(false);
+    expect(result.landing_host_type).toBe("publisher");
+    expect(landingPageOnlyReason(result)).toContain("on the publisher's site");
+    expect(landingPageOnlyReason({ ...result, landing_host_type: "repository" })).toContain("at a repository");
   });
 });

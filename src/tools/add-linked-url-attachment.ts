@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
-import { logger } from "../utils/logger.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
+import { formatWriteErrors } from "../utils/write-results.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "add_linked_url_attachment",
@@ -35,6 +36,7 @@ export const toolConfig = {
       .array(z.string())
       .optional()
       .describe("Tags to apply to the attachment"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -45,8 +47,8 @@ export async function handleAddLinkedUrlAttachment(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { url, title, content_type, parent_item, collections, tags } =
-    AddLinkedUrlAttachmentSchema.parse(args);
+  const { url, title, content_type, parent_item, collections, tags, library_type, library_id } = AddLinkedUrlAttachmentSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const itemData: Record<string, unknown> = {
     itemType: "attachment",
@@ -67,50 +69,26 @@ export async function handleAddLinkedUrlAttachment(
     itemData.collections = collections ?? [];
   }
 
-  try {
-    const response = await zoteroApi
-      .library("user", userId)
-      .items()
-      .post([itemData]);
+  const response = await zoteroApi
+    .library(libraryType, libraryId)
+    .items()
+    .post([itemData]);
 
-    if (!response.isSuccess()) {
-      const errors = response.getErrors();
-      const errorMsg = Object.values(errors).join("; ") || "Unknown error";
-      return formatErrorResponse("Failed to create linked URL attachment", {
-        details: errorMsg,
-      });
-    }
-
-    const created = response.getData();
-    const item = created[0];
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              item_key: item.key,
-              title: item.title ?? title ?? url,
-              url,
-              parent_item: parent_item ?? null,
-              link_mode: "linked_url",
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "add_linked_url_attachment",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
+  if (!response.isSuccess()) {
+    const errorMsg = formatWriteErrors(response.getErrors());
+    return formatErrorResponse("Failed to create linked URL attachment", {
+      details: errorMsg,
+    });
   }
+
+  const created = response.getData();
+  const item = created[0];
+
+  return formatJsonResult({
+    item_key: item.key,
+    title: item.title ?? title ?? url,
+    url,
+    parent_item: parent_item ?? null,
+    link_mode: "linked_url",
+  });
 }

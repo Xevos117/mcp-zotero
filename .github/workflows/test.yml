@@ -9,22 +9,43 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 = minimum supported (engines), 24 = active LTS, 26 = current
+        node-version: [22, 24, 26]
+
+    name: test (node ${{ matrix.node-version }})
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
       - run: npm ci
+        timeout-minutes: 5
 
       - run: npm run build
+        timeout-minutes: 3
 
       - run: npm test
+        timeout-minutes: 5
+
+      - name: Smoke test built server over stdio
+        run: npm run smoke
+        timeout-minutes: 2
+
+      - name: E2E tests (built server over stdio, fake Zotero API)
+        run: npx vitest run --config vitest.e2e.config.ts
+        timeout-minutes: 5
 
       - name: Validate packaging (npx compatibility)
+        timeout-minutes: 5
         run: |
           set -euo pipefail
 

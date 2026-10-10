@@ -196,8 +196,8 @@ a source remains inaccessible:
    - Import PDFs for accessible sources
    - Get item keys for citation injection
    - Generate .docx with `<zcite>` tags
-   - Run injection script
-   - Remind user to do Zotero → Refresh
+   - Run injection script (or the `inject_citations` MCP tool)
+   - Remind user to do Zotero → Add/Edit Bibliography, then Zotero → Refresh
 
 3. If NOT using Zotero:
    - Format references manually in the chosen style

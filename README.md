@@ -32,6 +32,8 @@ LLMs without filesystem access — including Claude Desktop, which connects to M
 
 ## Setup
 
+Requires **Node.js 22 or newer**.
+
 1. Get your Zotero credentials:
 
    ```bash
@@ -49,6 +51,65 @@ LLMs without filesystem access — including Claude Desktop, which connects to M
    export UNPAYWALL_EMAIL="your@email.edu"   # Optional: enables OA PDF lookup via Unpaywall
    export UNSAFE_OPERATIONS="none"           # Optional: "none" | "items" | "all" (see below)
    ```
+
+### Targeting a group library
+
+By default the server targets your personal Zotero library (`/users/<ZOTERO_USER_ID>/...`).
+To target a group library instead, set two additional environment variables:
+
+| Variable | Values | Required? | Default |
+|---|---|---|---|
+| `ZOTERO_LIBRARY_TYPE` | `user` \| `group` | No | `user` |
+| `ZOTERO_LIBRARY_ID` | numeric library ID | Yes when type=`group`; otherwise falls back to `ZOTERO_USER_ID` | — |
+
+Example for a group library:
+
+```
+ZOTERO_API_KEY=...
+ZOTERO_USER_ID=12345               # optional for groups: used by get_user_id and per-call library_type="user"
+ZOTERO_LIBRARY_TYPE=group
+ZOTERO_LIBRARY_ID=6178978          # the group ID
+```
+
+The API key in `ZOTERO_API_KEY` must have access to the target group library — generate or scope keys at https://www.zotero.org/settings/keys.
+
+The server refuses to start if `ZOTERO_LIBRARY_TYPE=group` is set without `ZOTERO_LIBRARY_ID`, or if a library ID is not numeric.
+
+
+### Per-call library override
+
+Every tool accepts two optional args that override the env defaults for that single call:
+
+- `library_type` — `"user"` or `"group"`
+- `library_id` — numeric library ID
+
+Resolution order: per-call arg > env var > implicit default (`user`, `ZOTERO_USER_ID`). `library_id` must be numeric. Overriding `library_type` to `group` on a server configured for a user library requires `library_id`; overriding to `user` on a group server without `library_id` uses `ZOTERO_USER_ID`.
+
+Note that per-call overrides let the LLM reach any library the API key can access. Scope the key to the libraries you want exposed; deletions remain gated by `UNSAFE_OPERATIONS`.
+
+This lets a single MCP instance target multiple libraries (e.g., a staging group and a final-output group) without restarting:
+
+```jsonc
+// First call targets the staging group
+{
+  "tool": "add_items",
+  "args": {
+    "items": [...],
+    "library_type": "group",
+    "library_id": "5597114"
+  }
+}
+
+// Second call targets DART-output (different group)
+{
+  "tool": "add_items",
+  "args": {
+    "items": [...],
+    "library_type": "group",
+    "library_id": "6178978"
+  }
+}
+```
 
 ## Environment Variables
 
@@ -75,7 +136,7 @@ To enable deletion, set the `UNSAFE_OPERATIONS` environment variable to one of t
 
 - If `UNSAFE_OPERATIONS` is not set, empty, or set to an unrecognized value, it defaults to `none`.
 - The value is **case-insensitive** (e.g. `ALL`, `Items`, `NONE` all work).
-- `delete_items` moves items to the Zotero trash (recoverable from the Zotero desktop client).
+- `delete_items` deletes items **permanently**: the Zotero Web API multi-item DELETE does not move them to the Zotero trash, so they cannot be restored from the desktop client.
 - `delete_collection` removes the collection (folder) only — items inside it are **not** deleted and remain in your library.
 - The `all` value includes both item and collection deletion because managing collections inherently requires item-level access.
 
@@ -132,7 +193,7 @@ claude mcp add-json "zotero" '{"command":"npx","args":["tsx","src/server.ts"],"e
 | `get_collections` | List all collections (folders) with keys, names, and parent relationships |
 | `get_collection_items` | Get items in a specific collection with keys, titles, authors, dates |
 | `search_library` | Search by query, or list items sorted by field (date, title, etc.) |
-| `get_items_details` | Batch metadata retrieval for multiple items — returns all type-specific fields (bookTitle, proceedingsTitle, university, etc.) |
+| `get_items_details` | Batch metadata retrieval for multiple items — returns all type-specific fields (bookTitle, proceedingsTitle, university, etc.), the `authors` string and the structured `creators` |
 | `get_item_fulltext` | Get full-text content of a PDF attachment via Zotero's fulltext index |
 
 ### Adding content
@@ -150,7 +211,7 @@ claude mcp add-json "zotero" '{"command":"npx","args":["tsx","src/server.ts"],"e
 
 | Tool | Description |
 |---|---|
-| `delete_items` | Delete up to 50 items per call (moves to Zotero trash). Requires `UNSAFE_OPERATIONS=items` or `all` |
+| `delete_items` | Permanently delete up to 50 items per call (not moved to the Zotero trash). Requires `UNSAFE_OPERATIONS=items` or `all` |
 | `delete_collection` | Delete a collection (folder). Items inside are kept. Requires `UNSAFE_OPERATIONS=all` |
 
 ### Citation & documents

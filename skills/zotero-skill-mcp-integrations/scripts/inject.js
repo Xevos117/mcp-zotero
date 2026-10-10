@@ -3,7 +3,12 @@
 // Standalone citation injection script for Claude skill usage.
 // Reads a .docx with <zcite> tags and a metadata.json, injects Zotero field codes.
 //
-// Usage: node inject.js <input.docx> <output.docx> <metadata.json> <userId> [style]
+// Usage: node inject.mjs <input.docx> <output.docx> <metadata.json> <userId|libraryPath> [style]
+// (ES module: copy it as inject.mjs so Node never treats it as CommonJS, whatever the
+// nearest package.json says.)
+//
+// <libraryPath> is "users/<id>" or "groups/<id>" (library_path from get_user_id);
+// a bare numeric ID is treated as a user ID for backward compatibility.
 //
 // Dependencies: jszip (npm install jszip)
 
@@ -41,26 +46,68 @@ const args = process.argv.slice(2);
 
 if (args.length < 4) {
   console.error(
-    "Usage: node inject.js <input.docx> <output.docx> <metadata.json> <userId> [style]"
+    "Usage: node inject.js <input.docx> <output.docx> <metadata.json> <userId|libraryPath> [style]"
   );
   process.exit(1);
 }
 
-const [inputPath, outputPath, metadataPath, userId, style = "apa"] = args;
+const [inputPath, outputPath, metadataPath, libraryArg, style = "apa"] = args;
+const STYLES = ["apa", "ieee", "vancouver", "harvard", "chicago"];
+if (!STYLES.includes(style)) {
+  console.error(`Invalid style '${style}': expected one of ${STYLES.join(", ")}`);
+  process.exit(1);
+}
+const libraryPath = /^\d+$/.test(libraryArg) ? `users/${libraryArg}` : libraryArg;
+if (!/^(users|groups)\/\d+$/.test(libraryPath)) {
+  console.error(
+    `Invalid library '${libraryArg}': expected a numeric user ID, "users/<id>" or "groups/<id>"`
+  );
+  process.exit(1);
+}
 
 // ---------------------------------------------------------------------------
 // Zotero itemType → CSL type mapping
 // ---------------------------------------------------------------------------
 
+// Same table as src/utils/csl-to-zotero.ts (inject_citations), so both produce the same CSL type
 const ZOTERO_TO_CSL_TYPE = {
   journalArticle: "article-journal",
+  magazineArticle: "article-magazine",
+  newspaperArticle: "article-newspaper",
+  bill: "bill",
   book: "book",
+  tvBroadcast: "broadcast",
   bookSection: "chapter",
+  dataset: "dataset",
+  document: "document",
+  dictionaryEntry: "entry-dictionary",
+  encyclopediaArticle: "entry-encyclopedia",
+  artwork: "graphic",
+  hearing: "hearing",
+  interview: "interview",
+  case: "legal_case",
+  statute: "legislation",
+  manuscript: "manuscript",
+  map: "map",
+  film: "motion_picture",
   conferencePaper: "paper-conference",
+  patent: "patent",
+  letter: "personal_communication",
+  forumPost: "post",
+  blogPost: "post-weblog",
   report: "report",
+  computerProgram: "software",
+  audioRecording: "song",
+  presentation: "speech",
+  standard: "standard",
   thesis: "thesis",
   webpage: "webpage",
-  document: "dataset",
+  radioBroadcast: "broadcast",
+  videoRecording: "motion_picture",
+  preprint: "article",
+  podcast: "song",
+  email: "personal_communication",
+  instantMessage: "personal_communication",
 };
 
 // ---------------------------------------------------------------------------
@@ -74,7 +121,8 @@ const ZOTERO_TO_CSL_TYPE = {
  * @returns {Array<{family: string, given: string}>}
  */
 function parseAuthors(authorString) {
-  if (!authorString) return [];
+  // "No authors listed" is get_items_details' placeholder, not a name
+  if (!authorString || authorString === "No authors listed") return [];
   return authorString.split(",").map((name) => {
     const parts = name.trim().split(/\s+/);
     if (parts.length === 1) return { family: parts[0], given: "" };
@@ -105,9 +153,24 @@ function parseDate(dateString) {
  * @param {Record<string, unknown>} meta
  * @returns {Record<string, unknown>}
  */
+/**
+ * CSL authors from get_items_details' structured `creators` (same rule as the inject_citations
+ * MCP tool: creatorType "author" only, family = lastName or single-field name).
+ * @param {Array<Record<string, string>>} creators
+ * @returns {Array<{family: string, given: string}>}
+ */
+function authorsFromCreators(creators) {
+  return creators
+    .filter((c) => c.creatorType === "author")
+    .map((c) => ({ family: c.lastName ?? c.name ?? "", given: c.firstName ?? "" }));
+}
+
 function metadataToCsl(meta) {
   const cslType = ZOTERO_TO_CSL_TYPE[meta.itemType] ?? "article-journal";
-  const authors = parseAuthors(meta.authors);
+  // Prefer structured creators; the "authors" string cannot tell "de Kroon" from a middle name
+  const authors = Array.isArray(meta.creators)
+    ? authorsFromCreators(meta.creators)
+    : parseAuthors(meta.authors);
   const issued = parseDate(meta.date);
 
   /** @type {Record<string, unknown>} */
@@ -506,11 +569,13 @@ function parseZciteMatches(documentXml) {
       attrs[attrMatch[1]] = unescapeXml(attrMatch[2]);
     }
 
-    if (!attrs["keys"]) continue;
+    // Tolerate "KEY1, KEY2": a stray space would otherwise become part of the key (404 on fetch)
+    const keys = (attrs["keys"] ?? "").split(",").map((k) => k.trim()).filter(Boolean);
+    if (keys.length === 0) continue;
 
     matches.push({
       fullMatch,
-      keys: attrs["keys"].split(","),
+      keys,
       locator: attrs["locator"] || undefined,
       prefix: attrs["prefix"] || undefined,
       suffix: attrs["suffix"] || undefined,
@@ -524,16 +589,16 @@ function parseZciteMatches(documentXml) {
 /**
  * @param {{fullMatch: string, keys: string[], locator?: string, prefix?: string, suffix?: string, num?: string}} match
  * @param {Map<string, Record<string, unknown>>} cslData
- * @param {string} uid
+ * @param {string} libPath - "users/<id>" or "groups/<id>"
  * @returns {Array<Record<string, unknown>>}
  */
-function buildCitationItems(match, cslData, uid) {
+function buildCitationItems(match, cslData, libPath) {
   return match.keys.map((key, idx) => {
     const itemData = cslData.get(key) ?? { type: "article-journal" };
     const item = {
       id: idx,
-      uris: [`http://zotero.org/users/${uid}/items/${key}`],
-      uri: [`http://zotero.org/users/${uid}/items/${key}`],
+      uris: [`http://zotero.org/${libPath}/items/${key}`],
+      uri: [`http://zotero.org/${libPath}/items/${key}`],
       itemData,
     };
     if (match.locator) item.locator = match.locator;
@@ -636,10 +701,18 @@ async function main() {
     }
   }
 
+  // 4c. Warn about cited keys missing from metadata.json (they would render as "Unknown, n.d.")
+  const missingKeys = [...new Set(matches.flatMap((m) => m.keys))].filter((k) => !cslData.has(k));
+  if (missingKeys.length > 0) {
+    console.error(
+      `WARNING: ${missingKeys.length} cited key(s) not found in metadata.json: ${missingKeys.join(", ")}. Their citations will show "Unknown" until Zotero refreshes them.`
+    );
+  }
+
   // 5. Replace each zcite tag with a field code
   let injected = 0;
   for (const match of matches) {
-    const citationItems = buildCitationItems(match, cslData, userId);
+    const citationItems = buildCitationItems(match, cslData, libraryPath);
     const itemDataList = match.keys.map(
       (k) => cslData.get(k) ?? { type: "article-journal" }
     );

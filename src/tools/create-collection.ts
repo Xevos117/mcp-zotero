@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
-import { logger } from "../utils/logger.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
+import { formatWriteErrors } from "../utils/write-results.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "create_collection",
@@ -15,6 +16,7 @@ export const toolConfig = {
       .describe(
         "Zotero collection key of the parent collection. Get this from get_collections."
       ),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -25,58 +27,35 @@ export async function handleCreateCollection(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { name, parent_collection } = CreateCollectionSchema.parse(args);
+  const { name, parent_collection, library_type, library_id } = CreateCollectionSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (!name?.trim()) {
     return formatErrorResponse("Collection name is required");
   }
 
-  try {
-    const collectionData: Record<string, unknown> = { name: name.trim() };
-    if (parent_collection) {
-      collectionData.parentCollection = parent_collection;
-    }
-
-    const response = await zoteroApi
-      .library("user", userId)
-      .collections()
-      .post([collectionData]);
-
-    if (!response.isSuccess()) {
-      const errors = response.getErrors();
-      const errorMsg = Object.values(errors).join("; ") || "Unknown error";
-      return formatErrorResponse("Failed to create collection", {
-        details: errorMsg,
-      });
-    }
-
-    const created = response.getData();
-    const collection = created[0];
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              collection_key: collection.key,
-              name: collection.name,
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "create_collection",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
+  const collectionData: Record<string, unknown> = { name: name.trim() };
+  if (parent_collection) {
+    collectionData.parentCollection = parent_collection;
   }
+
+  const response = await zoteroApi
+    .library(libraryType, libraryId)
+    .collections()
+    .post([collectionData]);
+
+  if (!response.isSuccess()) {
+    const errorMsg = formatWriteErrors(response.getErrors());
+    return formatErrorResponse("Failed to create collection", {
+      details: errorMsg,
+    });
+  }
+
+  const created = response.getData();
+  const collection = created[0];
+
+  return formatJsonResult({
+    collection_key: collection.key,
+    name: collection.name,
+  });
 }

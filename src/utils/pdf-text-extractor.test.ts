@@ -34,3 +34,16 @@ describe("extractPdfText", () => {
     await expect(extractPdfText(buffer)).rejects.toThrow("Corrupt PDF");
   });
 });
+
+describe("extractPdfText buffer ownership", () => {
+  it("does not hand the caller's buffer to unpdf", async () => {
+    extractTextMock.mockImplementationOnce(async (data) => {
+      // Simulate unpdf detaching the ArrayBuffer it receives
+      structuredClone((data as Uint8Array).buffer, { transfer: [(data as Uint8Array).buffer as ArrayBuffer] });
+      return { totalPages: 1, text: "x" };
+    });
+    const buffer = Buffer.from("fake-pdf-bytes");
+    await extractPdfText(buffer);
+    expect(buffer.length).toBe(14);
+  });
+});

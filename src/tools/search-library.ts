@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
+import { formatJsonResult, formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
-import { logger } from "../utils/logger.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "search_library",
@@ -37,6 +37,7 @@ Use the returned item keys with get_items_details, get_item_fulltext, or inject_
       .optional()
       .default(25)
       .describe("Maximum number of items to return (default: 25, max: 100)"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -47,7 +48,8 @@ export async function handleSearchLibrary(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { query, sort, direction, limit } = SearchSchema.parse(args);
+  const { query, sort, direction, limit, library_type, library_id } = SearchSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const params: Record<string, string | number> = {
     sort,
@@ -59,50 +61,34 @@ export async function handleSearchLibrary(
     params.q = query.trim();
   }
 
-  try {
-    const response = await zoteroApi
-      .library("user", userId)
-      .items()
-      .get(params);
+  const response = await zoteroApi
+    .library(libraryType, libraryId)
+    .items()
+    .get(params);
 
-    const items = response.getData();
+  const items = response.getData();
 
-    if (!Array.isArray(items) || items.length === 0) {
-      if (query) {
-        return formatErrorResponse("No results found", {
-          query,
-          suggestion:
-            "Try a different search term or verify your library contains matching items",
-        });
-      }
-      return formatErrorResponse("No items found", {
-        suggestion: "Add some items to your Zotero library first",
+  if (!Array.isArray(items) || items.length === 0) {
+    if (query) {
+      return formatEmptyResult("No results found", {
+        query,
+        suggestion:
+          "Try a different search term or verify your library contains matching items",
       });
     }
-
-    const formatted = items.map((item: ZoteroItemData) => ({
-      title: item.title || "Untitled",
-      authors: formatCreators(item.creators),
-      date: item.date || "No date",
-      key: item.key,
-      itemType: item.itemType,
-      ...(sort === "dateAdded" && { dateAdded: item.dateAdded || null }),
-    }));
-
-    return {
-      content: [
-        { type: "text", text: JSON.stringify(formatted, null, 2) },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "search_library",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
+    return formatEmptyResult("No items found", {
+      suggestion: "Add some items to your Zotero library first",
+    });
   }
+
+  const formatted = items.map((item: ZoteroItemData) => ({
+    title: item.title || "Untitled",
+    authors: formatCreators(item.creators),
+    date: item.date || "No date",
+    key: item.key,
+    itemType: item.itemType,
+    ...(sort === "dateAdded" && { dateAdded: item.dateAdded || null }),
+  }));
+
+  return formatJsonResult(formatted);
 }

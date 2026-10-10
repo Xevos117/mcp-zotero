@@ -33,11 +33,13 @@ npm install docx jszip fast-xml-parser --registry https://registry.npmjs.org
 
 **Always use `--registry https://registry.npmjs.org`** — the sandbox may default to a blocked registry.
 
-**Important:** `jszip` and `fast-xml-parser` must be resolvable from the working directory where you run `inject.js`. If the skill directory is read-only (e.g. `/mnt/skills/...`), copy the script to your working directory first:
+**Important:** `jszip` and `fast-xml-parser` must be resolvable from the working directory where you run the script. Always copy it to your working directory **with the `.mjs` extension**:
 
 ```bash
-cp <skill_path>/scripts/inject.js ./inject.js
+cp <skill_path>/scripts/inject.js ./inject.mjs
 ```
+
+The script is an ES module. Saved as `.js`, Node decides the module type from the nearest `package.json`: if it says `"type": "commonjs"` (which `npm init -y` writes with recent npm) the script fails with `SyntaxError: Cannot use import statement outside a module`; with no `type` at all Node prints a `MODULE_TYPELESS_PACKAGE_JSON` warning on every run. As `inject.mjs` it always runs cleanly.
 
 The script has a built-in fallback: if the ESM import fails, it tries `createRequire(process.cwd() + "/package.json")` to resolve dependencies from the current working directory's `node_modules`.
 
@@ -59,6 +61,10 @@ Use MCP tools to find or add papers:
 - `find_and_attach_pdfs` — batch lookup and attach OA PDFs for items (by keys or collection)
 
 Note every `item_key` returned — these are needed for citations.
+
+Results and errors: a real failure comes back with `isError: true` and an `{ "error": ... }` body; an empty result (no search hits, empty collection) is a normal result with a `{ "message": ... }` body, not an error. Partial successes (e.g. some DOIs failed) are normal results with a `failed` list.
+
+Group libraries: every tool except `get_user_id` accepts optional `library_type` (`"user"` | `"group"`) and `library_id` (numeric) to target another library for that call. If you do, pass the same library to the inject script in Step 5 (`groups/<id>`).
 
 ### Step 2b — Source transparency and PDF upload
 
@@ -150,9 +156,10 @@ If import fails after 5 attempts, fall back to `add_linked_url_attachment`.
 
 #### Handling green OA (repository copies)
 
-When `find_and_attach_pdfs` or `add_items_by_doi` reports `oa_status: "green"` with
-a `landing_url` but no PDF was attached, it means the paper is available at a
-repository (e.g., PubMed Central) but Unpaywall has no direct download link.
+When `find_and_attach_pdfs` or `add_items_by_doi` reports a `landing_url` but no PDF
+was attached (`oa_status` is often `"green"`, but can also be `"gold"` or `"hybrid"`),
+the paper is open access but Unpaywall has no direct download link, or the publisher
+refused the automated download.
 
 Action: inform the user that a repository copy exists and provide the landing URL.
 If they need the PDF in Zotero, they can download it manually and you can attach it
@@ -179,9 +186,9 @@ get_items_details({ item_keys: ["KEY1", "KEY2", "KEY3", ...] })
 
 Save the result as `metadata.json` in the sandbox. The response is a key → metadata map.
 
-**No remapping required.** The inject script accepts the MCP response field names directly (e.g. lowercase `doi`, `url`, `publicationTitle`). You can pass the MCP response as-is.
+**No remapping required.** The inject script accepts the MCP response field names directly (`DOI`, `url`, `publicationTitle`, `pages`, ...). You can pass the MCP response as-is; extra fields it may contain (`ISSN`, `language`, `accessDate`, type-specific fields) are ignored.
 
-The script also accepts the canonical inject.js field names (uppercase `DOI`, `URL`, `containerTitle`), so either format works:
+The script also accepts the canonical inject.js field names and a lowercase `doi`, so either format works:
 
 | inject.js canonical | MCP response (also accepted) |
 |---|---|
@@ -189,25 +196,27 @@ The script also accepts the canonical inject.js field names (uppercase `DOI`, `U
 | `title` | `title` |
 | `authors` | `authors` |
 | `date` | `date` |
-| `DOI` | `doi` |
+| `DOI` | `DOI` (lowercase `doi` also accepted) |
 | `containerTitle` | `publicationTitle` |
 | `volume` | `volume` |
 | `issue` | `issue` |
 | `page` | `pages` |
 | `publisher` | `publisher` |
 | `URL` | `url` |
+| `author` (CSL names) | `creators` (preferred) or `authors` |
 
 **Do NOT include `abstract`** — it bloats field codes.
 
 #### Authors format
 
-The `authors` field is a **comma-separated string** of `"FirstName LastName"` names, e.g.:
+`get_items_details` returns both:
 
-```
-"John Smith, Jane Doe, Paulo Caetano da Silva"
-```
+- `creators`: the structured names stored in Zotero, e.g. `[{ "creatorType": "author", "firstName": "Paulo", "lastName": "Caetano da Silva" }, { "creatorType": "author", "name": "WHO" }]`
+- `authors`: the same names as a display string, `"Paulo Caetano da Silva, WHO"`
 
-This is the exact format returned by `get_items_details`. The inject script parses each comma-separated token by splitting on whitespace — the **last word** becomes the family name, everything before it becomes the given name. For example, `"Paulo Caetano da Silva"` → `{ family: "Silva", given: "Paulo Caetano da" }`.
+Keep `creators` in `metadata.json`: the script uses it when present (authors only, `lastName` or single-field `name` as family name, `firstName` as given name), exactly like the `inject_citations` MCP tool, so multi-word surnames such as `"de Kroon"` or `"Caetano da Silva"` stay intact.
+
+If you write metadata by hand without `creators`, the `authors` string is used instead: each comma-separated token is split on whitespace and the **last word** becomes the family name (`"Paulo Caetano da Silva"` → `{ family: "Silva", given: "Paulo Caetano da" }`). Prefer `creators` whenever a surname has more than one word.
 
 #### Example metadata.json
 
@@ -216,8 +225,13 @@ This is the exact format returned by `get_items_details`. The inject script pars
   "EUHUT5K3": {
     "title": "Attention Is All You Need",
     "authors": "Ashish Vaswani, Noam Shazeer, Niki Parmar",
+    "creators": [
+      { "creatorType": "author", "firstName": "Ashish", "lastName": "Vaswani" },
+      { "creatorType": "author", "firstName": "Noam", "lastName": "Shazeer" },
+      { "creatorType": "author", "firstName": "Niki", "lastName": "Parmar" }
+    ],
     "date": "2017",
-    "doi": "10.48550/arXiv.1706.03762",
+    "DOI": "10.48550/arXiv.1706.03762",
     "itemType": "journalArticle",
     "publicationTitle": "Advances in Neural Information Processing Systems",
     "url": "https://arxiv.org/abs/1706.03762"
@@ -226,7 +240,7 @@ This is the exact format returned by `get_items_details`. The inject script pars
     "title": "BERT: Pre-training of Deep Bidirectional Transformers",
     "authors": "Jacob Devlin, Ming-Wei Chang, Kenton Lee, Kristina Toutanova",
     "date": "2019",
-    "doi": "10.18653/v1/N19-1423",
+    "DOI": "10.18653/v1/N19-1423",
     "itemType": "conferencePaper",
     "publicationTitle": "Proceedings of NAACL-HLT 2019",
     "url": null
@@ -258,7 +272,7 @@ Supported attributes:
 
 | Attribute | Example | Notes |
 |---|---|---|
-| `keys` | `"ABC12345"` or `"ABC,DEF"` | Required. Comma-separated for multiple |
+| `keys` | `"ABC12345"` or `"ABC,DEF"` | Required. Comma-separated for multiple (spaces after commas are ignored) |
 | `num` | `"1"` or `"1,2"` | **Required for IEEE/Vancouver.** Without it, citations render as `[?]` |
 | `locator` | `"pp. 12-15"` | Page locator |
 | `prefix` | `"see "` | Text before citation |
@@ -270,23 +284,24 @@ Attributes can appear in any order (the parser is order-independent).
 
 ### Step 5 — Run injection
 
-First, get the Zotero user ID by calling the MCP tool `get_user_id`. This returns the numeric user ID needed for field code URIs.
+First, call the MCP tool `get_user_id`. Its `library_path` field (`users/<id>` for a personal library, `groups/<id>` for a group library) is needed for field code URIs.
 
-Then execute the injection script bundled with this skill:
+Then execute the injection script you copied in **Dependencies**:
 
 ```bash
-node <skill_path>/scripts/inject.js input.docx output.docx metadata.json <userId> [style]
+node inject.mjs input.docx output.docx metadata.json <library_path> [style]
 ```
 
 Where:
-- `<skill_path>` is the path to this skill's directory (use the location from the skill metadata)
-- `userId` is the Zotero user ID from `get_user_id`
-- `style` is one of: `apa` (default), `ieee`, `vancouver`, `harvard`, `chicago`
+- `library_path` is the `library_path` value from `get_user_id` (`users/<id>` or `groups/<id>`; a bare numeric user ID is also accepted)
+- `style` is one of: `apa` (default), `ieee`, `vancouver`, `harvard`, `chicago` — any other value exits with an error
 
 The script outputs JSON to stdout:
 ```json
 { "output": "output.docx", "found": 3, "injected": 3 }
 ```
+
+Warnings go to stderr: numbered styles without `num`, and cited keys missing from `metadata.json` (those citations would read "Unknown, n.d." until Zotero refreshes them). Invalid arguments exit with code 1.
 
 ### Step 6 — Present result
 

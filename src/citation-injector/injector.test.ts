@@ -89,10 +89,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "apa"
     );
 
@@ -121,10 +118,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "apa"
     );
 
@@ -143,10 +137,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "apa"
     );
 
@@ -165,10 +156,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "apa"
     );
 
@@ -192,10 +180,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "apa"
     );
 
@@ -217,10 +202,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn();
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "apa"
     );
 
@@ -239,7 +221,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    await injectCitations("/tmp/test.docx", api, TEST_USER_ID, "apa");
+    await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID, "apa");
 
     const writeCall = zipMock.file.mock.calls.find(
       (c: unknown[]) => c[0] === "word/document.xml" && c.length === 2
@@ -259,10 +241,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "ieee"
     );
 
@@ -287,10 +266,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "vancouver"
     );
 
@@ -311,10 +287,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "vancouver"
     );
 
@@ -332,10 +305,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "apa"
     );
 
@@ -356,10 +326,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "apa"
     );
 
@@ -387,10 +354,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "ieee"
     );
 
@@ -419,10 +383,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "apa"
     );
 
@@ -449,10 +410,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "ieee"
     );
 
@@ -483,10 +441,7 @@ describe("injectCitations", () => {
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
     const api = createMockZoteroApi(getStub);
 
-    const result = await injectCitations(
-      "/tmp/test.docx",
-      api,
-      TEST_USER_ID,
+    const result = await injectCitations("/tmp/test.docx", api, "user", TEST_USER_ID,
       "apa"
     );
 
@@ -511,7 +466,7 @@ describe("injectCitations", () => {
     const api = createMockZoteroApi(getStub);
 
     await expect(
-      injectCitations("/tmp/bad.docx", api, TEST_USER_ID, "apa")
+      injectCitations("/tmp/bad.docx", api, "user", TEST_USER_ID, "apa")
     ).rejects.toThrow("Invalid .docx file: word/document.xml not found");
   });
 });

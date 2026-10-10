@@ -18,6 +18,8 @@ import { handleDeleteCollection, toolConfig as deleteCollectionConfig } from "./
 import { handleDeleteItems, toolConfig as deleteItemsConfig } from "./delete-items.js";
 
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { ZodRawShape } from "zod";
+import { logToolError } from "../utils/error-formatter.js";
 
 type ToolHandler = (
   zoteroApi: ZoteroApiInterface,
@@ -26,39 +28,7 @@ type ToolHandler = (
   unsafeOps?: UnsafeOperationsMode
 ) => Promise<CallToolResult>;
 
-const handlers: Record<string, ToolHandler> = {
-  get_collections: handleGetCollections,
-  get_collection_items: handleGetCollectionItems,
-  get_items_details: handleGetItemsDetails,
-  search_library: handleSearchLibrary,
-  create_collection: handleCreateCollection,
-  add_items_by_doi: handleAddItemsByDoi,
-  inject_citations: handleInjectCitations,
-  get_item_fulltext: handleGetItemFulltext,
-  get_user_id: handleGetUserId,
-  add_linked_url_attachment: handleAddLinkedUrlAttachment,
-  add_items: handleAddItems,
-  import_pdf_to_zotero: handleImportPdfToZotero,
-  find_and_attach_pdfs: handleFindAndAttachPdfs,
-  delete_collection: handleDeleteCollection,
-  delete_items: handleDeleteItems,
-};
-
-export async function handleToolCall(
-  name: string,
-  args: Record<string, unknown>,
-  zoteroApi: ZoteroApiInterface,
-  userId: string,
-  unsafeOps: UnsafeOperationsMode = "none"
-): Promise<CallToolResult> {
-  const handler = handlers[name];
-  if (!handler) {
-    throw new Error(`Unknown tool: ${name}`);
-  }
-  return handler(zoteroApi, userId, args, unsafeOps);
-}
-
-const toolConfigs = [
+const tools: Array<{ config: { name: string; description: string; inputSchema: ZodRawShape }; handler: ToolHandler }> = [
   { config: collectionsConfig, handler: handleGetCollections },
   { config: collectionItemsConfig, handler: handleGetCollectionItems },
   { config: itemsDetailsConfig, handler: handleGetItemsDetails },
@@ -76,18 +46,49 @@ const toolConfigs = [
   { config: deleteItemsConfig, handler: handleDeleteItems },
 ];
 
+const handlers = new Map(tools.map(({ config, handler }) => [config.name, handler]));
+
+/** Run a tool handler; Zotero API errors it throws are logged here once for every tool. */
+async function runTool(
+  name: string,
+  handler: ToolHandler,
+  zoteroApi: ZoteroApiInterface,
+  userId: string,
+  args: Record<string, unknown>,
+  unsafeOps: UnsafeOperationsMode
+): Promise<CallToolResult> {
+  try {
+    return await handler(zoteroApi, userId, args, unsafeOps);
+  } catch (err) {
+    logToolError(name, err);
+    throw err;
+  }
+}
+
+export async function handleToolCall(
+  name: string,
+  args: Record<string, unknown>,
+  zoteroApi: ZoteroApiInterface,
+  userId: string,
+  unsafeOps: UnsafeOperationsMode = "none"
+): Promise<CallToolResult> {
+  const handler = handlers.get(name);
+  if (!handler) {
+    throw new Error(`Unknown tool: ${name}`);
+  }
+  return runTool(name, handler, zoteroApi, userId, args, unsafeOps);
+}
+
 export function registerAllTools(
   server: McpServer,
   zoteroApi: ZoteroApiInterface,
   userId: string,
   unsafeOps: UnsafeOperationsMode = "none"
 ): void {
-  for (const { config, handler } of toolConfigs) {
+  for (const { config, handler } of tools) {
     server.registerTool(config.name, {
       description: config.description,
       inputSchema: config.inputSchema,
-    }, async (args: Record<string, unknown>) => {
-      return handler(zoteroApi, userId, args, unsafeOps);
-    });
+    }, async (args: Record<string, unknown>) => runTool(config.name, handler, zoteroApi, userId, args, unsafeOps));
   }
 }

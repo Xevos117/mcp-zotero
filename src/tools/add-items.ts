@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
-import { logger } from "../utils/logger.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
+import { postInBatches } from "../utils/write-results.js";
 import {
   ZOTERO_ITEM_TYPES,
   ITEM_TYPE_FIELDS,
@@ -9,6 +9,7 @@ import {
   TITLE_FIELD_NAME,
   ZoteroItemType,
 } from "../utils/zotero-item-types.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 const CreatorSchema = z
   .object({
@@ -108,6 +109,7 @@ Invalid fields or creatorTypes for a given type are rejected with helpful error 
       .array(z.string())
       .optional()
       .describe("Tags to apply to all items"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -118,7 +120,8 @@ export async function handleAddItems(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { items, collection_key, tags } = AddItemsSchema.parse(args);
+  const { items, collection_key, tags, library_type, library_id } = AddItemsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const payloads = items.map((item) => {
     const { itemType, title, creators, ...fields } = item;
@@ -150,70 +153,25 @@ export async function handleAddItems(
     return payload;
   });
 
-  try {
-    const response = await zoteroApi
-      .library("user", userId)
-      .items()
-      .post(payloads);
+  const write = await postInBatches(
+    (batch) => zoteroApi.library(libraryType, libraryId).items().post(batch),
+    payloads
+  );
 
-    const errors = response.getErrors();
-    const errorIndices = new Set(Object.keys(errors));
+  const success = write.created.map(({ index, entity }) => ({
+    index,
+    item_key: entity.key as string,
+    title: entity.title ?? items[index].title,
+    item_type: items[index].itemType,
+  }));
+  const failed = write.failed.map(({ index, error }) => ({ index, title: items[index].title, error }));
 
-    const success: Array<{
-      index: number;
-      item_key: string;
-      title: string;
-      item_type: string;
-    }> = [];
-    const failed: Array<{ index: number; title: string; error: string }> = [];
-
-    for (const [idx, msg] of Object.entries(errors)) {
-      const i = Number(idx);
-      failed.push({ index: i, title: items[i].title, error: msg });
-    }
-
-    const created = response.getData();
-    let successIdx = 0;
-    for (let i = 0; i < items.length; i++) {
-      if (!errorIndices.has(String(i))) {
-        const entity = created[successIdx++];
-        success.push({
-          index: i,
-          item_key: entity?.key ?? "unknown",
-          title: entity?.title ?? items[i].title,
-          item_type: items[i].itemType,
-        });
-      }
-    }
-
-    if (success.length === 0 && failed.length > 0) {
-      return formatErrorResponse("All items failed to create", { failed });
-    }
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              success,
-              ...(failed.length > 0 ? { failed } : {}),
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "add_items",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
+  if (success.length === 0 && failed.length > 0) {
+    return formatErrorResponse("All items failed to create", { failed });
   }
+
+  return formatJsonResult({
+    success,
+    ...(failed.length > 0 ? { failed } : {}),
+  });
 }

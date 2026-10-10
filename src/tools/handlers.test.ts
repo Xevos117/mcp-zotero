@@ -24,15 +24,12 @@ vi.mock("../utils/zotero-fulltext.js", () => ({
   putFulltext: vi.fn(),
 }));
 
-vi.mock("../utils/unpaywall.js", () => ({
-  lookupOaPdf: vi.fn().mockResolvedValue({
-    found: false,
-    pdf_url: null,
-    source: null,
-    license: null,
-    oa_status: null,
+vi.mock("../utils/unpaywall.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/unpaywall.js")>()),
+  lookupOaPdfWithFallbacks: vi.fn().mockResolvedValue({
+    primary: { found: false, pdf_url: null, source: null, license: null, oa_status: null },
+    fallback_urls: [],
   }),
-  lookupOaPdfWithFallbacks: vi.fn(),
 }));
 
 vi.mock("../utils/pdf-uploader.js", () => ({
@@ -78,7 +75,7 @@ describe("get_collections", () => {
     const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("No collections found");
+    expect(parsed.message).toBe("No collections found");
     expect(parsed.suggestion).toBeDefined();
   });
 
@@ -112,7 +109,7 @@ describe("get_collections", () => {
     const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("No collections found");
+    expect(parsed.message).toBe("No collections found");
     expect(parsed.suggestion).toContain("include_trashed");
   });
 });
@@ -168,7 +165,7 @@ describe("get_collection_items", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("Collection is empty");
+    expect(parsed.message).toBe("Collection is empty");
     expect(parsed.status).toBe("empty");
   });
 
@@ -258,7 +255,7 @@ describe("get_items_details", () => {
       TEST_USER_ID
     );
 
-    expect(getStub).toHaveBeenCalledWith({ itemKey: "ABC12345,DEF67890" });
+    expect(getStub).toHaveBeenCalledWith({ itemKey: "ABC12345,DEF67890", limit: 2 });
   });
 
   it("excludes abstract from response by default", async () => {
@@ -312,7 +309,7 @@ describe("get_items_details", () => {
     expect(parsed["BS00001"].publisher).toBe("Publisher");
   });
 
-  it("excludes structural fields (key, version, collections, tags, creators)", async () => {
+  it("excludes structural fields (key, version, collections, tags) and keeps structured creators", async () => {
     const { mock } = createZoteroApiMock([fullItemFixture]);
     const result = await handleToolCall(
       "get_items_details",
@@ -326,7 +323,7 @@ describe("get_items_details", () => {
     expect(parsed["ABC12345"]).not.toHaveProperty("version");
     expect(parsed["ABC12345"]).not.toHaveProperty("collections");
     expect(parsed["ABC12345"]).not.toHaveProperty("tags");
-    expect(parsed["ABC12345"]).not.toHaveProperty("creators");
+    expect(parsed["ABC12345"].creators).toEqual(fullItemFixture.creators);
     expect(parsed["ABC12345"]).not.toHaveProperty("dateAdded");
     // authors is the formatted version of creators
     expect(parsed["ABC12345"].authors).toBe("John Smith, Jane Doe");
@@ -355,7 +352,7 @@ describe("get_items_details", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("No items found for the given keys");
+    expect(parsed.message).toBe("No items found for the given keys");
   });
 });
 
@@ -454,7 +451,7 @@ describe("search_library", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("No results found");
+    expect(parsed.message).toBe("No results found");
     expect(parsed.query).toBe("nonexistent topic");
   });
 
@@ -463,7 +460,7 @@ describe("search_library", () => {
     const result = await handleToolCall("search_library", {}, mock, TEST_USER_ID);
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("No items found");
+    expect(parsed.message).toBe("No items found");
     expect(parsed.suggestion).toBeDefined();
   });
 });
@@ -696,7 +693,7 @@ describe("add_items_by_doi", () => {
     process.env = { ...ORIGINAL_ENV, ZOTERO_API_KEY: "test-api-key" };
 
     const { resolveDois } = await import("../utils/doi-resolver.js");
-    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
     const { downloadAndUploadPdf } = await import("../utils/pdf-uploader.js");
 
     vi.mocked(resolveDois).mockResolvedValueOnce({
@@ -713,13 +710,13 @@ describe("add_items_by_doi", () => {
       failed: [],
     });
 
-    vi.mocked(lookupOaPdf).mockResolvedValueOnce({
+    vi.mocked(lookupOaPdfWithFallbacks).mockResolvedValueOnce({ fallback_urls: [], primary: {
       found: true,
       pdf_url: "https://journal.org/oa.pdf",
       source: "unpaywall_gold",
       license: "cc-by",
       oa_status: "gold",
-    });
+    } });
 
     vi.mocked(downloadAndUploadPdf).mockResolvedValueOnce({
       success: true,
@@ -755,7 +752,7 @@ describe("add_items_by_doi", () => {
     process.env = { ...ORIGINAL_ENV, ZOTERO_API_KEY: "test-api-key" };
 
     const { resolveDois } = await import("../utils/doi-resolver.js");
-    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
 
     vi.mocked(resolveDois).mockResolvedValueOnce({
       success: [
@@ -771,14 +768,15 @@ describe("add_items_by_doi", () => {
       failed: [],
     });
 
-    vi.mocked(lookupOaPdf).mockResolvedValueOnce({
+    vi.mocked(lookupOaPdfWithFallbacks).mockResolvedValueOnce({ fallback_urls: [], primary: {
       found: false,
       pdf_url: null,
       landing_url: "https://europepmc.org/articles/PMC7164389",
+      landing_host_type: "repository",
       source: null,
       license: null,
       oa_status: "green",
-    });
+    } });
 
     const writeData = {
       isSuccess: true,
@@ -805,7 +803,7 @@ describe("add_items_by_doi", () => {
 
   it("does not attach PDF when auto_attach_pdf is false", async () => {
     const { resolveDois } = await import("../utils/doi-resolver.js");
-    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
 
     vi.mocked(resolveDois).mockResolvedValueOnce({
       success: [
@@ -828,7 +826,7 @@ describe("add_items_by_doi", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    vi.mocked(lookupOaPdf).mockClear();
+    vi.mocked(lookupOaPdfWithFallbacks).mockClear();
 
     const result = await handleToolCall(
       "add_items_by_doi",
@@ -840,7 +838,7 @@ describe("add_items_by_doi", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.success).toHaveLength(1);
     expect(parsed.pdf_results).toBeUndefined();
-    expect(vi.mocked(lookupOaPdf)).not.toHaveBeenCalled();
+    expect(vi.mocked(lookupOaPdfWithFallbacks)).not.toHaveBeenCalled();
   });
 
   it("throws when Zotero API write fails (isSuccess false)", async () => {
@@ -906,7 +904,9 @@ describe("add_items_by_doi", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toContain("empty response");
+    // Missing keys are now per-item write failures (see postInBatches)
+    expect(parsed.error).toContain("Zotero API write failed");
+    expect(parsed.error).toContain("did not include an item key");
   });
 
   it("throws when entity key is missing from response", async () => {
@@ -939,7 +939,9 @@ describe("add_items_by_doi", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toContain("Failed to get item key");
+    // Missing keys are now per-item write failures (see postInBatches)
+    expect(parsed.error).toContain("Zotero API write failed");
+    expect(parsed.error).toContain("did not include an item key");
   });
 
   it("returns created items even when PDF attach phase throws", async () => {
@@ -947,7 +949,7 @@ describe("add_items_by_doi", () => {
     process.env = { ...ORIGINAL_ENV, ZOTERO_API_KEY: "test-api-key" };
 
     const { resolveDois } = await import("../utils/doi-resolver.js");
-    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
 
     vi.mocked(resolveDois).mockResolvedValueOnce({
       success: [
@@ -963,8 +965,8 @@ describe("add_items_by_doi", () => {
       failed: [],
     });
 
-    // Make lookupOaPdf throw to simulate a network failure
-    vi.mocked(lookupOaPdf).mockRejectedValueOnce(new Error("Unpaywall unreachable"));
+    // Make lookupOaPdfWithFallbacks throw to simulate a network failure
+    vi.mocked(lookupOaPdfWithFallbacks).mockRejectedValueOnce(new Error("Unpaywall unreachable"));
 
     const writeData = {
       isSuccess: true,
@@ -982,8 +984,8 @@ describe("add_items_by_doi", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.success).toHaveLength(1);
     expect(parsed.success[0].item_key).toBe("SURV01");
-    expect(parsed.pdf_attach_error).toContain("PDF attachment failed");
-    expect(parsed.pdf_attach_error).toContain("Items were created successfully");
+    // The shared pipeline turns the failure into a per-item result instead of pdf_attach_error
+    expect(parsed.pdf_results[0]).toMatchObject({ status: "error", pdf_attached: false, error: "Unpaywall unreachable" });
 
     process.env = ORIGINAL_ENV;
   });
@@ -993,7 +995,7 @@ describe("add_items_by_doi", () => {
     process.env = { ...ORIGINAL_ENV, ZOTERO_API_KEY: "test-api-key" };
 
     const { resolveDois } = await import("../utils/doi-resolver.js");
-    const { lookupOaPdf } = await import("../utils/unpaywall.js");
+    const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
     const { downloadAndUploadPdf } = await import("../utils/pdf-uploader.js");
 
     vi.mocked(resolveDois).mockResolvedValueOnce({
@@ -1010,13 +1012,13 @@ describe("add_items_by_doi", () => {
       failed: [],
     });
 
-    vi.mocked(lookupOaPdf).mockResolvedValueOnce({
+    vi.mocked(lookupOaPdfWithFallbacks).mockResolvedValueOnce({ fallback_urls: [], primary: {
       found: true,
       pdf_url: "https://journal.org/paper.pdf",
       source: "unpaywall_gold",
       license: "cc-by",
       oa_status: "gold",
-    });
+    } });
 
     vi.mocked(downloadAndUploadPdf).mockResolvedValueOnce({
       success: false,
@@ -1077,9 +1079,9 @@ describe("get_item_fulltext", () => {
 
     const { mock, getStub } = createZoteroApiMock([]);
     // First call: parent item metadata
-    getStub.mockResolvedValueOnce({ getData: () => parentItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => parentItem });
     // Second call: children
-    getStub.mockResolvedValueOnce({ getData: () => [pdfChild] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [pdfChild] });
 
     vi.stubGlobal(
       "fetch",
@@ -1119,8 +1121,8 @@ describe("get_item_fulltext", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => parentItem });
-    getStub.mockResolvedValueOnce({ getData: () => [pdfChild] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => parentItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [pdfChild] });
 
     vi.stubGlobal(
       "fetch",
@@ -1143,8 +1145,8 @@ describe("get_item_fulltext", () => {
     const noteChild = { key: "NOTE01", itemType: "note", title: "My notes" };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => ({ ...parentItem, url: undefined }) });
-    getStub.mockResolvedValueOnce({ getData: () => [noteChild] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => ({ ...parentItem, url: undefined }) });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [noteChild] });
 
     const result = await handleToolCall(
       "get_item_fulltext",
@@ -1165,8 +1167,8 @@ describe("get_item_fulltext", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => parentItem });
-    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => parentItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
 
     const result = await handleToolCall(
       "get_item_fulltext",
@@ -1189,8 +1191,8 @@ describe("get_item_fulltext", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => webpageItem });
-    getStub.mockResolvedValueOnce({ getData: () => [] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => webpageItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [] });
 
     const result = await handleToolCall(
       "get_item_fulltext",
@@ -1212,7 +1214,7 @@ describe("get_item_fulltext", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => attachmentItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => attachmentItem });
 
     vi.stubGlobal(
       "fetch",
@@ -1245,8 +1247,8 @@ describe("get_item_fulltext", () => {
     };
 
     const { mock, getStub } = createZoteroApiMock([]);
-    getStub.mockResolvedValueOnce({ getData: () => parentItem });
-    getStub.mockResolvedValueOnce({ getData: () => [pdfChild] });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => parentItem });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [pdfChild] });
 
     const longText = "A".repeat(200);
     vi.stubGlobal(
@@ -1821,6 +1823,7 @@ describe("import_pdf_to_zotero", () => {
 
     expect(vi.mocked(downloadAndUploadPdf)).toHaveBeenCalledWith(
       expect.anything(), // zoteroApi proxy
+      "user",
       TEST_USER_ID,
       "test-api-key",
       {
@@ -2301,8 +2304,8 @@ describe("pagination: get_collection_items", () => {
 
     const { mock, getStub } = createZoteroApiMock([]);
     getStub
-      .mockResolvedValueOnce({ getData: () => page1, getTotalResults: () => 150 })
-      .mockResolvedValueOnce({ getData: () => page2, getTotalResults: () => 150 });
+      .mockResolvedValueOnce({ getVersion: () => 1, getData: () => page1, getTotalResults: () => 150 })
+      .mockResolvedValueOnce({ getVersion: () => 1, getData: () => page2, getTotalResults: () => 150 });
 
     const result = await handleToolCall(
       "get_collection_items",
@@ -2334,8 +2337,8 @@ describe("pagination: get_collections", () => {
 
     const { mock, getStub } = createZoteroApiMock([]);
     getStub
-      .mockResolvedValueOnce({ getData: () => page1, getTotalResults: () => 130 })
-      .mockResolvedValueOnce({ getData: () => page2, getTotalResults: () => 130 });
+      .mockResolvedValueOnce({ getVersion: () => 1, getData: () => page1, getTotalResults: () => 130 })
+      .mockResolvedValueOnce({ getVersion: () => 1, getData: () => page2, getTotalResults: () => 130 });
 
     const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
 
@@ -2366,11 +2369,11 @@ describe("pagination: find_and_attach_pdfs with collection_key", () => {
 
     const { mock, getStub } = createZoteroApiMock([]);
     // Page 1 of collection items (via fetchAllPages)
-    getStub.mockResolvedValueOnce({ getData: () => page1, getTotalResults: () => 120 });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => page1, getTotalResults: () => 120 });
     // Page 2 of collection items (via fetchAllPages)
-    getStub.mockResolvedValueOnce({ getData: () => page2, getTotalResults: () => 120 });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => page2, getTotalResults: () => 120 });
     // Batch metadata fetch — returns items with DOIs
-    getStub.mockResolvedValueOnce({ getData: () => allItems, getTotalResults: () => 120 });
+    getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => allItems, getTotalResults: () => 120 });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",

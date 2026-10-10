@@ -3,6 +3,9 @@ import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { logger } from "./logger.js";
 import { extractPdfText } from "./pdf-text-extractor.js";
 import { putFulltext } from "./zotero-fulltext.js";
+import { formatWriteErrors } from "./write-results.js";
+import { LibraryType } from "./library-context.js";
+import { errorMessage } from "./error-formatter.js";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
@@ -22,6 +25,8 @@ export interface PdfUploadOptions {
   filename?: string;
   title?: string;
   contentType?: string;
+  /** DOI of the parent item, used for the filename when neither URL nor server provide one. */
+  doi?: string;
 }
 
 export type PdfUploadErrorCode =
@@ -61,16 +66,39 @@ export interface PdfUploadFailure {
 
 export type PdfUploadResult = PdfUploadSuccess | PdfUploadFailure;
 
-function extractFilename(url: string): string {
-  try {
-    const pathname = new URL(url).pathname;
-    const basename = pathname.split("/").pop();
-    if (basename && basename.includes(".")) {
-      return decodeURIComponent(basename);
+function safeBasename(name: string): string {
+  return (name.split(/[\\/]/).pop() ?? "").replace(/[\x00-\x1f"]/g, "").trim();
+}
+
+function filenameFromContentDisposition(header: string | null): string {
+  if (!header) return "";
+  const extended = /filename\*\s*=\s*[\w-]*'[^']*'([^;]+)/i.exec(header);
+  if (extended) {
+    try {
+      return safeBasename(decodeURIComponent(extended[1].trim()));
+    } catch {
+      // malformed percent-encoding: fall back to the plain parameter
     }
-  } catch {
-    // fall through
   }
+  const plain = /filename\s*=\s*(?:"([^"]*)"|([^;]+))/i.exec(header);
+  return plain ? safeBasename(plain[1] ?? plain[2]) : "";
+}
+
+/**
+ * Attachment filename, in order: the URL basename when it ends in .pdf, the Content-Disposition
+ * filename, "<sanitized DOI>.pdf", "document.pdf". URLs such as PLOS ".../article/file?id=..."
+ * carry no usable name in the path.
+ */
+export function resolvePdfFilename(url: string, contentDisposition: string | null, doi?: string): string {
+  try {
+    const basename = safeBasename(decodeURIComponent(new URL(url).pathname));
+    if (/\.pdf$/i.test(basename)) return basename;
+  } catch {
+    // invalid URL or percent-encoding: try the other sources
+  }
+  const fromHeader = filenameFromContentDisposition(contentDisposition);
+  if (fromHeader) return /\.[a-z0-9]+$/i.test(fromHeader) ? fromHeader : `${fromHeader}.pdf`;
+  if (doi) return `${doi.replace(/[^A-Za-z0-9._-]+/g, "_")}.pdf`;
   return "document.pdf";
 }
 
@@ -80,13 +108,12 @@ function extractFilename(url: string): string {
  */
 export async function downloadAndUploadPdf(
   zoteroApi: ZoteroApiInterface,
+  libraryType: LibraryType,
   userId: string,
   apiKey: string,
   options: PdfUploadOptions
 ): Promise<PdfUploadResult> {
   const contentType = options.contentType ?? "application/pdf";
-  const filename = options.filename ?? extractFilename(options.url);
-  const title = options.title ?? filename;
 
   // 1. Download the file
   let downloadResponse: Response;
@@ -97,7 +124,7 @@ export async function downloadAndUploadPdf(
       },
     });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     return {
       success: false,
       error: {
@@ -129,6 +156,10 @@ export async function downloadAndUploadPdf(
 
   const arrayBuffer = await downloadResponse.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
+  const filename =
+    options.filename ??
+    resolvePdfFilename(options.url, downloadResponse.headers.get("content-disposition"), options.doi);
+  const title = options.title ?? filename;
 
   // 2. Validate PDF magic bytes
   const PDF_MAGIC = Buffer.from("%PDF-");
@@ -184,11 +215,11 @@ export async function downloadAndUploadPdf(
   let createResponse;
   try {
     createResponse = await zoteroApi
-      .library("user", userId)
+      .library(libraryType, userId)
       .items()
       .post([itemData]);
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     return {
       success: false,
       error: {
@@ -200,8 +231,7 @@ export async function downloadAndUploadPdf(
   }
 
   if (!createResponse.isSuccess()) {
-    const errors = createResponse.getErrors();
-    const errorMsg = Object.values(errors).join("; ") || "Unknown error";
+    const errorMsg = formatWriteErrors(createResponse.getErrors());
     return {
       success: false,
       error: {
@@ -215,7 +245,7 @@ export async function downloadAndUploadPdf(
   const itemKey = created[0].key as string;
 
   // 5. Upload authorization
-  const authUrl = `https://api.zotero.org/users/${userId}/items/${itemKey}/file`;
+  const authUrl = `https://api.zotero.org/${libraryType}s/${userId}/items/${itemKey}/file`;
   const authBody = new URLSearchParams({
     md5,
     filename,
@@ -235,7 +265,7 @@ export async function downloadAndUploadPdf(
       body: authBody.toString(),
     });
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = errorMessage(err);
     return {
       success: false,
       itemKey,
@@ -288,7 +318,7 @@ export async function downloadAndUploadPdf(
         body: uploadBody,
       });
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = errorMessage(err);
       return {
         success: false,
         itemKey,
@@ -324,7 +354,7 @@ export async function downloadAndUploadPdf(
         body: `upload=${auth.uploadKey}`,
       });
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = errorMessage(err);
       return {
         success: false,
         itemKey,
@@ -356,7 +386,7 @@ export async function downloadAndUploadPdf(
   if (contentType === "application/pdf") {
     try {
       const { text, totalPages } = await extractPdfText(buffer);
-      const putResult = await putFulltext(userId, itemKey, apiKey, text, totalPages);
+      const putResult = await putFulltext(libraryType, userId, itemKey, apiKey, text, totalPages);
       fulltextIndexed = putResult.success;
       fulltextStatus = putResult.success
         ? "Fulltext indexed successfully. Use get_item_fulltext to retrieve content."

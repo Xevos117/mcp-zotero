@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { downloadAndUploadPdf } from "./pdf-uploader.js";
+import { downloadAndUploadPdf, resolvePdfFilename } from "./pdf-uploader.js";
 import { createZoteroApiMock } from "../__mocks__/zotero-api.mock.js";
 
 vi.mock("./pdf-text-extractor.js", () => ({
@@ -86,7 +86,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -104,7 +104,7 @@ describe("downloadAndUploadPdf", () => {
     );
 
     const { mock } = createZoteroApiMock([]);
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -122,7 +122,7 @@ describe("downloadAndUploadPdf", () => {
     );
 
     const { mock } = createZoteroApiMock([]);
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/forbidden.pdf",
     });
 
@@ -154,7 +154,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -176,7 +176,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -199,7 +199,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/corrupt.pdf",
     });
 
@@ -219,7 +219,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock, postStub } = createZoteroApiMock([], writeData);
 
-    await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
       parentItem: "PARENT1",
     });
@@ -245,7 +245,7 @@ describe("downloadAndUploadPdf", () => {
     );
 
     const { mock } = createZoteroApiMock([]);
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -273,7 +273,7 @@ describe("downloadAndUploadPdf", () => {
     );
 
     const { mock } = createZoteroApiMock([]);
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -306,7 +306,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -336,7 +336,7 @@ describe("downloadAndUploadPdf", () => {
     const { mock, postStub } = createZoteroApiMock([]);
     postStub.mockRejectedValueOnce(new Error("Connection refused"));
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -370,7 +370,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    const result = await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    const result = await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -393,7 +393,7 @@ describe("downloadAndUploadPdf", () => {
     };
     const { mock } = createZoteroApiMock([], writeData);
 
-    await downloadAndUploadPdf(mock, TEST_USER_ID, TEST_API_KEY, {
+    await downloadAndUploadPdf(mock, "user", TEST_USER_ID, TEST_API_KEY, {
       url: "https://example.com/paper.pdf",
     });
 
@@ -402,5 +402,30 @@ describe("downloadAndUploadPdf", () => {
     expect(downloadCall[1]).toHaveProperty("headers");
     const headers = downloadCall[1].headers as Record<string, string>;
     expect(headers["User-Agent"]).toBe("mcp-zotero/1.0 (Open Access PDF retrieval)");
+  });
+});
+
+describe("resolvePdfFilename", () => {
+  const PLOS = "https://journals.plos.org/plosmedicine/article/file?id=10.1371/journal.pmed.0020124&type=printable";
+
+  it("uses the URL basename when it ends in .pdf", () => {
+    expect(resolvePdfFilename("https://oa.example.org/papers/My%20Paper.PDF?x=1", 'attachment; filename="other.pdf"')).toBe(
+      "My Paper.PDF"
+    );
+  });
+
+  it("falls back to the Content-Disposition filename (quoted, bare or RFC 5987)", () => {
+    expect(resolvePdfFilename(PLOS, 'attachment; filename="journal.pmed.0020124.pdf"')).toBe("journal.pmed.0020124.pdf");
+    expect(resolvePdfFilename(PLOS, "attachment; filename=paper.pdf")).toBe("paper.pdf");
+    expect(resolvePdfFilename(PLOS, "attachment; filename*=UTF-8''%C3%85nalyse.pdf; filename=\"fallback.pdf\"")).toBe(
+      "Ånalyse.pdf"
+    );
+    expect(resolvePdfFilename(PLOS, 'inline; filename="../../etc/report"')).toBe("report.pdf");
+  });
+
+  it("falls back to the sanitized DOI, then to document.pdf", () => {
+    expect(resolvePdfFilename(PLOS, null, "10.1371/journal.pmed.0020124")).toBe("10.1371_journal.pmed.0020124.pdf");
+    expect(resolvePdfFilename(PLOS, "attachment", "10.1/x")).toBe("10.1_x.pdf");
+    expect(resolvePdfFilename(PLOS, null)).toBe("document.pdf");
   });
 });

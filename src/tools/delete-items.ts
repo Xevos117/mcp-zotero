@@ -1,13 +1,14 @@
 import { z } from "zod";
-import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
-import { logger } from "../utils/logger.js";
+import { fetchItemsByKeys } from "../utils/pagination.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "delete_items",
   description:
-    "Delete one or more items from your Zotero library permanently (moves to trash). Accepts up to 50 item keys per call. Requires UNSAFE_OPERATIONS environment variable set to 'items' or 'all'.",
+    "Delete one or more items from your Zotero library: they are permanently deleted (not moved to the Zotero trash). Accepts up to 50 item keys per call. Requires UNSAFE_OPERATIONS environment variable set to 'items' or 'all'.",
   inputSchema: {
     item_keys: z
       .array(z.string())
@@ -16,6 +17,7 @@ export const toolConfig = {
       .describe(
         'Array of Zotero item keys to delete (e.g. ["EUHUT5K3", "F9UQM7N2"]). Max 50 per call.'
       ),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -27,7 +29,8 @@ export async function handleDeleteItems(
   args: Record<string, unknown>,
   unsafeOps: UnsafeOperationsMode = "none"
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { item_keys } = DeleteItemsSchema.parse(args);
+  const { item_keys, library_type, library_id } = DeleteItemsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (!canDeleteItems(unsafeOps)) {
     return formatErrorResponse(
@@ -41,15 +44,12 @@ export async function handleDeleteItems(
   }
 
   try {
-    const response = await zoteroApi
-      .library("user", userId)
-      .items()
-      .get({ itemKey: item_keys.join(",") });
+    const { items, version: libraryVersion } = await fetchItemsByKeys(
+      (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
+      item_keys
+    );
 
-    const items = response.getData() as ZoteroItemData[];
-    const itemList = Array.isArray(items) ? items : [items];
-
-    const foundKeys = new Set(itemList.map((item) => item.key).filter(Boolean));
+    const foundKeys = new Set(items.map((item) => item.key).filter(Boolean));
     const notFoundKeys = item_keys.filter((k) => !foundKeys.has(k));
 
     if (foundKeys.size === 0) {
@@ -61,7 +61,6 @@ export async function handleDeleteItems(
 
     // Use library version from response header (Last-Modified-Version),
     // not individual item versions — required for multi-object DELETE
-    const libraryVersion = response.getVersion();
     if (libraryVersion === null) {
       return formatErrorResponse("Could not determine library version", {
         item_keys,
@@ -71,7 +70,7 @@ export async function handleDeleteItems(
     const keysToDelete = [...foundKeys] as string[];
 
     await zoteroApi
-      .library("user", userId)
+      .library(libraryType, libraryId)
       .items()
       .version(libraryVersion)
       .delete(keysToDelete);
@@ -85,14 +84,7 @@ export async function handleDeleteItems(
       result.not_found = notFoundKeys;
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(result, null, 2),
-        },
-      ],
-    };
+    return formatJsonResult(result);
   } catch (err) {
     if (isZoteroApiError(err)) {
       if (err.response.status === 412) {
@@ -104,12 +96,6 @@ export async function handleDeleteItems(
           }
         );
       }
-      logger.error("Tool execution failed", {
-        tool: "delete_items",
-        status: err.response.status,
-        errorMessage: err.message,
-        url: err.response.url,
-      });
     }
     throw err;
   }

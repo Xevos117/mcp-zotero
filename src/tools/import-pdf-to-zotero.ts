@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
-import { logger } from "../utils/logger.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse, errorMessage, logToolError } from "../utils/error-formatter.js";
 import { downloadAndUploadPdf } from "../utils/pdf-uploader.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "import_pdf_to_zotero",
@@ -35,6 +35,7 @@ export const toolConfig = {
       .array(z.string())
       .optional()
       .describe("Tags to apply to the attachment"),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -45,8 +46,8 @@ export async function handleImportPdfToZotero(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { url, filename, title, content_type, parent_item, collections, tags } =
-    ImportPdfSchema.parse(args);
+  const { url, filename, title, content_type, parent_item, collections, tags, library_type, library_id } = ImportPdfSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const apiKey = process.env.ZOTERO_API_KEY;
   if (!apiKey) {
@@ -54,7 +55,7 @@ export async function handleImportPdfToZotero(
   }
 
   try {
-    const result = await downloadAndUploadPdf(zoteroApi, userId, apiKey, {
+    const result = await downloadAndUploadPdf(zoteroApi, libraryType, libraryId, apiKey, {
       url,
       parentItem: parent_item,
       collections,
@@ -115,40 +116,19 @@ export async function handleImportPdfToZotero(
       }
     }
 
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(
-            {
-              item_key: result.itemKey,
-              filename: result.filename,
-              title: title ?? result.filename,
-              url,
-              parent_item: parent_item ?? null,
-              size_bytes: result.sizeBytes,
-              link_mode: "imported_url",
-              fulltext_indexed: result.fulltextIndexed,
-              fulltext_status: result.fulltextStatus,
-            },
-            null,
-            2
-          ),
-        },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "import_pdf_to_zotero",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    const message = err instanceof Error ? err.message : String(err);
-    return formatErrorResponse("import_pdf_to_zotero failed", {
-      details: message,
+    return formatJsonResult({
+      item_key: result.itemKey,
+      filename: result.filename,
+      title: title ?? result.filename,
+      url,
+      parent_item: parent_item ?? null,
+      size_bytes: result.sizeBytes,
+      link_mode: "imported_url",
+      fulltext_indexed: result.fulltextIndexed,
+      fulltext_status: result.fulltextStatus,
     });
+  } catch (err) {
+    logToolError("import_pdf_to_zotero", err);
+    return formatErrorResponse("import_pdf_to_zotero failed", { details: errorMessage(err) });
   }
 }

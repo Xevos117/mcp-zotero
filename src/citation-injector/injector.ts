@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import { readFile, writeFile } from "node:fs/promises";
+import { format, parse } from "node:path";
 import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
 import { CslItemData, ZoteroCitationItem } from "../types/csl-types.js";
 import { generateZoteroFieldCode, generateBibliographyFieldCode } from "./field-codes.js";
@@ -7,6 +8,7 @@ import { formatCitationText } from "./citation-formatter.js";
 import { regexEscape, unescapeXml } from "./xml-utils.js";
 import { normalizeZciteTags } from "./zcite-normalizer.js";
 import { zoteroItemToCsl } from "../utils/csl-to-zotero.js";
+import { LibraryType } from "../utils/library-context.js";
 
 export interface InjectionResult {
   outputPath: string;
@@ -42,11 +44,13 @@ function parseZciteMatches(documentXml: string): ZciteMatch[] {
       attrs[attrMatch[1]] = unescapeXml(attrMatch[2]);
     }
 
-    if (!attrs["keys"]) continue;
+    // Tolerate "KEY1, KEY2": a stray space would otherwise become part of the key (404 on fetch)
+    const keys = (attrs["keys"] ?? "").split(",").map((k) => k.trim()).filter(Boolean);
+    if (keys.length === 0) continue;
 
     matches.push({
       fullMatch,
-      keys: attrs["keys"].split(","),
+      keys,
       locator: attrs["locator"] || undefined,
       prefix: attrs["prefix"] || undefined,
       suffix: attrs["suffix"] || undefined,
@@ -59,13 +63,14 @@ function parseZciteMatches(documentXml: string): ZciteMatch[] {
 async function fetchCslData(
   keys: Set<string>,
   zoteroApi: ZoteroApiInterface,
+  libraryType: LibraryType,
   userId: string
 ): Promise<Map<string, CslItemData>> {
   const cslData = new Map<string, CslItemData>();
 
   for (const key of keys) {
     const response = await zoteroApi
-      .library("user", userId)
+      .library(libraryType, userId)
       .items(key)
       .get();
     const zoteroItem = response.getData() as ZoteroItemData;
@@ -78,14 +83,15 @@ async function fetchCslData(
 function buildCitationItems(
   match: ZciteMatch,
   cslData: Map<string, CslItemData>,
+  libraryType: LibraryType,
   userId: string
 ): ZoteroCitationItem[] {
   return match.keys.map((key, idx) => {
     const itemData = cslData.get(key) ?? { type: "article-journal" };
     const item: ZoteroCitationItem = {
       id: idx,
-      uris: [`http://zotero.org/users/${userId}/items/${key}`],
-      uri: [`http://zotero.org/users/${userId}/items/${key}`],
+      uris: [`http://zotero.org/${libraryType}s/${userId}/items/${key}`],
+      uri: [`http://zotero.org/${libraryType}s/${userId}/items/${key}`],
       itemData,
     };
     if (match.locator) item.locator = match.locator;
@@ -142,9 +148,14 @@ function replaceZciteInXml(
 export async function injectCitations(
   filePath: string,
   zoteroApi: ZoteroApiInterface,
+  libraryType: LibraryType,
   userId: string,
   style: string
 ): Promise<InjectionResult> {
+  // Derive "<name>_cited<ext>" from the basename only: a directory containing ".docx" stays untouched
+  const { dir, name, ext } = parse(filePath);
+  const outputPath = format({ dir, name: `${name}_cited`, ext });
+
   const fileBuffer = await readFile(filePath);
   const zip = await JSZip.loadAsync(fileBuffer);
 
@@ -159,7 +170,6 @@ export async function injectCitations(
   const matches = parseZciteMatches(documentXml);
 
   if (matches.length === 0) {
-    const outputPath = filePath.replace(".docx", "_cited.docx");
     const buffer = await zip.generateAsync({ type: "nodebuffer" });
     await writeFile(outputPath, buffer);
     return { outputPath, found: 0, injected: 0, warnings: [] };
@@ -180,12 +190,12 @@ export async function injectCitations(
   const uniqueKeys = new Set(matches.flatMap((m) => m.keys));
 
   // Fetch CSL data from Zotero
-  const cslData = await fetchCslData(uniqueKeys, zoteroApi, userId);
+  const cslData = await fetchCslData(uniqueKeys, zoteroApi, libraryType, userId);
 
   // Replace each zcite tag with a field code
   let injected = 0;
   for (const match of matches) {
-    const citationItems = buildCitationItems(match, cslData, userId);
+    const citationItems = buildCitationItems(match, cslData, libraryType, userId);
     const itemDataList = match.keys.map(
       (k) => cslData.get(k) ?? { type: "article-journal" }
     );
@@ -205,7 +215,6 @@ export async function injectCitations(
 
   // Save
   zip.file("word/document.xml", documentXml);
-  const outputPath = filePath.replace(".docx", "_cited.docx");
   const buffer = await zip.generateAsync({ type: "nodebuffer" });
   await writeFile(outputPath, buffer);
 

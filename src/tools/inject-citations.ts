@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
-import { formatErrorResponse } from "../utils/error-formatter.js";
+import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { injectCitations } from "../citation-injector/injector.js";
-import { logger } from "../utils/logger.js";
+import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "inject_citations",
@@ -12,7 +12,7 @@ WORKFLOW — how to create a Word document with live Zotero citations:
 1. Collect item keys: use add_items_by_doi (or search_library for existing items)
 2. Generate .docx: create a Word document (e.g. with the "docx" npm package) with <zcite keys="ITEMKEY"/> placeholders where citations should appear. Each <zcite> MUST be in its own dedicated TextRun — do NOT mix it with surrounding text.
 3. Call this tool with the .docx file path. It replaces every zcite tag with a Zotero field code and appends a bibliography.
-4. Tell the user to open the file in Word with the Zotero plugin and click Zotero → Refresh.
+4. Tell the user to open the file in Word with the Zotero plugin, click Zotero → Add/Edit Bibliography, then Zotero → Refresh.
 
 CITATION STYLES — ask the user which style they want before generating:
 - apa (default): author-year — (Smith, 2023)
@@ -45,6 +45,7 @@ NOTE: If the inject-citations skill is available, prefer the skill workflow (run
       .describe(
         "Citation style for the visible placeholder text. Zotero will reformat on refresh. Default: apa"
       ),
+    ...libraryArgsSchema,
   },
 } as const;
 
@@ -55,7 +56,8 @@ export async function handleInjectCitations(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { file_path, style } = InjectCitationsSchema.parse(args);
+  const { file_path, style, library_type, library_id } = InjectCitationsSchema.parse(args);
+  const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (!file_path.endsWith(".docx")) {
     return formatErrorResponse("File must be a .docx file", {
@@ -63,35 +65,16 @@ export async function handleInjectCitations(
     });
   }
 
-  try {
-    const result = await injectCitations(file_path, zoteroApi, userId, style);
+  const result = await injectCitations(file_path, zoteroApi, libraryType, libraryId, style);
 
-    const responseObj: Record<string, unknown> = {
-      output_path: result.outputPath,
-      citations_found: result.found,
-      citations_injected: result.injected,
-    };
-    if (result.warnings.length > 0) {
-      responseObj.warnings = result.warnings;
-    }
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(responseObj, null, 2),
-        },
-      ],
-    };
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      logger.error("Tool execution failed", {
-        tool: "inject_citations",
-        status: err.response?.status,
-        errorMessage: err.message,
-        url: err.response?.url,
-      });
-    }
-    throw err;
+  const responseObj: Record<string, unknown> = {
+    output_path: result.outputPath,
+    citations_found: result.found,
+    citations_injected: result.injected,
+  };
+  if (result.warnings.length > 0) {
+    responseObj.warnings = result.warnings;
   }
+
+  return formatJsonResult(responseObj);
 }
