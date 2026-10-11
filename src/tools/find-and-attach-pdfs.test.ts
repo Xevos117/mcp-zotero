@@ -49,28 +49,28 @@ afterEach(() => {
 
 describe("FindAndAttachPdfsSchema", () => {
   it("accepts item_keys array", () => {
-    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEY1", "KEY2"] });
-    expect(result.item_keys).toEqual(["KEY1", "KEY2"]);
+    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEYRZZZZ", "KEY2ZZZZ"] });
+    expect(result.item_keys).toEqual(["KEYRZZZZ", "KEY2ZZZZ"]);
   });
 
   it("accepts collection_key string", () => {
-    const result = FindAndAttachPdfsSchema.parse({ collection_key: "COL001" });
-    expect(result.collection_key).toBe("COL001");
+    const result = FindAndAttachPdfsSchema.parse({ collection_key: "CPLQQRZZ" });
+    expect(result.collection_key).toBe("CPLQQRZZ");
   });
 
   it("defaults skip_if_attachment_exists to true", () => {
-    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEY1"] });
+    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEYRZZZZ"] });
     expect(result.skip_if_attachment_exists).toBe(true);
   });
 
   it("defaults dry_run to false", () => {
-    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEY1"] });
+    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEYRZZZZ"] });
     expect(result.dry_run).toBe(false);
   });
 
   it("accepts all optional params", () => {
     const result = FindAndAttachPdfsSchema.parse({
-      item_keys: ["KEY1"],
+      item_keys: ["KEYRZZZZ"],
       skip_if_attachment_exists: false,
       dry_run: true,
     });
@@ -86,7 +86,7 @@ describe("find_and_attach_pdfs handler", () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { item_keys: ["KEY1"], collection_key: "COL001" },
+      { item_keys: ["KEYRZZZZ"], collection_key: "CPLQQRZZ" },
       mock,
       TEST_USER_ID
     );
@@ -141,7 +141,7 @@ describe("find_and_attach_pdfs handler", () => {
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { item_keys: ["ABC12345"] },
+      { item_keys: ["ABCR2345"] },
       mock,
       TEST_USER_ID
     );
@@ -153,13 +153,13 @@ describe("find_and_attach_pdfs handler", () => {
   });
 
   it("returns error status for items without DOI", async () => {
-    const itemNoDoi = { key: "NO_DOI", itemType: "book" };
+    const itemNoDoi = { key: "NPXDPIZZ", itemType: "book" };
     const { mock, getStub } = createZoteroApiMock([]);
     getStub.mockResolvedValueOnce({ getVersion: () => 1, getData: () => [itemNoDoi] });
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { item_keys: ["NO_DOI"] },
+      { item_keys: ["NPXDPIZZ"] },
       mock,
       TEST_USER_ID
     );
@@ -184,7 +184,7 @@ describe("find_and_attach_pdfs handler", () => {
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { item_keys: ["ABC12345"], skip_if_attachment_exists: true },
+      { item_keys: ["ABCR2345"], skip_if_attachment_exists: true },
       mock,
       TEST_USER_ID
     );
@@ -217,7 +217,7 @@ describe("find_and_attach_pdfs handler", () => {
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { item_keys: ["ABC12345"], dry_run: true },
+      { item_keys: ["ABCR2345"], dry_run: true },
       mock,
       TEST_USER_ID
     );
@@ -250,7 +250,7 @@ describe("find_and_attach_pdfs handler", () => {
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { item_keys: ["ABC12345"] },
+      { item_keys: ["ABCR2345"] },
       mock,
       TEST_USER_ID
     );
@@ -264,7 +264,7 @@ describe("find_and_attach_pdfs handler", () => {
     const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
     const { downloadAndUploadPdf } = await import("../utils/pdf-uploader.js");
 
-    const collItem = { key: "COL_ITEM", itemType: "journalArticle", DOI: "10.1234/col" };
+    const collItem = { key: "CPLXITEM", itemType: "journalArticle", DOI: "10.1234/col" };
 
     vi.mocked(lookupOaPdfWithFallbacks).mockResolvedValueOnce({
       primary: {
@@ -294,7 +294,7 @@ describe("find_and_attach_pdfs handler", () => {
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { collection_key: "COL001" },
+      { collection_key: "CPLQQRZZ" },
       mock,
       TEST_USER_ID
     );
@@ -327,7 +327,7 @@ describe("find_and_attach_pdfs handler", () => {
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { item_keys: ["ABC12345"] },
+      { item_keys: ["ABCR2345"] },
       mock,
       TEST_USER_ID
     );
@@ -345,8 +345,8 @@ describe("find_and_attach_pdfs handler", () => {
     const { lookupOaPdfWithFallbacks } = await import("../utils/unpaywall.js");
     const { downloadAndUploadPdf } = await import("../utils/pdf-uploader.js");
 
-    const item1 = { ...fullItemFixture, key: "ITEM1", DOI: "10.1234/one" };
-    const item2 = { ...fullItemFixture, key: "ITEM2", DOI: "10.1234/two" };
+    const item1 = { ...fullItemFixture, key: "ITEMRZZZ", DOI: "10.1234/one" };
+    const item2 = { ...fullItemFixture, key: "ITEM2ZZZ", DOI: "10.1234/two" };
 
     // Both items have OA PDFs available
     vi.mocked(lookupOaPdfWithFallbacks).mockResolvedValueOnce({
@@ -389,7 +389,7 @@ describe("find_and_attach_pdfs handler", () => {
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { item_keys: ["ITEM1", "ITEM2"] },
+      { item_keys: ["ITEMRZZZ", "ITEM2ZZZ"] },
       mock,
       TEST_USER_ID
     );
@@ -438,7 +438,7 @@ describe("find_and_attach_pdfs handler", () => {
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { item_keys: ["ABC12345"] },
+      { item_keys: ["ABCR2345"] },
       mock,
       TEST_USER_ID
     );

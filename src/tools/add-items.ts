@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { postInBatches } from "../utils/write-results.js";
@@ -99,8 +100,7 @@ Invalid fields or creatorTypes for a given type are rejected with helpful error 
       .describe(
         "Array of items to add. Each item must have itemType and title. Additional fields depend on the item type."
       ),
-    collection_key: z
-      .string()
+    collection_key: zoteroKey()
       .optional()
       .describe(
         "Zotero collection key to add all items to. Get this from create_collection or get_collections."

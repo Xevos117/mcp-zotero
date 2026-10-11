@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.1] - 2026-10-11
+
+Security and data-loss fixes. Affected: every release with these tools, including 1.0.9 and 2.0.0.
+
+### Fixed
+
+- **Data loss in `delete_items` with malformed item keys.** When none of the keys in an `itemKey` filter is well-formed (e.g. lowercase `zzzzzzzz`, or a typo containing `0`, `1` or `O`, which Zotero keys never contain), the Zotero Web API ignores the filter and returns the whole library. `delete_items` took those items for the requested ones and **permanently deleted** up to 50 unrelated items (deletion requires `UNSAFE_OPERATIONS=items` or `all`). For any configuration, `get_items_details` could return unrelated items and `find_and_attach_pdfs` could attach PDFs to them.
+- **Path traversal through key arguments.** Keys are placed in API URL paths without encoding and `..` is resolved by URL parsing, so a crafted key (for example injected through document or PDF text) could reach other endpoints or libraries reachable with the API key: e.g. `delete_collection` with `collection_key: "../tags?tag=X&"` could remove a tag library-wide and `"../collections?collectionKey=A,B"` could delete several collections, and read tools (`get_item_fulltext`, `get_collection_items`, `find_and_attach_pdfs`) could read from other paths.
+- Every key argument of every tool (`item_keys`, `item_key`, `collection_key`, `collectionKey`, `parent_item`, `parent_collection`, `collections`) is now validated against Zotero's key format (8 characters from `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`); a malformed key is a validation error before any request. Keys in `<zcite>` tags (`inject_citations`) must be letters and digits only.
+- Defense in depth: item-key lookups never send malformed keys and keep only items whose key was requested; `delete_items` deletes only requested keys.
+
 ## [2.0.0] - 2026-10-10
 
 Toolchain and dependency upgrade, plus group library support. Tool names are unchanged; the only `tools/list` differences from 1.0.9 are the optional `library_type` / `library_id` arguments and the updated `get_user_id` and `delete_items` descriptions.

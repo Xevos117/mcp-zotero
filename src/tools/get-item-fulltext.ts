@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface, ZoteroItemData, ZoteroFulltextResponse, isZoteroApiError } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
@@ -9,7 +10,7 @@ export const toolConfig = {
   description:
     "Get the full text content of a Zotero item's PDF attachment via Zotero's fulltext index. Zotero desktop automatically indexes PDFs when synced. Use this to read the full content of papers instead of relying on abstracts.",
   inputSchema: {
-    item_key: z.string().describe("The Zotero item key (parent item or attachment key)"),
+    item_key: zoteroKey().describe("The Zotero item key (parent item or attachment key)"),
     max_characters: z
       .number()
       .optional()

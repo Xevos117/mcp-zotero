@@ -27,7 +27,7 @@ describe("get_items_details (MCP)", () => {
       "GET",
       ITEMS,
       zLibraryQuery([
-        article("AAAA1111", { volume: "12", pages: "1-10" }),
+        article("AAAARRRR", { volume: "12", pages: "1-10" }),
         {
           key: "BBBB2222",
           itemType: "bookSection",
@@ -37,28 +37,28 @@ describe("get_items_details (MCP)", () => {
         },
       ])
     );
-    const out = await h.call("get_items_details", { item_keys: ["AAAA1111", "BBBB2222"] });
+    const out = await h.call("get_items_details", { item_keys: ["AAAARRRR", "BBBB2222"] });
     expect(out.isError).toBe(false);
-    expect(Object.keys(out.json).sort()).toEqual(["AAAA1111", "BBBB2222"]);
-    expect(out.json.AAAA1111).toMatchObject({
+    expect(Object.keys(out.json).sort()).toEqual(["AAAARRRR", "BBBB2222"]);
+    expect(out.json.AAAARRRR).toMatchObject({
       itemType: "journalArticle",
-      title: "Article AAAA1111",
+      title: "Article AAAARRRR",
       authors: "Ada Lovelace",
-      DOI: "10.1000/aaaa1111",
+      DOI: "10.1000/aaaarrrr",
       volume: "12",
       pages: "1-10",
     });
     expect(out.json.BBBB2222).toMatchObject({ itemType: "bookSection", bookTitle: "The Book" });
     expect(h.net.calls).toHaveLength(1);
-    expect(h.net.calls[0].url.searchParams.get("itemKey")).toBe("AAAA1111,BBBB2222");
+    expect(h.net.calls[0].url.searchParams.get("itemKey")).toBe("AAAARRRR,BBBB2222");
   });
 
   it("GID-02 abstract escluso di default, incluso con include_abstract=true", async () => {
-    h.net.on("GET", ITEMS, zLibraryQuery([article("AAAA1111", { abstractNote: "Abstract text" })]));
-    const def = await h.call("get_items_details", { item_keys: ["AAAA1111"] });
-    expect(def.json.AAAA1111).not.toHaveProperty("abstractNote");
-    const inc = await h.call("get_items_details", { item_keys: ["AAAA1111"], include_abstract: true });
-    expect(inc.json.AAAA1111.abstractNote).toBe("Abstract text");
+    h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR", { abstractNote: "Abstract text" })]));
+    const def = await h.call("get_items_details", { item_keys: ["AAAARRRR"] });
+    expect(def.json.AAAARRRR).not.toHaveProperty("abstractNote");
+    const inc = await h.call("get_items_details", { item_keys: ["AAAARRRR"], include_abstract: true });
+    expect(inc.json.AAAARRRR.abstractNote).toBe("Abstract text");
   });
 
   it("GID-03 campi strutturali e valori vuoti/false/null esclusi", async () => {
@@ -66,11 +66,11 @@ describe("get_items_details (MCP)", () => {
       "GET",
       ITEMS,
       zLibraryQuery([
-        article("AAAA1111", { extra: "", series: null, archive: false, dateModified: "x", tags: [{ tag: "t" }] }),
+        article("AAAARRRR", { extra: "", series: null, archive: false, dateModified: "x", tags: [{ tag: "t" }] }),
       ])
     );
-    const out = await h.call("get_items_details", { item_keys: ["AAAA1111"] });
-    const entry = out.json.AAAA1111;
+    const out = await h.call("get_items_details", { item_keys: ["AAAARRRR"] });
+    const entry = out.json.AAAARRRR;
     for (const f of ["key", "version", "dateAdded", "dateModified", "collections", "tags", "relations", "extra", "series", "archive"]) {
       expect(entry).not.toHaveProperty(f);
     }
@@ -82,11 +82,24 @@ describe("get_items_details (MCP)", () => {
       { creatorType: "author", firstName: "Paulo", lastName: "Caetano da Silva" },
       { creatorType: "editor", name: "Test Consortium" },
     ];
-    h.net.on("GET", ITEMS, zLibraryQuery([article("AAAA1111", { creators }), article("NOCREAT1", { creators: [] })]));
-    const out = await h.call("get_items_details", { item_keys: ["AAAA1111", "NOCREAT1"] });
-    expect(out.json.AAAA1111.creators).toEqual(creators);
-    expect(out.json.AAAA1111.authors).toBe("Hans de Kroon, Paulo Caetano da Silva");
-    expect(out.json.NOCREAT1).not.toHaveProperty("creators");
+    h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR", { creators }), article("NPCREATR", { creators: [] })]));
+    const out = await h.call("get_items_details", { item_keys: ["AAAARRRR", "NPCREATR"] });
+    expect(out.json.AAAARRRR.creators).toEqual(creators);
+    expect(out.json.AAAARRRR.authors).toBe("Hans de Kroon, Paulo Caetano da Silva");
+    expect(out.json.NPCREATR).not.toHaveProperty("creators");
+  });
+
+  it("GID-16 chiavi malformate → errore di validazione senza richieste; risposta con voci in più → solo quelle richieste", async () => {
+    expectValidationError(await h.call("get_items_details", { item_keys: ["zzzzzzzz", "ZZZZZZZ0"] }), "item_keys");
+    expect(h.net.calls).toHaveLength(0);
+    // API che ignora il filtro e restituisce la libreria intera
+    h.net.on("GET", ITEMS, (req, hit) => {
+      const u = new URL(req.url.href);
+      u.searchParams.delete("itemKey");
+      return zLibraryQuery([article("BBBB2222"), article("AAAARRRR")])({ ...req, url: u }, hit);
+    });
+    const out = await h.call("get_items_details", { item_keys: ["BBBB2222", "CCCC3333"] });
+    expect(Object.keys(out.json)).toEqual(["BBBB2222"]);
   });
 
   it("GID-04 array vuoto → errore strutturato senza chiamate di rete", async () => {
@@ -96,27 +109,27 @@ describe("get_items_details (MCP)", () => {
 
   it("GID-05 nessun item trovato → risultato vuoto con le chiavi richieste", async () => {
     h.net.on("GET", ITEMS, zList([]));
-    const json = expectEmptyResult(await h.call("get_items_details", { item_keys: ["NOPE0001"] }), "No items found");
-    expect(json.item_keys).toEqual(["NOPE0001"]);
+    const json = expectEmptyResult(await h.call("get_items_details", { item_keys: ["NPPEQQQR"] }), "No items found");
+    expect(json.item_keys).toEqual(["NPPEQQQR"]);
   });
 
   it("GID-06 chiavi parzialmente inesistenti: restituisce solo quelle trovate", async () => {
-    h.net.on("GET", ITEMS, zLibraryQuery([article("AAAA1111")]));
-    const out = await h.call("get_items_details", { item_keys: ["AAAA1111", "NOPE0001"] });
-    expect(Object.keys(out.json)).toEqual(["AAAA1111"]);
+    h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
+    const out = await h.call("get_items_details", { item_keys: ["AAAARRRR", "NPPEQQQR"] });
+    expect(Object.keys(out.json)).toEqual(["AAAARRRR"]);
   });
 
   it("GID-07 fallback per item senza tipo/titolo", async () => {
-    h.net.on("GET", ITEMS, zList([{ key: "MIN00001" }]));
-    const out = await h.call("get_items_details", { item_keys: ["MIN00001"] });
-    expect(out.json.MIN00001).toEqual({ itemType: "document", title: "Untitled", authors: "No authors listed" });
+    h.net.on("GET", ITEMS, zList([{ key: "MINQQQQR" }]));
+    const out = await h.call("get_items_details", { item_keys: ["MINQQQQR"] });
+    expect(out.json.MINQQQQR).toEqual({ itemType: "document", title: "Untitled", authors: "No authors listed" });
   });
 
   it("GID-08 unicode preservato", async () => {
-    h.net.on("GET", ITEMS, zLibraryQuery([article("UNI00001", { title: "Über 学习 🚀", publicationTitle: "Revue française" })]));
-    const out = await h.call("get_items_details", { item_keys: ["UNI00001"] });
-    expect(out.json.UNI00001.title).toBe("Über 学习 🚀");
-    expect(out.json.UNI00001.publicationTitle).toBe("Revue française");
+    h.net.on("GET", ITEMS, zLibraryQuery([article("UNIQQQQR", { title: "Über 学习 🚀", publicationTitle: "Revue française" })]));
+    const out = await h.call("get_items_details", { item_keys: ["UNIQQQQR"] });
+    expect(out.json.UNIQQQQR.title).toBe("Über 学习 🚀");
+    expect(out.json.UNIQQQQR.publicationTitle).toBe("Revue française");
   });
 
   // Ex bug di main: tutte le chiavi in un solo itemKey senza limit. Dal vivo l'API restituisce
@@ -151,7 +164,7 @@ describe("get_items_details (MCP)", () => {
   describe("validazione input", () => {
     it.each([
       ["item_keys", {}],
-      ["item_keys", { item_keys: "AAAA1111" }],
+      ["item_keys", { item_keys: "AAAARRRR" }],
       ["item_keys", { item_keys: [1, 2] }],
       ["include_abstract", { item_keys: ["A"], include_abstract: "true" }],
     ])("GID-12 rifiuta %s non valido (%j)", async (field, args) => {
@@ -162,11 +175,11 @@ describe("get_items_details (MCP)", () => {
 
   it.each(ZOTERO_ERROR_STATUSES)("GID-13 HTTP %i → isError", async (status) => {
     h.net.on("GET", ITEMS, zError(status));
-    expectToolError(await h.call("get_items_details", { item_keys: ["AAAA1111"] }), String(status));
+    expectToolError(await h.call("get_items_details", { item_keys: ["AAAARRRR"] }), String(status));
   });
 
   it("GID-14 errore di rete → isError", async () => {
     h.net.on("GET", ITEMS, networkError());
-    expectToolError(await h.call("get_items_details", { item_keys: ["AAAA1111"] }));
+    expectToolError(await h.call("get_items_details", { item_keys: ["AAAARRRR"] }));
   });
 });

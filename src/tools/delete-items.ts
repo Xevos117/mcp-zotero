@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
@@ -11,7 +12,7 @@ export const toolConfig = {
     "Delete one or more items from your Zotero library: they are permanently deleted (not moved to the Zotero trash). Accepts up to 50 item keys per call. Requires UNSAFE_OPERATIONS environment variable set to 'items' or 'all'.",
   inputSchema: {
     item_keys: z
-      .array(z.string())
+      .array(zoteroKey())
       .min(1)
       .max(50)
       .describe(
@@ -67,7 +68,8 @@ export async function handleDeleteItems(
       });
     }
 
-    const keysToDelete = [...foundKeys] as string[];
+    // only keys the caller asked for, whatever the API returned
+    const keysToDelete = item_keys.filter((k) => foundKeys.has(k));
 
     await zoteroApi
       .library(libraryType, libraryId)

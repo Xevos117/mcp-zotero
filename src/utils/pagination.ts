@@ -1,3 +1,4 @@
+import { ZOTERO_KEY } from "./zotero-keys.js";
 import { ZoteroItemData, ZoteroResponse } from "../types/zotero-types.js";
 
 const PAGE_LIMIT = 100;
@@ -45,10 +46,16 @@ export async function fetchAllPages(
 /** Zotero Web API limit on the number of keys in a single `itemKey` filter. */
 export const MAX_KEYS_PER_REQUEST = 50;
 
+
 /**
  * Fetch items by key in chunks of MAX_KEYS_PER_REQUEST, each with an explicit `limit`
  * (the API default page size is 25, so a bare `itemKey` GET silently drops the rest).
  * Returns the items found and the library version of the last response.
+ *
+ * When no key in an `itemKey` filter is well-formed, the Web API ignores the filter and returns
+ * the whole library. Tools reject malformed keys up front (zoteroKey schema); as a second line of
+ * defense malformed keys are never sent here (no request at all if none is valid) and only items
+ * whose key was requested are returned.
  */
 export async function fetchItemsByKeys(
   buildRequest: (params: Record<string, unknown>) => Promise<ZoteroResponse>,
@@ -56,12 +63,14 @@ export async function fetchItemsByKeys(
 ): Promise<{ items: ZoteroItemData[]; version: number | null }> {
   const items: ZoteroItemData[] = [];
   let version: number | null = null;
+  const valid = [...new Set(keys.filter((k) => ZOTERO_KEY.test(k)))];
+  const requested = new Set(valid);
 
-  for (let start = 0; start < keys.length; start += MAX_KEYS_PER_REQUEST) {
-    const chunk = keys.slice(start, start + MAX_KEYS_PER_REQUEST);
+  for (let start = 0; start < valid.length; start += MAX_KEYS_PER_REQUEST) {
+    const chunk = valid.slice(start, start + MAX_KEYS_PER_REQUEST);
     const response = await buildRequest({ itemKey: chunk.join(","), limit: chunk.length });
     const data = response.getData();
-    items.push(...asArray(data));
+    items.push(...asArray(data).filter((item) => typeof item.key === "string" && requested.has(item.key)));
     version = response.getVersion();
   }
 

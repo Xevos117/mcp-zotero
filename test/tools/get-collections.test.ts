@@ -26,12 +26,12 @@ describe("get_collections (MCP)", () => {
   });
 
   it("GC-01 restituisce le collezioni come JSON; prima pagina limit=100 start=0", async () => {
-    h.net.on("GET", COLLS, zList([collection("COL00001", "ML"), collection("COL00002", "NLP", { parentCollection: "COL00001" })]));
+    h.net.on("GET", COLLS, zList([collection("CPLQQQQR", "ML"), collection("COL00002", "NLP", { parentCollection: "CPLQQQQR" })]));
     const out = await h.call("get_collections", {});
     expect(out.isError).toBe(false);
     expect(out.json).toEqual([
-      expect.objectContaining({ key: "COL00001", name: "ML", parentCollection: false }),
-      expect.objectContaining({ key: "COL00002", name: "NLP", parentCollection: "COL00001" }),
+      expect.objectContaining({ key: "CPLQQQQR", name: "ML", parentCollection: false }),
+      expect.objectContaining({ key: "COL00002", name: "NLP", parentCollection: "CPLQQQQR" }),
     ]);
     const p = h.net.calls[0].url.searchParams;
     expect(p.get("limit")).toBe("100");
@@ -64,12 +64,12 @@ describe("get_collections (MCP)", () => {
   });
 
   it("GC-05 collezioni nel cestino escluse di default, incluse con include_trashed", async () => {
-    const data = [collection("COL00001", "Live"), collection("COL00002", "Trashed", { deleted: true })];
+    const data = [collection("CPLQQQQR", "Live"), collection("COL00002", "Trashed", { deleted: true })];
     h.net.on("GET", COLLS, zList(data));
     const def = await h.call("get_collections", {});
-    expect(def.json.map((c: ZItem) => c.key)).toEqual(["COL00001"]);
+    expect(def.json.map((c: ZItem) => c.key)).toEqual(["CPLQQQQR"]);
     const all = await h.call("get_collections", { include_trashed: true });
-    expect(all.json.map((c: ZItem) => c.key)).toEqual(["COL00001", "COL00002"]);
+    expect(all.json.map((c: ZItem) => c.key)).toEqual(["CPLQQQQR", "COL00002"]);
   });
 
   it("GC-06 tutte nel cestino → risultato vuoto che suggerisce include_trashed", async () => {
@@ -85,7 +85,7 @@ describe("get_collections (MCP)", () => {
   });
 
   it("GC-08 nomi unicode preservati", async () => {
-    h.net.on("GET", COLLS, zList([collection("COL00001", "Tesi — 研究 / Ελληνικά 📚")]));
+    h.net.on("GET", COLLS, zList([collection("CPLQQQQR", "Tesi — 研究 / Ελληνικά 📚")]));
     const out = await h.call("get_collections", {});
     expect(out.json[0].name).toBe("Tesi — 研究 / Ελληνικά 📚");
   });

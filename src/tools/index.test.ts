@@ -23,7 +23,7 @@ describe("tool error logging (runTool)", () => {
         writes.push(String(chunk));
         return true;
       });
-      const args = tool === "get_items_details" ? { item_keys: ["ABCD1234"] } : {};
+      const args = tool === "get_items_details" ? { item_keys: ["ABCDR234"] } : {};
       await expect(handleToolCall(tool, args, failingApi(503), "1")).rejects.toThrow("HTTP 503");
       const logged = writes.map((w) => JSON.parse(w)).filter((e) => e.message === "Tool execution failed");
       expect(logged).toEqual([

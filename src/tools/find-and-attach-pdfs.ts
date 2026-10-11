@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse, formatEmptyResult, errorMessage, logToolError } from "../utils/error-formatter.js";
 import { OaPdfResult, OaPdfTarget, attachOpenAccessPdfs } from "../utils/oa-pdf.js";
@@ -11,11 +12,10 @@ export const toolConfig = {
     "For each Zotero item, check Unpaywall for open access PDFs and attach them. Items must have a DOI. Uses the same source as Zotero Desktop's 'Find Available PDFs'.",
   inputSchema: {
     item_keys: z
-      .array(z.string())
+      .array(zoteroKey())
       .optional()
       .describe("Array of Zotero item keys to process (mutually exclusive with collection_key)"),
-    collection_key: z
-      .string()
+    collection_key: zoteroKey()
       .optional()
       .describe("Process all items in this collection (mutually exclusive with item_keys)"),
     skip_if_attachment_exists: z

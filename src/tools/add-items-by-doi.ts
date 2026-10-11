@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { resolveDois } from "../utils/doi-resolver.js";
@@ -25,8 +26,7 @@ WORKFLOW TIPS:
       .describe(
         'Array of DOI strings (e.g. ["10.1038/s41586-023-06647-8"]). Each DOI will be resolved and added to Zotero.'
       ),
-    collection_key: z
-      .string()
+    collection_key: zoteroKey()
       .optional()
       .describe(
         "Zotero collection key to add items to. Get this from create_collection or get_collections."

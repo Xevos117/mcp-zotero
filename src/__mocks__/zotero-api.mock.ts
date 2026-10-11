@@ -2,7 +2,7 @@ import { vi } from "vitest";
 
 // Fixture: full item with all fields
 export const fullItemFixture = {
-  key: "ABC12345",
+  key: "ABCR2345",
   itemType: "journalArticle",
   title: "Deep Learning for Natural Language Processing",
   creators: [
@@ -16,18 +16,18 @@ export const fullItemFixture = {
   url: "https://example.com/paper",
   publicationTitle: "Journal of Machine Learning",
   tags: [{ tag: "deep-learning" }, { tag: "NLP" }],
-  collections: ["COL001", "COL002"],
+  collections: ["CPLQQRZZ", "CPLQQ2ZZ"],
 };
 
 // Fixture: minimal item (tests fallback values)
 export const minimalItemFixture = {
-  key: "MIN00001",
+  key: "MINQQQQR",
   itemType: "book",
 };
 
 // Fixture: collection data
 export const collectionFixture = {
-  key: "COL001",
+  key: "CPLQQRZZ",
   name: "Machine Learning Papers",
   parentCollection: false,
   numItems: 42,

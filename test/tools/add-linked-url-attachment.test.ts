@@ -23,11 +23,11 @@ describe("add_linked_url_attachment (MCP)", () => {
   });
 
   it("ALU-01 allegato standalone con solo url", async () => {
-    h.net.on("POST", ITEMS, zWrite({ keys: ["LINK0001"] }));
+    h.net.on("POST", ITEMS, zWrite({ keys: ["LINKQQQR"] }));
     const out = await h.call("add_linked_url_attachment", { url: URL_ });
     expect(out.isError).toBe(false);
     expect(out.json).toEqual({
-      item_key: "LINK0001",
+      item_key: "LINKQQQR",
       title: URL_,
       url: URL_,
       parent_item: null,
@@ -39,25 +39,25 @@ describe("add_linked_url_attachment (MCP)", () => {
   });
 
   it("ALU-02 allegato figlio: parentItem, contentType, collections forzate a []", async () => {
-    h.net.on("POST", ITEMS, zWrite({ keys: ["LINK0002"] }));
+    h.net.on("POST", ITEMS, zWrite({ keys: ["LINKQQQ2"] }));
     const out = await h.call("add_linked_url_attachment", {
       url: URL_,
       title: "Preprint",
       content_type: "application/pdf",
-      parent_item: "PAR00001",
-      collections: ["COL00001"],
+      parent_item: "PARQQQQR",
+      collections: ["CPLQQQQR"],
     });
-    expect(out.json).toMatchObject({ item_key: "LINK0002", title: "Preprint", parent_item: "PAR00001" });
+    expect(out.json).toMatchObject({ item_key: "LINKQQQ2", title: "Preprint", parent_item: "PARQQQQR" });
     expect(h.net.calls[0].json()).toEqual([
-      expect.objectContaining({ parentItem: "PAR00001", contentType: "application/pdf", collections: [] }),
+      expect.objectContaining({ parentItem: "PARQQQQR", contentType: "application/pdf", collections: [] }),
     ]);
   });
 
   it("ALU-03 standalone: collections e tags applicati", async () => {
     h.net.on("POST", ITEMS, zWrite({ keys: ["LINK0003"] }));
-    await h.call("add_linked_url_attachment", { url: URL_, collections: ["C1", "C2"], tags: ["oa", "pdf"] });
+    await h.call("add_linked_url_attachment", { url: URL_, collections: ["CPLQQQQ2", "CPLQQQQ3"], tags: ["oa", "pdf"] });
     expect(h.net.calls[0].json()).toEqual([
-      expect.objectContaining({ collections: ["C1", "C2"], tags: [{ tag: "oa" }, { tag: "pdf" }] }),
+      expect.objectContaining({ collections: ["CPLQQQQ2", "CPLQQQQ3"], tags: [{ tag: "oa" }, { tag: "pdf" }] }),
     ]);
   });
 
@@ -70,9 +70,9 @@ describe("add_linked_url_attachment (MCP)", () => {
   });
 
   it("ALU-05 scrittura rifiutata → errore strutturato con details", async () => {
-    h.net.on("POST", ITEMS, zWrite({ fail: { 0: { code: 400, message: "Parent item PAR00001 not found" } } }));
+    h.net.on("POST", ITEMS, zWrite({ fail: { 0: { code: 400, message: "Parent item PARQQQQR not found" } } }));
     const json = expectErrorJson(
-      await h.call("add_linked_url_attachment", { url: URL_, parent_item: "PAR00001" }),
+      await h.call("add_linked_url_attachment", { url: URL_, parent_item: "PARQQQQR" }),
       "Failed to create linked URL attachment"
     );
     expect(json).toHaveProperty("details");
@@ -81,9 +81,9 @@ describe("add_linked_url_attachment (MCP)", () => {
   // BUG: add-linked-url-attachment.ts:78 — stesso problema di create_collection:
   // gli errori sono oggetti, details diventa "[object Object]".
   it("ALU-06 details riporta il messaggio d'errore del server", async () => {
-    h.net.on("POST", ITEMS, zWrite({ fail: { 0: { code: 400, message: "Parent item PAR00001 not found" } } }));
-    const out = await h.call("add_linked_url_attachment", { url: URL_, parent_item: "PAR00001" });
-    expect(out.json.details).toContain("Parent item PAR00001 not found");
+    h.net.on("POST", ITEMS, zWrite({ fail: { 0: { code: 400, message: "Parent item PARQQQQR not found" } } }));
+    const out = await h.call("add_linked_url_attachment", { url: URL_, parent_item: "PARQQQQR" });
+    expect(out.json.details).toContain("Parent item PARQQQQR not found");
   });
 
   describe("validazione input", () => {

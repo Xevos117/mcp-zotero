@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { formatWriteErrors } from "../utils/write-results.js";
@@ -20,14 +21,13 @@ export const toolConfig = {
       .describe(
         'MIME type of the linked resource (e.g. "application/pdf", "text/html")'
       ),
-    parent_item: z
-      .string()
+    parent_item: zoteroKey()
       .optional()
       .describe(
         "Item key of the parent item. If provided, the attachment becomes a child of that item."
       ),
     collections: z
-      .array(z.string())
+      .array(zoteroKey())
       .optional()
       .describe(
         "Collection keys to add the attachment to (only used for standalone attachments, ignored when parent_item is set)"

@@ -28,7 +28,7 @@ describe("delete_items (MCP)", () => {
     it("DI-01 modalità 'none' → rifiutato, nessuna chiamata di rete", async () => {
       h = await startHarness({ unsafeOps: "none" });
       const json = expectErrorJson(
-        await h.call("delete_items", { item_keys: ["AAAA1111"] }),
+        await h.call("delete_items", { item_keys: ["AAAARRRR"] }),
         "Deletion of items is not allowed"
       );
       expect(json).toEqual(
@@ -39,55 +39,85 @@ describe("delete_items (MCP)", () => {
 
     it.each<UnsafeOperationsMode>(["items", "all"])("DI-02 modalità '%s' → consentito", async (mode) => {
       h = await startHarness({ unsafeOps: mode });
-      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAA1111")], 88));
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")], 88));
       h.net.on("DELETE", ITEMS, zDeleted());
-      const out = await h.call("delete_items", { item_keys: ["AAAA1111"] });
+      const out = await h.call("delete_items", { item_keys: ["AAAARRRR"] });
       expect(out.isError).toBe(false);
-      expect(out.json).toEqual({ deleted_keys: ["AAAA1111"], deleted_count: 1 });
+      expect(out.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1 });
+    });
+  });
+
+  // Comportamento reale della Web API (verificato il 2026-10-11): se nessuna chiave di itemKey ha la forma
+  // valida ("zzzzzzzz", "ZZZZZZZ0") il filtro viene ignorato e torna la libreria intera.
+  describe("chiavi malformate (bug di perdita dati fino alla 2.0.0)", () => {
+    const LIBRARY = [article("KEEP2222"), article("KEEP3333"), article("KEEP4444")];
+    /** API che ignora il filtro itemKey, come quella reale con chiavi malformate. */
+    function libraryIgnoringFilter(hh: Harness) {
+      hh.net.on("GET", ITEMS, (req, hit) => {
+        const u = new URL(req.url.href);
+        u.searchParams.delete("itemKey");
+        return zLibraryQuery(LIBRARY, 77)({ ...req, url: u }, hit);
+      });
+    }
+
+    it("DI-16 chiave malformata → errore di validazione prima di qualsiasi richiesta", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      libraryIgnoringFilter(h);
+      expectValidationError(await h.call("delete_items", { item_keys: ["zzzzzzzz"] }), "item_keys");
+      expect(h.net.calls).toHaveLength(0);
+    });
+
+    it("DI-17 API che restituisce più voci di quelle chieste → cancellata solo la chiave richiesta", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      libraryIgnoringFilter(h);
+      h.net.on("DELETE", ITEMS, zDeleted());
+      const out = await h.call("delete_items", { item_keys: ["KEEP2222"] });
+      expect(out.json).toEqual({ deleted_keys: ["KEEP2222"], deleted_count: 1 });
+      expect(deletedKeys(h)).toEqual(["KEEP2222"]);
     });
   });
 
   describe("modalità 'items'", () => {
     it("DI-03 GET itemKey poi DELETE ?itemKey con la versione di libreria", async () => {
       h = await startHarness({ unsafeOps: "items" });
-      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAA1111"), article("BBBB2222")], 88));
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR"), article("BBBB2222")], 88));
       h.net.on("DELETE", ITEMS, zDeleted());
-      await h.call("delete_items", { item_keys: ["AAAA1111", "BBBB2222"] });
-      expect(h.net.requests("GET", ITEMS)[0].url.searchParams.get("itemKey")).toBe("AAAA1111,BBBB2222");
+      await h.call("delete_items", { item_keys: ["AAAARRRR", "BBBB2222"] });
+      expect(h.net.requests("GET", ITEMS)[0].url.searchParams.get("itemKey")).toBe("AAAARRRR,BBBB2222");
       const [del] = h.net.requests("DELETE", ITEMS);
       expect(del.headers.get("If-Unmodified-Since-Version")).toBe("88");
-      expect(deletedKeys(h)).toEqual(["AAAA1111", "BBBB2222"]);
+      expect(deletedKeys(h)).toEqual(["AAAARRRR", "BBBB2222"]);
     });
 
     it("DI-04 cancellazione parziale: chiavi mancanti in not_found, cancellate solo quelle trovate", async () => {
       h = await startHarness({ unsafeOps: "items" });
-      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAA1111")]));
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
       h.net.on("DELETE", ITEMS, zDeleted());
-      const out = await h.call("delete_items", { item_keys: ["AAAA1111", "GONE0001"] });
-      expect(out.json).toEqual({ deleted_keys: ["AAAA1111"], deleted_count: 1, not_found: ["GONE0001"] });
-      expect(deletedKeys(h)).toEqual(["AAAA1111"]);
+      const out = await h.call("delete_items", { item_keys: ["AAAARRRR", "GPNEQQQR"] });
+      expect(out.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1, not_found: ["GPNEQQQR"] });
+      expect(deletedKeys(h)).toEqual(["AAAARRRR"]);
     });
 
     it("DI-05 nessuna chiave trovata → errore strutturato not_found, nessuna DELETE", async () => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, zLibraryQuery([]));
-      const json = expectErrorJson(await h.call("delete_items", { item_keys: ["GONE0001"] }), "No items found");
+      const json = expectErrorJson(await h.call("delete_items", { item_keys: ["GPNEQQQR"] }), "No items found");
       expect(json.status).toBe("not_found");
       expect(h.net.requests("DELETE", ITEMS)).toHaveLength(0);
     });
 
     it("DI-06 412 sulla DELETE → errore strutturato version_conflict", async () => {
       h = await startHarness({ unsafeOps: "items" });
-      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAA1111")]));
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
       h.net.on("DELETE", ITEMS, zError(412));
-      const json = expectErrorJson(await h.call("delete_items", { item_keys: ["AAAA1111"] }), "modified by another client");
+      const json = expectErrorJson(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), "modified by another client");
       expect(json.status).toBe("version_conflict");
     });
 
     it("DI-07 versione di libreria assente → errore strutturato, nessuna DELETE", async () => {
       h = await startHarness({ unsafeOps: "items" });
-      h.net.on("GET", ITEMS, jsonResponse([zoteroEntity(article("AAAA1111"))]));
-      expectErrorJson(await h.call("delete_items", { item_keys: ["AAAA1111"] }), "Could not determine library version");
+      h.net.on("GET", ITEMS, jsonResponse([zoteroEntity(article("AAAARRRR"))]));
+      expectErrorJson(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), "Could not determine library version");
       expect(h.net.requests("DELETE", ITEMS)).toHaveLength(0);
     });
 
@@ -118,27 +148,27 @@ describe("delete_items (MCP)", () => {
     it.each([403, 404, 429, 500, 503])("DI-10 HTTP %i sulla GET → isError", async (status) => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, zError(status));
-      expectToolError(await h.call("delete_items", { item_keys: ["AAAA1111"] }), String(status));
+      expectToolError(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), String(status));
     });
 
     it.each([403, 429, 500])("DI-11 HTTP %i sulla DELETE → isError", async (status) => {
       h = await startHarness({ unsafeOps: "items" });
-      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAA1111")]));
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
       h.net.on("DELETE", ITEMS, zError(status));
-      expectToolError(await h.call("delete_items", { item_keys: ["AAAA1111"] }), String(status));
+      expectToolError(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), String(status));
     });
 
     it("DI-12 errore di rete → isError", async () => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, networkError());
-      expectToolError(await h.call("delete_items", { item_keys: ["AAAA1111"] }));
+      expectToolError(await h.call("delete_items", { item_keys: ["AAAARRRR"] }));
     });
 
     describe("validazione input", () => {
       it.each([
         ["item_keys", {}],
         ["item_keys", { item_keys: [] }],
-        ["item_keys", { item_keys: "AAAA1111" }],
+        ["item_keys", { item_keys: "AAAARRRR" }],
         ["item_keys", { item_keys: manyArticles(51).map((i) => i.key) }],
       ])("DI-13 rifiuta %s non valido", async (field, args) => {
         h = await startHarness({ unsafeOps: "items" });
