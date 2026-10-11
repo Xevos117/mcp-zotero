@@ -558,9 +558,10 @@ si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standal
 Gira sulle PR dello stesso repo (le PR da fork e di Dependabot risultano saltate), su `main`, ogni notte e a mano,
 nell'environment `zotero-live`, con `concurrency: zotero-live` condivisa con l'agente. Il filtro sui file è un job
 (`changes`), non `on.paths`, così una PR di sola documentazione ha il check "saltato" (che vale come superato).
-Senza i secret lo step "Require the test account" fallisce invece di far passare una suite tutta saltata.
+Senza i secret lo step "Require the test account" fallisce invece di far passare una suite tutta saltata;
+con più di 2 casi soft saltati (`ZOTERO_LIVE_MAX_SOFT_SKIPS`) la run fallisce.
 Lo step dei test (18 min) è più corto del job (30 min); poi, sempre:
-- **solo pulizia** (`ZOTERO_LIVE_CLEANUP_ONLY=1`): nessuna fixture, tutti i test saltati; pulisce le run indicate in
+- **solo pulizia** (`npm run test:live:cleanup`, cioè `ZOTERO_LIVE_CLEANUP_ONLY=1`): nessuna fixture, tutti i test saltati; pulisce le run indicate in
   `ZOTERO_LIVE_CLEANUP_RUN_IDS` e quelle interrotte (file `.vitest/live-run-<runId>.json` scritto all'avvio e tolto a
   fine teardown), con le stesse regole sui marcatori; sull'account dedicato anche gli avanzi > 6 h;
 - `test/live/scrub-report.mjs`: copia report e riepilogo mascherando chiave, user id, username, gruppo ed email, e
@@ -571,7 +572,8 @@ notturni, con il link alla run e i nomi dei test (mai dati).
 ## Agente smoke (`.github/workflows/claude-agent-smoke.yml`, skill `.claude/skills/test-mcp-zotero`)
 
 Un agente Claude Code vero (claude-code-action v1.0.248 fissata per SHA, Claude Code 2.1.296, modello
-`claude-sonnet-5-5`) carica la skill di progetto e usa il server come un utente. Il prompt è solo "Carica la skill
+`claude-sonnet-5-5`, autenticazione con Workload Identity Federation di Anthropic: variabili `ANTHROPIC_*` dell'environment
+`zotero-live`, `id-token: write`, nessuna API key) carica la skill di progetto e usa il server come un utente. Il prompt è solo "Carica la skill
 test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non è dell'agente**: lo decide
 `test/live/verify-claims.mjs`, poi la stessa pulizia di live-tests (solo pulizia, sul runId dell'agente).
 

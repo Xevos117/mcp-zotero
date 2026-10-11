@@ -95,13 +95,14 @@ jobs:
       # Shorter than the job, so the always() steps below still have time to clean up.
       - name: Live suite
         timeout-minutes: 18
+        env:
+          # more than 2 cases skipped because an external service was down → the run fails
+          ZOTERO_LIVE_MAX_SOFT_SKIPS: "2"
         run: npx vitest run --config vitest.live.config.ts
       - name: Clean up interrupted runs
         if: always()
         timeout-minutes: 5
-        env:
-          ZOTERO_LIVE_CLEANUP_ONLY: "1"
-        run: npx vitest run --config vitest.live.config.ts
+        run: npm run test:live:cleanup
       - name: Scrub report
         if: always()
         timeout-minutes: 2

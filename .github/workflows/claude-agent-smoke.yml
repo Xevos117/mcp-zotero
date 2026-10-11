@@ -3,7 +3,10 @@ name: Agent smoke test
 # A real Claude Code agent (claude-code-action, Agent SDK) uses the MCP server like a user, following
 # the versioned skill .claude/skills/test-mcp-zotero. The verdict is NOT the agent's: it comes from
 # test/live/verify-claims.mjs, which checks the agent's claims against the Zotero Web API.
-# Secrets (environment `zotero-live`): ANTHROPIC_API_KEY plus the live-test Zotero secrets.
+# Environment `zotero-live`: the live-test Zotero secrets, plus the Anthropic Workload Identity
+# Federation VARIABLES (no API key): ANTHROPIC_FEDERATION_RULE_ID, ANTHROPIC_ORGANIZATION_ID,
+# ANTHROPIC_SERVICE_ACCOUNT_ID, ANTHROPIC_WORKSPACE_ID. The federation rule is bound to
+# repo:<owner>/<repo>:environment:zotero-live, so the agent step must run in this environment.
 on:
   pull_request:
   push:
@@ -58,6 +61,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: zotero-live
     timeout-minutes: 45
+    permissions:
+      contents: read
+      # GitHub OIDC token for the Anthropic federation exchange, done by the action itself; the action
+      # removes ACTIONS_ID_TOKEN_REQUEST_* from the agent's environment, so the agent cannot mint tokens.
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 3
@@ -91,15 +99,16 @@ jobs:
             echo "::notice::$path is not on the base branch yet: agent smoke skipped (it runs from main after merge)"
           fi
 
-      - name: Require secrets
+      - name: Require secrets and federation variables
         if: steps.skill.outputs.available == 'true'
         timeout-minutes: 1
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$ZOTERO_TEST_API_KEY" ]; then
-            echo "::error::zotero-live environment secrets missing (ANTHROPIC_API_KEY, ZOTERO_TEST_API_KEY)"
+          if [ -z "$ZOTERO_TEST_API_KEY" ] || [ -z "$FEDERATION_RULE_ID" ] || [ -z "$ORGANIZATION_ID" ]; then
+            echo "::error::zotero-live environment incomplete (secret ZOTERO_TEST_API_KEY, variables ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID)"
             exit 1
           fi
       - if: steps.skill.outputs.available == 'true'
@@ -156,7 +165,11 @@ jobs:
           MCP_TIMEOUT: "30000"
           MCP_TOOL_TIMEOUT: "120000"
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_federation_rule_id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          anthropic_service_account_id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          anthropic_workspace_id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+          # read-only token: no Claude App token exchange, no write access for the agent
           github_token: ${{ github.token }}
           prompt: "Carica la skill test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt."
           claude_args: >-
@@ -195,9 +208,8 @@ jobs:
           ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
           ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
-          ZOTERO_LIVE_CLEANUP_ONLY: "1"
-          ZOTERO_LIVE_CLEANUP_RUN_IDS: ${{ steps.prepare.outputs.run_id }}
-        run: npx vitest run --config vitest.live.config.ts
+          RUN_ID: ${{ steps.prepare.outputs.run_id }}
+        run: npm run test:live:cleanup -- "$RUN_ID"
 
       - name: Scrub agent output
         if: always() && steps.prepare.outcome == 'success'

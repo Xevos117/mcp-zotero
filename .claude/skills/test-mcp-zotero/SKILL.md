@@ -129,7 +129,7 @@ Write exactly this structure (JSON, no comments):
 - If `context.cleanup` is `agent` (local runs): delete everything you created with `delete_items`
   (items before collections; children go with their parent). Collections: `delete_collection` only if
   `unsafe_operations` is `all` and not safe mode; otherwise list them in the report so the user can run
-  `ZOTERO_LIVE_CLEANUP_ONLY=1 ZOTERO_LIVE_CLEANUP_RUN_IDS=<run_id> npx vitest run --config vitest.live.config.ts`.
+  `npm run test:live:cleanup -- <run_id>`.
   Move the deleted keys from `created` to `deleted` in claims.json.
 - If `context.cleanup` is `verifier` (CI): delete nothing beyond F8; the workflow verifies your claims
   and then removes the run.
