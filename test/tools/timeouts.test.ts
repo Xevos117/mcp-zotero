@@ -99,11 +99,11 @@ describe("timeout delle chiamate di rete (MCP)", () => {
   });
 
   it("TO-08 Unpaywall fermo → voce non trovata entro il bound, nessun download", async () => {
-    h.net.on("GET", `${ZBASE}/items`, () => zList([article("DOI00001", { DOI: "10.1/slow" })]) as Response);
-    h.net.on("GET", `${ZBASE}/items/DOI00001/children`, zList([]));
+    h.net.on("GET", `${ZBASE}/items`, () => zList([article("DQIQQQQR", { DOI: "10.1/slow" })]) as Response);
+    h.net.on("GET", `${ZBASE}/items/DQIQQQQR/children`, zList([]));
     h.net.on("GET", /^api\.unpaywall\.org\//, hang());
-    const out = await h.call("find_and_attach_pdfs", { item_keys: ["DOI00001"] });
+    const out = await h.call("find_and_attach_pdfs", { item_keys: ["DQIQQQQR"] });
     expect(out.isError).toBe(false);
-    expect(out.json.results[0]).toMatchObject({ item_key: "DOI00001", status: "not_found" });
+    expect(out.json.results[0]).toMatchObject({ item_key: "DQIQQQQR", status: "not_found" });
   });
 });
