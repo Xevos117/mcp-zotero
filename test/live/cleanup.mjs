@@ -6,7 +6,9 @@
 import { spawnSync } from "node:child_process";
 
 const ids = process.argv.slice(2).filter(Boolean);
-const r = spawnSync(process.execPath, ["node_modules/vitest/vitest.mjs", "run", "--config", "vitest.live.config.ts"], {
+// --reporter=default: the config's JSON reporter would overwrite .vitest/live-report.json (the report of the
+// run being cleaned up, still to be scrubbed and uploaded) with an all-skipped one.
+const r = spawnSync(process.execPath, ["node_modules/vitest/vitest.mjs", "run", "--config", "vitest.live.config.ts", "--reporter=default"], {
   stdio: "inherit",
   timeout: 10 * 60 * 1000,
   env: { ...process.env, ZOTERO_LIVE_CLEANUP_ONLY: "1", ...(ids.length ? { ZOTERO_LIVE_CLEANUP_RUN_IDS: ids.join(",") } : {}) },

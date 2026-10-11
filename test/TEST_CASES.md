@@ -492,10 +492,12 @@ la libreria intera.
 collezione `mzt-lock <runId>`; se ne trova una più vecchia e non scaduta di un'altra run (di un'altra PR, dell'agente,
 di un altro worktree), aspetta con backoff (15 s, 30 s, poi ogni 60 s) fino a 25 min (`ZOTERO_LIVE_LOCK_WAIT_MIN`) e poi
 si ferma con "test account busy". I lock più vecchi di 90 min (più del job più lungo) sono di run morte e vengono rimossi.
-A parità di corsa vince il runId più vecchio. Rilascio a fine teardown (sempre) e nella modalità solo pulizia. I DELETE
+A parità di corsa vince il runId più vecchio. Le collezioni di lock sono escluse dai conteggi prima/dopo (una run in attesa
+crea la sua mentre un'altra è fra i due conteggi). Rilascio a fine teardown (sempre) e nella modalità solo pulizia. I DELETE
 ritentano fino a 8 volte con jitter sui 412 (versione della libreria cambiata nel frattempo).
 
-**Pulizia dopo una run interrotta** (processo ucciso, timeout): `npm run test:live:cleanup -- [runId…]` con le stesse
+**Pulizia dopo una run interrotta** (processo ucciso, timeout; usa il reporter di default, così non sovrascrive
+`.vitest/live-report.json` della run da pulire): `npm run test:live:cleanup -- [runId…]` con le stesse
 variabili della suite (in safe mode compresa). Senza argomenti pulisce le run che hanno lasciato in `.vitest/` il
 marcatore `live-run-<runId>.json` o il registro `live-created-<runId>.jsonl`; stesse regole sui marcatori del teardown.
 

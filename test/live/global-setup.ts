@@ -22,7 +22,7 @@ import {
 } from "./helpers/env.js";
 import { ZoteroWeb } from "./helpers/zotero-web.js";
 // @ts-expect-error modulo .mjs senza dichiarazioni di tipo (usato anche da riga di comando)
-import { acquireLock, releaseLock, DEFAULT_LOCK_WAIT_MS } from "./lock.mjs";
+import { acquireLock, releaseLock, DEFAULT_LOCK_WAIT_MS, LOCK_PREFIX } from "./lock.mjs";
 import { startFixtureServer, FixtureServer } from "./helpers/fixture-server.js";
 import type { LiveInfo } from "./helpers/live.js";
 
@@ -70,11 +70,16 @@ function withBound<T>(label: string, p: Promise<T>, ms = SETUP_BOUND_MS): Promis
   ]);
 }
 
+/**
+ * Library counts for the before/after comparison. Lock collections (`mzt-lock <runId>`) are excluded:
+ * a run waiting for the lock creates its own while another run is between its two counts.
+ */
 async function counts(z: ZoteroWeb): Promise<Counts> {
+  const collections = (await z.getAll<any>("collections")).filter((c) => !String(c.data.name).startsWith(LOCK_PREFIX)).length;
   return {
     topItems: await z.totalResults("items/top"),
     items: await z.totalResults("items"),
-    collections: await z.totalResults("collections"),
+    collections,
     trash: await z.totalResults("items/trash"),
   };
 }
