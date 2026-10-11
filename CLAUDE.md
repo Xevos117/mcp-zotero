@@ -84,7 +84,8 @@ Required checks to set in the ruleset after the stack merges (names as GitHub sh
 `test (node 22)`, `test (node 24)`, `test (node 26)`, `live-tests`, `agent-smoke`.
 
 Live runs are serialized on the Zotero side by `test/live/lock.mjs` (lock collection
-`mzt-lock <runId>`, wait up to 25 min, then "test account busy"); workflow concurrency is per PR/ref,
+`mzt-lock <runId>`, wait up to 25 min locally and 70 min in CI, then "test account busy"; an agent smoke
+run holds the account for up to about 80 min); workflow concurrency is per PR/ref,
 so stacked PRs never cancel each other's required checks.
 
 Every workflow installs with `npm ci --ignore-scripts`; Zotero secrets are set only on the steps that
