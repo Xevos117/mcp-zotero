@@ -1,0 +1,97 @@
+name: Monthly dependency update
+
+# A Claude Code agent (claude-code-action) follows .claude/skills/deps-update: minor and patch
+# updates, build/test/e2e/smoke, CHANGELOG, one PR in Italian. Majors are only listed.
+# The PR is opened with the Claude GitHub App token (OIDC exchange, id-token: write), so it triggers CI.
+# Auto-merge is decided by scripts/deps-merge-gate.mjs, never by the agent: only patch bumps touching
+# package.json, package-lock.json and CHANGELOG.md get `gh pr merge --auto --squash`; GitHub then merges
+# only after every required check is green. Secrets (environment `claude-deps`): ANTHROPIC_API_KEY.
+on:
+  schedule:
+    - cron: "41 5 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deps-update
+  cancel-in-progress: false
+
+jobs:
+  deps-update:
+    runs-on: ubuntu-latest
+    environment: claude-deps
+    timeout-minutes: 60
+    permissions:
+      contents: write # enable auto-merge on the PR (merge gate step)
+      pull-requests: write
+      id-token: write # Claude App token exchange inside claude-code-action
+    steps:
+      - name: Skip if a deps/* PR is already open
+        id: open
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          open=$(gh pr list --repo "$REPO" --state open --json headRefName --jq '[.[] | select(.headRefName | startswith("deps/"))] | length')
+          echo "count=$open" >> "$GITHUB_OUTPUT"
+          if [ "$open" != "0" ]; then echo "::notice::a deps/* PR is already open: nothing to do"; fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.open.outputs.count == '0'
+        timeout-minutes: 3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.open.outputs.count == '0'
+        timeout-minutes: 3
+        with:
+          node-version: 24
+          cache: npm
+      # native binaries of TypeScript 7 and rolldown/vitest come as optionalDependencies: no install scripts needed
+      - if: steps.open.outputs.count == '0'
+        run: npm ci --ignore-scripts
+        timeout-minutes: 5
+
+      - name: Claude Code agent (skill deps-update)
+        id: claude
+        if: steps.open.outputs.count == '0'
+        timeout-minutes: 45
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "Carica la skill deps-update e seguila."
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 120
+            --max-budget-usd 15
+            --allowedTools "Skill,Read,Glob,Grep,Edit,Write,Bash(npm outdated *),Bash(npm view *),Bash(npm update *),Bash(npm install *),Bash(npm ci *),Bash(npm run *),Bash(npm test *),Bash(npx vitest *),Bash(git status *),Bash(git diff *),Bash(git log *),Bash(git add *),Bash(git commit *),Bash(git switch *),Bash(git push origin deps/*),Bash(gh pr create *),Bash(gh pr view *),Bash(gh pr list *)"
+            --disallowedTools "WebFetch,WebSearch,Edit(./.github/**),Write(./.github/**),Bash(gh pr merge *),Bash(npm publish *),Bash(gh release *),Bash(git push --force *),Bash(git push -f *),Bash(git tag *)"
+
+      - name: Merge gate (patch-only → auto-merge)
+        if: steps.open.outputs.count == '0' && steps.claude.outcome == 'success'
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          pr=$(gh pr list --repo "$REPO" --state open --json number,headRefName --jq '[.[] | select(.headRefName | startswith("deps/"))][0] // empty')
+          if [ -z "$pr" ]; then
+            echo "::notice::no deps/* PR opened (nothing to update)"
+            exit 0
+          fi
+          number=$(printf '%s' "$pr" | jq -r .number)
+          branch=$(printf '%s' "$pr" | jq -r .headRefName)
+          git fetch --no-tags origin main "$branch"
+          if node scripts/deps-merge-gate.mjs origin/main "origin/$branch" > gate.json; then
+            gh pr merge "$number" --repo "$REPO" --auto --squash
+            echo "::notice::PR #$number: patch-only, auto-merge enabled (merges after the required checks)"
+          else
+            code=$?
+            cat gate.json
+            if [ "$code" -ne 1 ]; then exit "$code"; fi
+            echo "::notice::PR #$number left for the owner (not patch-only, see the gate output above)"
+          fi

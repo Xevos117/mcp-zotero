@@ -718,6 +718,30 @@ due sonde F0 (`… && ls` e `delete_items` di `XXXXXXXX`), nessuna sul percorso 
 della libreria come prima. X1 (DOI vuoto → errore grezzo "Unexpected token '<' … is not valid JSON") è stato corretto nel
 livello 3b (AID-28..31) e da allora la scansione di robustezza tratta quel testo come violazione (VC-03b).
 
+## Agente dipendenze (`.github/workflows/deps-update.yml`, skill `.claude/skills/deps-update`)
+
+Il primo del mese (e a mano), nell'environment `claude-deps` (solo la chiave Anthropic). Esce subito se c'è già una PR
+`deps/*` aperta. L'agente (claude-code-action, `claude-opus-5-5`, `--max-turns 120`, `--max-budget-usd 15`, step 45 min)
+segue la skill: `npm outdated`, solo minor e patch con `--ignore-scripts` (i binari nativi di TypeScript 7 e
+rolldown/vitest arrivano come optionalDependencies: nel lockfile hanno script d'installazione solo `core-js-pure` e
+`fsevents`), `npm ci`, build, test, e2e, smoke, correzioni, CHANGELOG, PR in italiano; le major solo elencate. Bash
+limitato a npm, git (push solo su `deps/*`) e `gh pr create/view/list`; vietati `gh pr merge`, `npm publish`, release,
+tag, force push e modifiche a `.github/`. La PR è aperta col token della Claude GitHub App (scambio OIDC,
+`id-token: write`), quindi fa partire la CI.
+
+**Merge automatico deciso dal codice** (`scripts/deps-merge-gate.mjs`, step dopo l'agente): solo se il diff tocca
+esclusivamente `package.json`, `package-lock.json` e `CHANGELOG.md`, nessun pacchetto viene aggiunto o rimosso, i range
+in `package.json` si spostano al più di una patch e ogni versione cambiata nel lockfile (anche transitiva) è una patch
+secondo semver; allora `gh pr merge --auto --squash` col `GITHUB_TOKEN`, e GitHub unisce solo con tutti i check
+obbligatori verdi. Altrimenti la PR resta al proprietario. Il token della App viene revocato a fine action, perciò il
+merge automatico usa il `GITHUB_TOKEN`: il push su `main` che ne risulta non fa partire altri workflow.
+
+| ID | Scenario (`test/utils/deps-merge-gate.test.ts`) | Atteso |
+|---|---|---|
+| DG-01 | `isPatchBump` su patch, minor, major, uguale, prerelease, 0.x | solo le patch stabili |
+| DG-02 | patch diretti e transitivi, range `^` aggiornati | mergeable |
+| DG-03 | minor nel lockfile, file di codice, pacchetto aggiunto, range allargato a una minor, `version` cambiata, lockfile invariato | lasciata al proprietario con il motivo |
+
 ### Le 5 righe segnate OK a mano nel collaudo 2.0.0 (LIVE-STALE)
 
 Indagate una per una su `main` @ 5a0f772.
