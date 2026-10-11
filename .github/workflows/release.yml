@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
         timeout-minutes: 5
       - run: npm run build
         timeout-minutes: 3
@@ -38,11 +38,19 @@ jobs:
         timeout-minutes: 5
 
   # ── 2. Publish to npm ───────────────────────────────────────
+  # Ready for npm Trusted Publishing (OIDC + provenance). Until the owner configures the trusted
+  # publisher for this repository/workflow/environment on npmjs.com, NODE_AUTH_TOKEN (NPM_TOKEN) is the
+  # fallback; once trusted publishing works, delete the NPM_TOKEN secret and the env line below.
+  # Tests run only in the `test` job: publish uses --ignore-scripts, so prepublishOnly never runs
+  # with publishing credentials in the environment.
   npm-publish:
     needs: test
     runs-on: ubuntu-latest
     environment: release
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # npm Trusted Publishing and provenance
     steps:
       - uses: actions/checkout@v7
         timeout-minutes: 3
@@ -54,14 +62,17 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - run: npm ci
+      # Trusted Publishing needs npm >= 11.5.1
+      - run: npm install -g npm@^11.5.1 --ignore-scripts
+        timeout-minutes: 3
+      - run: npm ci --ignore-scripts
         timeout-minutes: 5
       - run: npm run build
         timeout-minutes: 3
-      - run: npm publish --access public
+      - run: npm publish --access public --provenance --ignore-scripts
         timeout-minutes: 5
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # fallback until Trusted Publishing is configured
 
   # ── 3. Generate skill zips and attach to the release ────────
   skill-zips:
