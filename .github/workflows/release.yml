@@ -62,8 +62,8 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      # Trusted Publishing needs npm >= 11.5.1
-      - run: npm install -g npm@^11.5.1 --ignore-scripts
+      # Trusted Publishing needs npm >= 11.5.1; exact version, bumped deliberately (Dependabot does not track it)
+      - run: npm install -g npm@11.21.0 --ignore-scripts
         timeout-minutes: 3
       - run: npm ci --ignore-scripts
         timeout-minutes: 5
