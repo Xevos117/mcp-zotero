@@ -736,7 +736,7 @@ Federation di Anthropic, nessun secret). Tre job con il minimo dei permessi:
   gate è passato**. Altrimenti commenta la PR (merge automatico disattivato, motivi del gate) e il merge-gate non parte.
 - **merge-gate**: senza npm, checkout pulito di `main`; esegue la copia di `main` di `scripts/deps-merge-gate.mjs` sulla
   testa della PR, verifica base `main`, testa invariata, autore = `github-actions[bot]` registrato da open-pr, poi aspetta
-  fino a 120 min che `test (node 22/24/26)`, `live-tests` e `agent-smoke` siano tutti verdi su quello SHA (solo check di
+  fino a 180 min (live-tests e agent-smoke condividono il lock: attese fino a 70 min ciascuno più la run dell'agente) che `test (node 22/24/26)`, `live-tests` e `agent-smoke` siano tutti verdi su quello SHA (solo check di
   GitHub Actions, app id 15368, la run più recente per nome) (non si affida solo al ruleset) e solo
   allora `gh pr merge --auto --squash --match-head-commit <sha>` col `GITHUB_TOKEN`. Altrimenti la PR resta al
   proprietario. Il push su `main` del merge automatico non fa partire workflow; il notturno copre `main`.
