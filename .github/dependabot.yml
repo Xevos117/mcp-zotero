@@ -1,4 +1,4 @@
-# Actions are pinned in the workflows; Dependabot keeps them current.
+# Keeps the GitHub Actions used by the workflows current (version tags and the SHA-pinned ones).
 # npm dependencies are handled by the monthly deps-update agent, not here.
 version: 2
 updates:

@@ -10,7 +10,7 @@ on:
         required: true
 
 permissions:
-  contents: write   # needed to upload release assets
+  contents: read
 
 jobs:
   # ── 1. Run tests before publishing anything ──────────────────
@@ -19,7 +19,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        timeout-minutes: 3
       - uses: actions/setup-node@v7
+        timeout-minutes: 3
         with:
           node-version: 24
           cache: npm
@@ -43,8 +45,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+        timeout-minutes: 3
 
       - uses: actions/setup-node@v7
+        timeout-minutes: 3
         with:
           node-version: 24
           cache: npm
@@ -63,9 +67,12 @@ jobs:
   skill-zips:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to create the release and upload its assets
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        timeout-minutes: 3
 
       - name: Create skill zip archives
         timeout-minutes: 3
