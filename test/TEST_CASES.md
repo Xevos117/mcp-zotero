@@ -556,7 +556,10 @@ si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standal
 ### In CI (`.github/workflows/live-tests.yml`)
 
 Gira sulle PR dello stesso repo (le PR da fork e di Dependabot risultano saltate), su `main`, ogni notte e a mano,
-nell'environment `zotero-live`, con `concurrency: zotero-live` condivisa con l'agente. Il filtro sui file è un job
+nell'environment `zotero-live`. Concurrency per workflow e PR/ref (`cancel-in-progress` solo sulle PR: un nuovo push
+sostituisce la run precedente della stessa PR); le run di PR diverse e dell'agente si serializzano sul lato Zotero con
+`test/live/lock.mjs` (attesa fino a 25 min, poi "test account busy"), così le PR in stack non si annullano a vicenda i
+check obbligatori. Job di 60 min, step dei test di 45 (attesa del lock compresa). Il filtro sui file è un job
 (`changes`), non `on.paths`, così una PR di sola documentazione ha il check "saltato" (che vale come superato).
 Senza i secret lo step "Require the test account" fallisce invece di far passare una suite tutta saltata;
 con più di 2 casi soft saltati (`ZOTERO_LIVE_MAX_SOFT_SKIPS`) la run fallisce.
@@ -582,7 +585,8 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
 - **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
   comandi: `node test/live/agent/make-docx.mjs` (crea il docx con i `<zcite>`, senza shell generica) e
   `node skills/zotero-skill-mcp-integrations/scripts/inject.js`. WebFetch/WebSearch negati; `--max-turns 80`,
-  `--max-budget-usd 5`, `MCP_TOOL_TIMEOUT` 120 s, step 25 min. La chiave Zotero sta solo nel file di config MCP in
+  `--max-budget-usd 5`, `MCP_TOOL_TIMEOUT` 120 s, step 25 min; prima dell'agente prende lo stesso lock della suite
+(`node test/live/lock.mjs acquire <runId>`, fino a 25 min) e lo rilascia sempre alla fine; job di 75 min. La chiave Zotero sta solo nel file di config MCP in
   `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente.
 - **Sulle PR** claude-code-action ripristina `.claude/` e `CLAUDE.md` dal branch di base (configurazione dell'agente
   scritta nella PR = non fidata): gira la skill del branch di base. Se lì la skill non c'è ancora (la PR che la

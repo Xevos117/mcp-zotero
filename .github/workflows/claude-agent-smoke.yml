@@ -16,9 +16,10 @@ on:
 permissions:
   contents: read
 
+# Same scheme as live-tests.yml: per-PR group, cross-PR serialization by the Zotero-side lock.
 concurrency:
-  group: zotero-live
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
@@ -60,7 +61,7 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: zotero-live
-    timeout-minutes: 45
+    timeout-minutes: 75
     permissions:
       contents: read
       # GitHub OIDC token for the Anthropic federation exchange, done by the action itself; the action
@@ -136,6 +137,16 @@ jobs:
           node test/live/agent/prepare.mjs --mode ci --base "$base"
           echo "run_id=$(node -p 'require("./agent-out/context.json").run_id')" >> "$GITHUB_OUTPUT"
 
+      # Same lock as the live suite: one run at a time on the Zotero test account (waits up to 25 min).
+      - name: Lock the test account
+        id: lock
+        if: steps.skill.outputs.available == 'true'
+        timeout-minutes: 27
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          RUN_ID: ${{ steps.prepare.outputs.run_id }}
+        run: node test/live/lock.mjs acquire "$RUN_ID"
+
       # The Zotero key goes only into this file; the agent's environment never contains it.
       - name: MCP config for the agent
         if: steps.skill.outputs.available == 'true'
@@ -191,7 +202,7 @@ jobs:
 
       # Deterministic verdict: this step, not the agent, decides the check.
       - name: Verify the agent's claims
-        if: always() && steps.prepare.outcome == 'success'
+        if: always() && steps.prepare.outcome == 'success' && steps.lock.outcome == 'success'
         timeout-minutes: 5
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
@@ -210,6 +221,14 @@ jobs:
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
           RUN_ID: ${{ steps.prepare.outputs.run_id }}
         run: npm run test:live:cleanup -- "$RUN_ID"
+
+      - name: Release the test-account lock
+        if: always() && steps.prepare.outcome == 'success'
+        timeout-minutes: 3
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          RUN_ID: ${{ steps.prepare.outputs.run_id }}
+        run: node test/live/lock.mjs release "$RUN_ID"
 
       - name: Scrub agent output
         if: always() && steps.prepare.outcome == 'success'

@@ -16,10 +16,12 @@ on:
 permissions:
   contents: read
 
-# Shared with the agent smoke test: one live run at a time against the test account.
+# One group per workflow and PR/ref: a new push supersedes the previous run of the same PR. Runs of
+# different PRs (and the agent smoke test) are serialized on the Zotero side by test/live/lock.mjs,
+# so stacked PRs never cancel each other's required checks; a queued run waits up to 25 min.
 concurrency:
-  group: zotero-live
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Path filter at job level (not `on.paths`): a required check that never starts would block
@@ -63,7 +65,7 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: zotero-live
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
       ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
@@ -92,9 +94,10 @@ jobs:
         timeout-minutes: 5
       - run: npm run build
         timeout-minutes: 3
-      # Shorter than the job, so the always() steps below still have time to clean up.
+      # Up to 25 min waiting for the test-account lock + ~5 min of tests; shorter than the job, so the
+      # always() steps below still have time to clean up and release the lock.
       - name: Live suite
-        timeout-minutes: 18
+        timeout-minutes: 45
         env:
           # more than 2 cases skipped because an external service was down → the run fails
           ZOTERO_LIVE_MAX_SOFT_SKIPS: "2"
