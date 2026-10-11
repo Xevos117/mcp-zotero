@@ -1,6 +1,6 @@
 ---
 name: deps-update
-description: Monthly dependency update for mcp-zotero — minor and patch updates only, full build/test/e2e/smoke, fixes for what breaks, CHANGELOG entry, one pull request in Italian; majors are only listed. Use when the deps-update workflow says to load this skill, or when asked to update the dependencies.
+description: Monthly dependency update for mcp-zotero — minor and patch updates only, full build/test/e2e/smoke, anything that breaks is postponed (never fixed in code), CHANGELOG entry, PR text in Italian; majors are only listed. Use when the deps-update workflow says to load this skill, or when asked to update the dependencies.
 ---
 
 # deps-update — monthly dependency update
@@ -22,6 +22,8 @@ decide that, and you never merge.
 - `npm install`/`npm update`/`npm ci` always with `--ignore-scripts` (also enforced by
   `NPM_CONFIG_IGNORE_SCRIPTS=true`; the native binaries of TypeScript 7 and rolldown/vitest come as
   optionalDependencies and need no install scripts).
+- Run commands exactly as written here, one per call, without `timeout`, `&&`, pipes or redirections:
+  only `npm outdated|view|update|install|ci|run …` and `git status|diff|log …` are allowed.
 - Every command runs through the Bash tool, which bounds it; give long commands (`npm ci`, tests) a
   Bash timeout of at most 10 minutes. A command that hits its bound is a failure to report.
 - Commit messages, the PR title and description are in **Italian**. Code comments stay English.
@@ -39,14 +41,14 @@ decide that, and you never merge.
 3. **Update.** `npm update --save --ignore-scripts` (respects the
    `^` ranges and moves them to the new versions). If a wanted minor is still missing, install it
    explicitly: `npm install --save[-dev] --ignore-scripts <name>@^<version>`.
-4. **Verify from scratch.** `npm ci --ignore-scripts`, then `npm run build`, `npm test`,
+4. **Verify from scratch.** `npm ci --ignore-scripts`, then `npm run build`, `npm run test`,
    `npm run test:e2e`, `npm run smoke`. All must pass.
 5. **What breaks is postponed, not fixed.** If an update breaks the build or the tests, put that single
    package back to its previous version (`npm install --save[-dev] --ignore-scripts <name>@<old>`) and list
    it under "Rinviati" with the error in one line. Re-run step 4 after every revert. Code fixes are for
    a human PR, not for this job.
-6. **CHANGELOG.** Under `## [Unreleased]` add (or extend) a `### Dipendenze` section: one line per
-   direct dependency, `name` old → new, plus a short note for any code fix.
+6. **CHANGELOG.** Under `## [Unreleased]` add (or extend) a `### Dependencies` section (headings in English): one line per
+   direct dependency, `name` old → new (postponed packages are listed only in the PR text).
 7. **PR text.** Write `agent-out/deps-pr.md` (Write tool): the **first line** is the title,
    `Dipendenze: aggiornamenti minor e patch (<YYYY-MM>)`; the rest is the description, in Italian:
    - a table of the direct dependencies updated (old → new, patch or minor);
