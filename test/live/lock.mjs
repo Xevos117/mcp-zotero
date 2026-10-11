@@ -102,7 +102,10 @@ export async function acquireLock({ key, lib, runId, waitMs = DEFAULT_LOCK_WAIT_
       await deleteCollections(key, lib, stale.map((s) => s.key));
     }
     const older = others.filter((o) => !stale.includes(o) && o.runId < runId);
-    if (older.length === 0) return lockKey;
+    if (older.length === 0) {
+      log(`[lock] acquired ${runId}`);
+      return lockKey;
+    }
     if (Date.now() > deadline) {
       await deleteCollections(key, lib, [lockKey]);
       throw new Error(`test account busy: run ${older.map((o) => o.runId).join(", ")} holds the Zotero test library lock; gave up after ${waitMs >= 60_000 ? `${Math.round(waitMs / 60000)} min` : `${Math.round(waitMs / 1000)} s`}`);
@@ -114,10 +117,11 @@ export async function acquireLock({ key, lib, runId, waitMs = DEFAULT_LOCK_WAIT_
 }
 
 /** Removes every lock collection of runId (idempotent). */
-export async function releaseLock({ key, lib, runId }) {
+export async function releaseLock({ key, lib, runId, log = console.log }) {
   lib ??= await libraryPath(key);
   const mine = (await listLocks(key, lib)).filter((l) => l.runId === runId);
   if (mine.length) await deleteCollections(key, lib, mine.map((l) => l.key));
+  log(`[lock] released ${runId} (${mine.length} lock collection(s) removed)`);
   return mine.length;
 }
 
@@ -132,7 +136,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const waitMs = Number(process.env.ZOTERO_LIVE_LOCK_WAIT_MIN ?? DEFAULT_LOCK_WAIT_MS / 60000) * 60000;
   const run = cmd === "acquire" ? acquireLock({ key, runId, waitMs }) : releaseLock({ key, runId });
   run.then(
-    (r) => console.log(`[lock] ${cmd} ${runId}: ${cmd === "acquire" ? "acquired" : `${r} lock(s) removed`}`),
+    () => {},
     (e) => {
       console.error(`[lock] ${scrub(e instanceof Error ? e.message : e)}`);
       process.exit(1);

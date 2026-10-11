@@ -10,7 +10,9 @@ export default defineConfig({
     fileParallelism: false,
     testTimeout: 120_000,
     hookTimeout: 300_000,
-    teardownTimeout: 30_000,
+    // globalSetup teardown: cleanup of everything the run created, count checks and lock release (about 70 s on a
+    // real account, longer when the API throttles); the CI step bound (85 min) stays far above it
+    teardownTimeout: 600_000,
     reporters: ["default", ["json", { outputFile: ".vitest/live-report.json" }]],
   },
 });
