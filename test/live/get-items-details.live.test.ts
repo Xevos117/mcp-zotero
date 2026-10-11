@@ -33,6 +33,7 @@ describe.skipIf(!live.enabled)("get_items_details (live)", () => {
     expect(r.json[f.article].authors).toMatch(/Lovelace.*Turing/);
     expect(r.json[f.article]).not.toHaveProperty("abstractNote");
     expect(r.json[f.book]).toMatchObject({ publisher: "Test Press", place: "Rome", creators: [{ creatorType: "author", name: "Test Consortium" }] });
+    expect(r.json[f.book].authors).toBe("Test Consortium");
     expect(r.json[f.noAuthor]).not.toHaveProperty("creators");
   });
 

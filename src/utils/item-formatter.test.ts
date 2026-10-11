@@ -10,6 +10,11 @@ describe("formatCreators", () => {
     expect(formatCreators(creators)).toBe("John Smith, Jane Doe");
   });
 
+  it("uses the single-field name of institutional creators", () => {
+    const creators = [{ name: "Test Consortium", creatorType: "author" }, { firstName: "Jane", lastName: "Doe", creatorType: "author" }];
+    expect(formatCreators(creators)).toBe("Test Consortium, Jane Doe");
+  });
+
   it("handles creators with only lastName", () => {
     const creators = [{ lastName: "Smith", creatorType: "author" }];
     expect(formatCreators(creators)).toBe("Smith");

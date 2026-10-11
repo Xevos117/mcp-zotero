@@ -122,7 +122,7 @@ describe("search_library (MCP)", () => {
     });
   });
 
-  it("SL-10 creator istituzionale (solo name) e creator senza nome vengono ignorati nella stringa autori", async () => {
+  it("SL-10 creator senza nome ignorato nella stringa autori", async () => {
     h.net.on(
       "GET",
       ITEMS,
@@ -137,6 +137,12 @@ describe("search_library (MCP)", () => {
     );
     const out = await h.call("search_library", {});
     expect(out.json[0].authors).toBe("Solo");
+  });
+
+  it("SL-14 creator istituzionale (solo name) → nella stringa autori, non \"No authors listed\"", async () => {
+    h.net.on("GET", ITEMS, zList([article("INST0001", { creators: [{ creatorType: "author", name: "Test Consortium" }] })]));
+    const out = await h.call("search_library", {});
+    expect(out.json[0].authors).toBe("Test Consortium");
   });
 
   describe("validazione input", () => {

@@ -72,6 +72,7 @@ test normali. Non restano `it.fails` nella suite.
 | SL-11 | sort, direction, limit, query non validi | isError con il nome del campo, nessuna chiamata HTTP |
 | SL-12 | HTTP 403/404/412/429/500/503 | isError contenente lo status |
 | SL-13 | errore di rete | isError |
+| SL-14 | creator istituzionale (solo `name`) | nella stringa `authors` (prima: "No authors listed", trovato dall'agente smoke; corretto nel livello 3b) |
 
 ## get_collections (`get-collections.test.ts`)
 | ID | Scenario | Atteso |
@@ -98,6 +99,7 @@ test normali. Non restano `it.fails` nella suite.
 | GCI-09/10 | HTTP 403/412/429/500/503, rete | isError |
 | GCI-11 | unicode | preservato |
 | GCI-12..14 | collectionKey mancante o non stringa, excludeAttachments non booleano | isError |
+| GCI-15 | autore istituzionale (solo `name`) | nella stringa `authors` |
 
 ## get_items_details (`get-items-details.test.ts`)
 | ID | Scenario | Atteso |
@@ -112,7 +114,7 @@ test normali. Non restano `it.fails` nella suite.
 | GID-11 | 20 chiavi | una GET, tutte restituite |
 | GID-12 | item_keys mancante/stringa/numeri, include_abstract non booleano | isError |
 | GID-13/14 | HTTP 4xx/5xx, rete | isError |
-| GID-15 | creators strutturati (cognomi multiparola, editor istituzionale) | `creators` come in Zotero accanto ad `authors`; assente se vuoto |
+| GID-15 | creators strutturati (cognomi multiparola, editor istituzionale) | `creators` come in Zotero accanto ad `authors` (che ora include anche il nome istituzionale); assente se vuoto |
 | GID-16 | chiavi malformate / risposta con voci non richieste | errore di validazione senza richieste / solo le voci richieste |
 
 ## get_item_fulltext (`get-item-fulltext.test.ts`)
@@ -558,6 +560,11 @@ Indagate una per una su `main` @ 5a0f772.
 ## Lacune note
 - Le fixture usano chiavi nel formato reale di Zotero (8 caratteri da `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`): chiavi con 0/1/O o
   più corte vengono rifiutate prima di qualsiasi richiesta.
+- Attriti segnalati dall'agente smoke, lasciati come sono (comportamento attuale, non bug): `get_collection_items`
+  riporta in `total_items` anche allegati e note nascosti di default (`returned_items` può essere minore); gli
+  allegati linked_url compaiono come risultati di primo livello in `search_library` (che non usa `/items/top`); i PDF
+  allegati da `add_items_by_doi`/`find_and_attach_pdfs` non ricevono i `tags` del genitore (la pulizia dal vivo li
+  trova come figli di una voce della run).
 - Il fake segue il comportamento osservato nel test dal vivo del 2026-10-10 (itemKey, 404 delle collezioni,
   versioni, DELETE definitiva). Il 413 oltre 50 oggetti in scrittura resta emulato secondo la documentazione v3.
 - `src/server.ts` non esporta la classe `ZoteroServer`; costruttore e lettura dell'env sono coperti solo dagli e2e.

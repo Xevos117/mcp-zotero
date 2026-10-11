@@ -85,7 +85,7 @@ describe("get_items_details (MCP)", () => {
     h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR", { creators }), article("NPCREATR", { creators: [] })]));
     const out = await h.call("get_items_details", { item_keys: ["AAAARRRR", "NPCREATR"] });
     expect(out.json.AAAARRRR.creators).toEqual(creators);
-    expect(out.json.AAAARRRR.authors).toBe("Hans de Kroon, Paulo Caetano da Silva");
+    expect(out.json.AAAARRRR.authors).toBe("Hans de Kroon, Paulo Caetano da Silva, Test Consortium");
     expect(out.json.NPCREATR).not.toHaveProperty("creators");
   });
 
