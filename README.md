@@ -266,11 +266,17 @@ all required checks pass, anything else waits for review. GitHub Actions version
 | `claude-deps` (dependency agent) | — | the same four `ANTHROPIC_*` variables (the federation rule may differ) |
 
 The agents authenticate to the Claude API with Anthropic Workload Identity Federation (GitHub OIDC, no
-API key). The Anthropic federation rule: issuer GitHub Actions, audience `https://api.anthropic.com`,
-claim `repository_owner: Xevos117`, and **subject_prefix `repo:Xevos117/mcp-zotero:environment:*`**. The
-subject prefix is an exact match unless it ends with `*`; jobs that use an environment get the OIDC
-subject `repo:Xevos117/mcp-zotero:environment:<environment>` (e.g. `…:environment:zotero-live`), so a
-rule without the trailing `*` (or with a branch/PR subject) never matches. The
+API key). Recommended: one federation rule per environment, as narrow as possible:
+
+| Rule for | subject (exact, no `*`) | claims | job_workflow_ref |
+|---|---|---|---|
+| `zotero-live` | `repo:Xevos117/mcp-zotero:environment:zotero-live` | `repository_id: 1152178663`, `repository_owner_id: 86290818` | `Xevos117/mcp-zotero/.github/workflows/claude-agent-smoke.yml@*` (PR runs use the PR ref) |
+| `claude-deps` | `repo:Xevos117/mcp-zotero:environment:claude-deps` | `repository_id: 1152178663`, `repository_owner_id: 86290818` | `Xevos117/mcp-zotero/.github/workflows/deps-update.yml@refs/heads/main` |
+
+Audience `https://api.anthropic.com`. The subject is an exact match unless it ends with `*`; jobs that use
+an environment get the OIDC subject `repo:Xevos117/mcp-zotero:environment:<environment>`, so a rule
+written for a branch or PR subject never matches. Numeric ids (not names) keep a renamed or re-created
+repository/account from matching. The
 Zotero test account needs a collection named `__mzt_disposable__`; the dependency agent needs the Claude
 GitHub App installed and "Allow auto-merge" enabled in the repository settings.
 

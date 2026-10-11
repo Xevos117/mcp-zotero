@@ -65,8 +65,8 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 |---|---|---|
 | `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging on Node 22/24/26 |
 | `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; nightly failures open/update one issue |
-| `claude-agent-smoke.yml` | same-repo PRs, `main`, manual | a Claude Code agent follows `.claude/skills/test-mcp-zotero`; `test/live/verify-claims.mjs` decides the result |
-| `deps-update.yml` | 1st of the month, manual | a Claude Code agent follows `.claude/skills/deps-update`; `scripts/deps-merge-gate.mjs` enables auto-merge only for patch-only PRs |
+| `claude-agent-smoke.yml` | same-repo PRs by the owner or a bot, `main`, manual | three jobs: prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → `agent-smoke` (verdict by `test/live/verify-claims.mjs`, cleanup, lock release) |
+| `deps-update.yml` | 1st of the month, manual | three jobs: agent (read-only token, no install scripts, leaves a patch) → open-pr (no npm, Claude App token, opens the PR) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for test/live/agent-smoke on the exact SHA, `--match-head-commit`) |
 | `release.yml` | GitHub release published, manual | tests, npm publish, skill zips (owner only) |
 
 The agents authenticate to the Claude API with Anthropic Workload Identity Federation (environment
@@ -81,6 +81,9 @@ required check already ran on the PR; the nightly `live-tests.yml` run then cove
 Live runs are serialized on the Zotero side by `test/live/lock.mjs` (lock collection
 `mzt-lock <runId>`, wait up to 25 min, then "test account busy"); workflow concurrency is per PR/ref,
 so stacked PRs never cancel each other's required checks.
+
+Every workflow installs with `npm ci --ignore-scripts`; Zotero secrets are set only on the steps that
+need them, never at job level.
 
 Path filters are job-level `if` conditions (a skipped job satisfies a required check; a workflow
 filtered by `on.paths` would leave the check pending). Actions in the new workflows are pinned by
