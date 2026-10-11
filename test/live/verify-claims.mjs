@@ -1,37 +1,45 @@
 #!/usr/bin/env node
 // Deterministic verdict for the agent smoke test (test-mcp-zotero skill). The agent's own report is
 // informative only: this script checks what the agent claims in agent-out/claims.json against the
-// Zotero Web API and the agent transcript, and validates every produced .docx with test/helpers/docx-validate.ts.
-// Usage: ZOTERO_TEST_API_KEY=... node test/live/verify-claims.mjs [agent-out] --transcript <file>
-// The transcript is the claude-code-action execution file (JSON array of SDK messages) or a Claude Code
-// stream-json / session .jsonl. From it the script:
+// Zotero Web API and the evidence of the run, and validates every produced .docx with test/helpers/docx-validate.ts.
+// Usage: ZOTERO_TEST_API_KEY=... node test/live/verify-claims.mjs [agent-out] --audit <audit.jsonl> [--transcript <file>]
+// Evidence: the audit log written by the PostToolUse hooks of .claude/agent-smoke (every Zotero call and Bash
+// command with its result, outside the agent's reach) and the denials.jsonl next to it (PreToolUse denials).
+// The optional transcript (claude-code-action execution file, or a stream-json / session .jsonl) is cross-checked:
+// every Zotero call in it must be in the audit or among the denials. From the audit the script:
 // - attributes every claimed deletion to a Zotero tool call of the run (created by it, or reported deleted);
 // - scans every Zotero tool result for robustness failures (crash, error without isError, leaked
 //   "[object Object]"/undefined/NaN, stack traces) and every write call for keys the run did not create;
-// - checks the fixed edge cases (F9, F10) and that every claimed exploratory call (X1..X5) was really made.
+// - checks the guardrail probes (F0), the fixed edge cases (F9, F10) and that every claimed exploratory call
+//   (X1..X5) was really made.
 // Exit 0 = verified, 1 = claims not verified, 2 = setup error. Writes <dir>/verdict.json and, in CI,
 // a summary to $GITHUB_STEP_SUMMARY. No secret or library content is printed.
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { validateDocx } from "../helpers/docx-validate.ts";
 
 const args = process.argv.slice(2);
-const tIdx = args.indexOf("--transcript");
-const TRANSCRIPT = tIdx >= 0 ? args[tIdx + 1] : undefined;
-const DIR = resolve(args.find((a, i) => !a.startsWith("--") && (tIdx < 0 || i !== tIdx + 1)) ?? "agent-out");
+const option = (name) => (args.indexOf(name) >= 0 ? args[args.indexOf(name) + 1] : undefined);
+const TRANSCRIPT = option("--transcript");
+const AUDIT = option("--audit");
+const DIR = resolve(args.find((a, i) => !a.startsWith("--") && !["--transcript", "--audit"].includes(args[i - 1])) ?? "agent-out");
 const ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
 const KEY = process.env.ZOTERO_TEST_API_KEY ?? "";
 const REQUEST_TIMEOUT_MS = 30_000;
 const SCHEMA_VERSION = 2;
-const REQUIRED = ["P0", "F1", "F2", "F3", "F4", "F5", "F6", "F8", "F9", "F10"];
+const REQUIRED = ["P0", "F0", "F1", "F2", "F3", "F4", "F5", "F6", "F8", "F9", "F10"];
 /** Fixed scenarios that depend on external services (doi.org, Unpaywall, publishers) may be skipped with a reason. */
 const MAY_SKIP = new Set(["F1"]);
 const STYLES = ["apa", "ieee", "vancouver", "harvard", "chicago"];
 const NUMBERED = new Set(["ieee", "vancouver"]);
-/** Valid-shape keys that exist in no library: the only foreign keys the agent may pass to a write tool or cite. */
+/** Valid-shape keys that exist in no library: the only foreign keys the agent may pass to a write tool. */
 export const FAKE_KEYS = new Set(["ZZZZZZZZ", "YYYYYYYY"]);
+/** F0: a delete of this key (exists nowhere, not in FAKE_KEYS) must be denied by the delete hook. */
+export const PROBE_KEY = "XXXXXXXX";
+/** F0: this exact Bash command (chained) must be denied by the Bash hook. */
+export const PROBE_COMMAND = /^node test\/live\/agent\/make-docx\.mjs agent-out\/[A-Za-z0-9._-]+-probe\.docx '\[\["probe"\]\]' && ls$/;
 const MAX_EXPLORATORY = 5;
 const LIB = /^(users|groups)\/\d+$/;
 const ZOTERO_PREFIX = "mcp__zotero__";
@@ -109,13 +117,14 @@ const resultText = (content) =>
  * tool name (without the mcp__zotero__ prefix) or null, and `result` is `{ isError, text }` or null.
  */
 export function toolCalls(messages) {
+  if (Array.isArray(messages) && messages.length > 0 && messages.every((m) => m?.isCall === true)) return messages;
   const calls = [];
   const byId = new Map();
   for (const m of Array.isArray(messages) ? messages : []) {
     for (const block of Array.isArray(m?.message?.content) ? m.message.content : []) {
       if (block?.type === "tool_use") {
         const name = String(block.name);
-        const call = { id: block.id, name, tool: name.startsWith(ZOTERO_PREFIX) ? name.slice(ZOTERO_PREFIX.length) : null, input: block.input ?? {}, result: null };
+        const call = { isCall: true, id: block.id, name, tool: name.startsWith(ZOTERO_PREFIX) ? name.slice(ZOTERO_PREFIX.length) : null, input: block.input ?? {}, result: null };
         byId.set(block.id, call);
         calls.push(call);
       } else if (block?.type === "tool_result" && byId.has(block.tool_use_id)) {
@@ -124,6 +133,43 @@ export function toolCalls(messages) {
     }
   }
   return calls;
+}
+
+/** Calls from the hook audit log (agent-audit/audit.jsonl), in the same form as toolCalls. */
+export function auditCalls(entries) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((e) => e && typeof e.tool_name === "string")
+    .map((e) => ({
+      isCall: true,
+      id: e.tool_use_id,
+      name: e.tool_name,
+      tool: e.tool_name.startsWith(ZOTERO_PREFIX) ? e.tool_name.slice(ZOTERO_PREFIX.length) : null,
+      input: e.tool_input ?? {},
+      result: { isError: e.is_error === true, text: String(e.text ?? "") },
+    }));
+}
+
+/**
+ * Cross-check of the audit against the transcript: every Zotero call of the transcript must be in the audit or
+ * among the denials (a missing entry means the hooks did not run, or the call never returned).
+ */
+export function auditGaps(messages, entries, denials) {
+  const known = new Set([...entries, ...denials].map((e) => e?.tool_use_id).filter(Boolean));
+  return toolCalls(messages)
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => c.tool && !known.has(c.id))
+    .map(({ c, i }) => `call #${i + 1} ${c.tool} of the transcript has no audit entry (hooks not active, or no result)`);
+}
+
+/** F0 and denials: the two probes must be denied by the hooks; any other denial is a warning. */
+export function guardrailFindings(denials) {
+  const res = { problems: [], warnings: [] };
+  const isBashProbe = (d) => d.tool_name === "Bash" && PROBE_COMMAND.test(String(d.tool_input?.command ?? ""));
+  const isDeleteProbe = (d) => d.tool_name === `${ZOTERO_PREFIX}delete_items` && canonical(d.tool_input?.item_keys) === canonical([PROBE_KEY]);
+  if (!denials.some(isBashProbe)) res.problems.push("F0: the chained Bash probe was not denied by the Bash hook");
+  if (!denials.some(isDeleteProbe)) res.problems.push(`F0: the delete of ${PROBE_KEY} was not denied by the delete hook`);
+  for (const d of denials.filter((x) => !isBashProbe(x) && !isDeleteProbe(x))) res.warnings.push(`denied by the hooks: ${d.tool_name} (${String(d.reason ?? "").split(".")[0]})`);
+  return res;
 }
 
 /** JSON body of a successful Zotero tool result, or null. */
@@ -349,7 +395,7 @@ function limitProblem(call, max) {
   return null;
 }
 
-/** F9 checks: the same warning or rejection from inject_citations and from inject.js. */
+/** F9 checks: the same failure from inject_citations and from inject.js (unknown key, malformed key), 0 found without zcite. */
 export function edgeCaseProblems(messages) {
   const out = [];
   const calls = toolCalls(messages);
@@ -359,8 +405,8 @@ export function edgeCaseProblems(messages) {
   const fakeIn = (text) => [...FAKE_KEYS].some((k) => text.includes(k));
   if (!has(injects, (c) => c.result.isError && c.result.text.includes(INVALID_ZCITE))) out.push(`F9: no inject_citations call rejected a malformed <zcite> key ("${INVALID_ZCITE}")`);
   if (!has(skill, (c) => c.result.text.includes(INVALID_ZCITE) && !/"injected"/.test(c.result.text))) out.push("F9: no inject.js run rejected a malformed <zcite> key with the same message");
-  if (!has(injects, (c) => (successJson(c)?.warnings ?? []).some((w) => /not found in the library/.test(w) && fakeIn(w)))) out.push("F9: no inject_citations warning for the unknown key");
-  if (!has(skill, (c) => /WARNING: \d+ cited key\(s\) not found in metadata\.json/.test(c.result.text) && fakeIn(c.result.text))) out.push("F9: no inject.js WARNING for the unknown key");
+  if (!has(injects, (c) => c.result.isError && /\d+ cited key\(s\) not found in the library: /.test(c.result.text) && fakeIn(c.result.text))) out.push("F9: no inject_citations call failed on the unknown key");
+  if (!has(skill, (c) => /\d+ cited key\(s\) not found in the metadata: /.test(c.result.text) && fakeIn(c.result.text) && !/"injected"/.test(c.result.text))) out.push("F9: no inject.js run failed on the unknown key");
   if (!has(injects, (c) => successJson(c)?.citations_found === 0)) out.push("F9: no inject_citations call on a document without <zcite>");
   if (!has(skill, (c) => /"found":0\b/.test(c.result.text))) out.push("F9: no inject.js run on a document without <zcite>");
   for (const [desc, match, expect] of F10_ROWS) {
@@ -417,7 +463,7 @@ export function exploratoryFindings(list, messages) {
       const short = tool.startsWith(ZOTERO_PREFIX) ? tool.slice(ZOTERO_PREFIX.length) : tool;
       const args = argsOf(tool, call?.args);
       const seen = made.some((m) => (m.tool === short || (m.tool === null && m.name === tool)) && m.args === args);
-      if (!seen) res.problems.push(`${id}: call ${n + 1} (${short}) not found in the transcript with the same arguments`);
+      if (!seen) res.problems.push(`${id}: call ${n + 1} (${short}) not found in the audit with the same arguments`);
     }
     if (x.verdict === "bug") res.problems.push(`${id}: the agent found a bug (see claims.json exploratory)`);
     else if (x.verdict === "unclear") res.warnings.push(`${id}: unclear behaviour (see claims.json exploratory)`);
@@ -531,8 +577,8 @@ async function main() {
     console.error("verify-claims: ZOTERO_TEST_API_KEY not set");
     return 2;
   }
-  if (!TRANSCRIPT) {
-    console.error("verify-claims: --transcript <file> is required (CI: the execution file; locally: the stream-json or session .jsonl)");
+  if (!AUDIT) {
+    console.error("verify-claims: --audit <audit.jsonl> is required (written by the hooks of .claude/agent-smoke; locally agent-audit/audit.jsonl)");
     return 2;
   }
   const context = readJson("context.json");
@@ -541,16 +587,32 @@ async function main() {
     console.error(`verify-claims: ${join(DIR, "context.json")} missing (run test/live/agent/prepare.mjs first)`);
     return 2;
   }
-  const messages = existsSync(TRANSCRIPT) ? parseTranscript(readFileSync(TRANSCRIPT, "utf8")) : null;
-  if (messages === null) fail(`transcript ${TRANSCRIPT} missing: the run cannot be verified`);
+  const readLines = (path) => (existsSync(path) ? parseTranscript(readFileSync(path, "utf8")) : null);
+  const auditEntries = readLines(AUDIT);
+  const denials = readLines(join(dirname(resolve(AUDIT)), "denials.jsonl")) ?? [];
+  const calls = auditEntries ? auditCalls(auditEntries) : null;
+  if (!calls || calls.length === 0) fail(`audit ${AUDIT} missing or empty: the hooks of .claude/agent-smoke did not run`);
   else {
-    // Robustness and safety hold for the whole transcript, even when the agent did not finish
-    const robustness = robustnessProblems(messages);
+    // Robustness and safety hold for every recorded call, even when the agent did not finish
+    const robustness = robustnessProblems(calls);
     robustness.forEach((p) => fail(`robustness: ${p}`));
-    if (!robustness.length) ok(`robustness: ${toolCalls(messages).filter((c) => c.tool).length} Zotero tool results`);
-    const safety = writeSafetyProblems(messages, context);
+    if (!robustness.length) ok(`robustness: ${calls.filter((c) => c.tool).length} Zotero tool results`);
+    const safety = writeSafetyProblems(calls, context);
     safety.forEach((p) => fail(`safety: ${p}`));
     if (!safety.length) ok("safety: write calls only on objects of this run");
+  }
+  const guard = guardrailFindings(denials);
+  guard.problems.forEach(fail);
+  warnings.push(...guard.warnings);
+  if (!guard.problems.length) ok("F0: both probes denied by the hooks");
+  if (TRANSCRIPT) {
+    const messages = readLines(TRANSCRIPT);
+    if (!messages) fail(`transcript ${TRANSCRIPT} missing`);
+    else {
+      const gaps = [...robustnessProblems(messages.filter((m) => m?.type === "system")), ...auditGaps(messages, auditEntries ?? [], denials)];
+      gaps.forEach((p) => fail(`evidence: ${p}`));
+      if (!gaps.length) ok("evidence: every Zotero call of the transcript is in the audit");
+    }
   }
   if (!claims) {
     fail("claims.json missing: the agent did not complete the skill");
@@ -570,11 +632,11 @@ async function main() {
   }
   for (const s of scenarios.values()) if (s.status === "failed" && !required.includes(s.id)) fail(`scenario ${s.id} failed${s.notes ? `: ${s.notes}` : ""}`);
 
-  if (messages) {
-    const edge = edgeCaseProblems(messages);
+  if (calls && calls.length) {
+    const edge = edgeCaseProblems(calls);
     edge.forEach(fail);
-    if (!edge.length) ok("F9/F10: edge cases verified on the transcript");
-    const x = exploratoryFindings(claims.exploratory, messages);
+    if (!edge.length) ok("F9/F10: edge cases verified on the audit");
+    const x = exploratoryFindings(claims.exploratory, calls);
     x.problems.forEach(fail);
     warnings.push(...x.warnings);
     checks.push(...x.checks);
@@ -643,7 +705,7 @@ async function main() {
   }
 
   // Deleted objects are really gone, and were created by this run (seen in a tool result of the run)
-  const transcript = messages ? attributableKeys(messages) : null;
+  const transcript = calls && calls.length ? attributableKeys(calls) : null;
   for (const dItem of claims.deleted ?? []) {
     if (!LIB.test(dItem.library_path ?? "") || !ZOTERO_KEY.test(String(dItem.key ?? ""))) {
       fail(`deleted entry with invalid library_path/key: ${JSON.stringify({ key: dItem.key, library_path: dItem.library_path })}`);
@@ -659,10 +721,8 @@ async function main() {
     else ok(`deleted ${dItem.key}`);
   }
 
-  // Produced documents: valid structure/CSL/rendering, URIs pointing at created items (or a fake key with
-  // placeholder item data, F9)
+  // Produced documents: valid structure/CSL/rendering, URIs pointing at created items
   const reports = [];
-  const fakeChecked = new Map();
   for (const doc of claims.docx ?? []) {
     const path = insideAgentOut(doc.path);
     if (!path) {
@@ -694,11 +754,7 @@ async function main() {
         const m = /^http:\/\/zotero\.org\/((?:users|groups)\/\d+)\/items\/([A-Z0-9]{8})$/.exec(ci.uris?.[0] ?? "");
         if (!m) continue; // already reported by the validator
         const id = `${m[1]}/${m[2]}`;
-        if (FAKE_KEYS.has(m[2])) {
-          if (canonical(ci.itemData) !== canonical({ type: "article-journal" })) fail(`docx ${doc.path}: unknown key ${m[2]} without placeholder item data`);
-          if (!fakeChecked.has(id)) fakeChecked.set(id, (await api(`${m[1]}/items/${m[2]}`)).status);
-          if (fakeChecked.get(id) !== 404) fail(`docx ${doc.path}: ${m[2]} is expected not to exist, HTTP ${fakeChecked.get(id)}`);
-        } else if (!createdKeys.has(id)) fail(`docx ${doc.path}: cites ${m[2]}, which is not among the created items`);
+        if (!createdKeys.has(id)) fail(`docx ${doc.path}: cites ${m[2]}, which is not among the created items`);
         else if (context.cleanup !== "agent" && titles.has(id) && titles.get(id) !== ci.itemData?.title) fail(`docx ${doc.path}: itemData title of ${m[2]} differs from Zotero`);
       }
     }
@@ -740,9 +796,7 @@ async function main() {
   if (context.group_id && scenarios.get("F7")?.status === "passed" && !verifiedGroups.some((v) => v.doc.library_path === `groups/${context.group_id}`)) {
     fail("parity group library: no verified compare_group on the test group");
   }
-  if (!verifiedGroups.some((v) => v.source.spacedKeys && v.source.duplicateKey && v.source.keys.some((k) => FAKE_KEYS.has(k)))) {
-    fail('F9: no verified compare_group on the edge document (keys "A, B", a duplicated key, an unknown key)');
-  }
+  if (!verifiedGroups.some((v) => v.source.spacedKeys && v.source.duplicateKey)) fail('F9: no verified compare_group on the edge document (keys "A, B", a duplicated key)');
   if (!verifiedGroups.some((v) => v.source.zcites === 0 && v.report.fields.length === 0)) fail("F9: no verified compare_group on a document without <zcite>");
 
   // Local runs: the agent cleaned up after itself

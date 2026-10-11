@@ -63,10 +63,13 @@ local/
 .claude/*
 !.claude/skills/
 !.claude/skills/**/*.md
+!.claude/agent-smoke/
+!.claude/agent-smoke/**
 
 # Vitest 5 output (attachments, reports)
 .vitest/
 
 # Live/agent test outputs (scrubbed copies are uploaded as CI artifacts)
 agent-out/
+agent-audit/
 live-artifacts/

@@ -13,6 +13,9 @@ import {
   docxFingerprint,
   firstDifference,
   itemCoverage,
+  auditCalls,
+  auditGaps,
+  guardrailFindings,
   // @ts-expect-error plain .mjs script without type declarations
 } from "../../test/live/verify-claims.mjs";
 import { startHarness } from "../helpers/mcp-harness.js";
@@ -161,8 +164,8 @@ function edgeCalls(): Call[] {
   return [
     ["inject_citations", { file_path: "/w/agent-out/bad.docx" }, { error: "Invalid Zotero item key(s) in <zcite>: ../items (letters and digits only)" }, true],
     ["Bash", { command: inj }, "Exit code 1\nError: Invalid Zotero item key(s) in <zcite>: ../items (letters and digits only)", true],
-    ["inject_citations", { file_path: "/w/agent-out/e.docx" }, { output_path: "x", citations_found: 3, citations_injected: 3, warnings: ['1 cited key(s) not found in the library: ZZZZZZZZ. Their citations will show "Unknown" until Zotero refreshes them.'] }],
-    ["Bash", { command: inj }, 'WARNING: 1 cited key(s) not found in metadata.json: ZZZZZZZZ. Their citations will show "Unknown" until Zotero refreshes them.\n{"output":"agent-out/e_skill.docx","found":3,"injected":3}'],
+    ["inject_citations", { file_path: "/w/agent-out/u.docx" }, "1 cited key(s) not found in the library: ZZZZZZZZ", true],
+    ["Bash", { command: inj }, "Exit code 1\nError: 1 cited key(s) not found in the metadata: ZZZZZZZZ", true],
     ["inject_citations", { file_path: "/w/agent-out/n.docx" }, { output_path: "x", citations_found: 0, citations_injected: 0 }],
     ["Bash", { command: inj }, '{"output":"agent-out/n_skill.docx","found":0,"injected":0}'],
     ["delete_items", { item_keys: [] }, "MCP error -32602: Input validation error: too small", true],
@@ -185,7 +188,8 @@ describe("verify-claims: casi limite fissi F9/F10 dalla trascrizione (VC-05)", (
 
   it.each<[string, (c: Call[]) => Call[], RegExp]>([
     ["inject.js accetta la chiave malformata", (c) => c.filter((_, i) => i !== 1), /no inject\.js run rejected a malformed/],
-    ["inject_citations non avvisa per la chiave sconosciuta", (c) => c.filter((_, i) => i !== 2), /no inject_citations warning for the unknown key/],
+    ["inject_citations non fallisce sulla chiave sconosciuta", (c) => c.filter((_, i) => i !== 2), /no inject_citations call failed on the unknown key/],
+    ["inject.js scrive comunque il documento con la chiave sconosciuta", (c) => c.map((x, i) => (i === 3 ? [x[0], x[1], 'Error: 1 cited key(s) not found in the metadata: ZZZZZZZZ\n{"found":1,"injected":1}'] : x)), /no inject\.js run failed on the unknown key/],
     ["documento senza zcite non provato con inject.js", (c) => c.filter((_, i) => i !== 5), /no inject\.js run on a document without <zcite>/],
     ["delete_items con 51 chiavi accettato", (c) => c.map((x, i) => (i === 8 ? [x[0], x[1], { deleted_keys: [], not_found: ["ZZZZZZZZ"] }] : x)), /51 fake keys \(max\+1\): accepted/],
     ["delete_items con 50 chiavi rifiutato dalla validazione", (c) => c.map((x, i) => (i === 7 ? [x[0], x[1], "MCP error -32602: too big", true] : x)), /50 fake keys \(max\): rejected by validation/],
@@ -349,21 +353,23 @@ describe("verify-claims: script completo senza rete (VC-09)", () => {
     dir = await tempDir();
     await dir.file("context.json", JSON.stringify({ run_id: "r1", run_tag: "mzt-run:r1", prefix: "mzt-r1", cleanup: "agent", safe_mode: true, group_id: null }));
     await dir.file("claims.json", JSON.stringify({ schema_version: 2, run_id: "r1", library_path: "users/1", scenarios: [{ id: "P0", status: "passed" }], created: [], deleted: [], docx: [] }));
-    await dir.file("execution.json", JSON.stringify(transcriptOf([["delete_items", { item_keys: ["EXST2222"] }, { deleted_keys: ["EXST2222"] }]])));
+    await dir.file("execution.json", JSON.stringify(transcriptOf([["delete_items", { item_keys: ["EXST2222"] }, { deleted_keys: ["EXST2222"] }], ["get_collections", {}, []]])));
+    // audit with only the delete (the get_collections call of the transcript is missing from it)
+    await dir.file("audit.jsonl", JSON.stringify({ tool_use_id: "t0", tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["EXST2222"] }, is_error: false, text: '{"deleted_keys":["EXST2222"]}' }) + "\n");
   });
   afterAll(async () => {
     await dir?.cleanup();
   });
   const env = { ...process.env, ZOTERO_TEST_API_KEY: "not-a-real-key", GITHUB_STEP_SUMMARY: "" };
 
-  it("VC-09a senza --transcript → exit 2", async () => {
-    const r = await node(SCRIPT, [dir.path], { env });
+  it("VC-09a senza --audit → exit 2", async () => {
+    const r = await node(SCRIPT, [dir.path, "--transcript", join(dir.path, "execution.json")], { env });
     expect(r.code).toBe(2);
-    expect(r.stderr).toMatch(/--transcript <file> is required/);
+    expect(r.stderr).toMatch(/--audit <audit\.jsonl> is required/);
   });
 
-  it("VC-09b claims incompleti → exit 1, verdict.json con i problemi (scenari, sicurezza, F9/F10, parità)", async () => {
-    const r = await node(SCRIPT, [dir.path, "--transcript", join(dir.path, "execution.json")], { env });
+  it("VC-09b claims incompleti → exit 1, verdict.json con i problemi (scenari, sicurezza, sonde F0, buchi dell'audit, F9/F10, parità)", async () => {
+    const r = await node(SCRIPT, [dir.path, "--audit", join(dir.path, "audit.jsonl"), "--transcript", join(dir.path, "execution.json")], { env });
     expect(r.code, r.stderr).toBe(1);
     const verdict = JSON.parse(await readFile(join(dir.path, "verdict.json"), "utf8"));
     expect(verdict.verified).toBe(false);
@@ -372,10 +378,50 @@ describe("verify-claims: script completo senza rete (VC-09)", () => {
         "scenario F1 not reported",
         "safety: call #1 delete_items: item_keys EXST2222 was not created by this run",
         "F10: add_items with items [] not called",
+        "F0: the chained Bash probe was not denied by the Bash hook",
+        "evidence: call #2 get_collections of the transcript has no audit entry (hooks not active, or no result)",
         expect.stringMatching(/^parity apa: no verified compare_group/),
         expect.stringMatching(/^F9: no verified compare_group on the edge document/),
       ])
     );
     expect(r.stdout).not.toContain("not-a-real-key");
+  });
+});
+
+describe("verify-claims: evidenza dagli hook (VC-10)", () => {
+  const entry = (id: string, tool: string, input: unknown, text: string, isError = false) => ({ tool_use_id: id, tool_name: tool, tool_input: input, is_error: isError, text });
+
+  it("VC-10a audit → stesse chiamate della trascrizione (chiavi create, robustezza, esplorativi)", () => {
+    const calls = auditCalls([
+      entry("a", "mcp__zotero__create_collection", { name: "mzt-x" }, '{"collection_key":"CLLC2222"}'),
+      entry("b", "Bash", { command: "node test/live/agent/inject.mjs agent-out/a.docx agent-out/b.docx agent-out/m.json users/1", description: "x" }, "{}"),
+      entry("c", "mcp__zotero__get_collections", {}, "MCP error -32000: Connection closed", true),
+    ]);
+    expect(attributableKeys(calls).created).toEqual(new Set(["CLLC2222"]));
+    expect(robustnessProblems(calls)).toEqual(["call #3 get_collections: connection closed, timeout or server crash"]);
+    const x = { id: "X1", rationale: "r", calls: [{ tool: "Bash", args: { command: "node test/live/agent/inject.mjs agent-out/a.docx agent-out/b.docx agent-out/m.json users/1" } }], expected: "e", observed: "o", verdict: "ok" };
+    expect(exploratoryFindings([x], calls).problems).toEqual([]);
+  });
+
+  it("VC-10b buchi dell'audit: chiamata Zotero della trascrizione assente da audit e negazioni → problema; negata → nessuno", () => {
+    const messages = transcriptOf([["get_collections", {}, []], ["delete_items", { item_keys: ["XXXXXXXX"] }, "PreToolUse hook error: Denied", true], ["get_user_id", {}, {}]]);
+    expect(auditGaps(messages, [entry("t0", "mcp__zotero__get_collections", {}, "[]")], [{ tool_use_id: "t1", tool_name: "mcp__zotero__delete_items" }])).toEqual([
+      "call #3 get_user_id of the transcript has no audit entry (hooks not active, or no result)",
+    ]);
+  });
+
+  it("VC-10c sonde F0 negate dagli hook → nessun problema; altre negazioni → avvisi; sonde assenti → problemi", () => {
+    const probes = [
+      { tool_name: "Bash", tool_input: { command: "node test/live/agent/make-docx.mjs agent-out/mzt-x-probe.docx '[[\"probe\"]]' && ls" }, reason: "Denied by the agent smoke harness (command not allowed). Only…" },
+      { tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["XXXXXXXX"] }, reason: "Denied by the agent smoke harness: XXXXXXXX was not created by this run. Delete only…" },
+    ];
+    expect(guardrailFindings(probes)).toEqual({ problems: [], warnings: [] });
+    expect(guardrailFindings([...probes, { tool_name: "Bash", tool_input: { command: "ls" }, reason: "Denied by the agent smoke harness (command not allowed). x" }]).warnings).toEqual([
+      "denied by the hooks: Bash (Denied by the agent smoke harness (command not allowed))",
+    ]);
+    expect(guardrailFindings([]).problems).toEqual([
+      "F0: the chained Bash probe was not denied by the Bash hook",
+      "F0: the delete of XXXXXXXX was not denied by the delete hook",
+    ]);
   });
 });

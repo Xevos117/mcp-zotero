@@ -7,9 +7,15 @@ description: Smoke-test the mcp-zotero MCP server as a real user would, against 
 
 You drive the `zotero` MCP server (tools `mcp__zotero__*`) through a fixed path, targeted and
 exploratory scenarios, then write `agent-out/claims.json`. **A deterministic script
-(`test/live/verify-claims.mjs`) decides pass/fail from your claims and from the transcript of the
-run**, so claims must be exact: list every object you create, with the state you expect it to have,
-and every call exactly as you made it. Your prose report is informative only.
+(`test/live/verify-claims.mjs`) decides pass/fail from your claims and from an audit log of every
+call you make**, written by hooks you cannot see or change, so claims must be exact: list every object
+you create, with the state you expect it to have, and every call exactly as you made it. Your prose
+report is informative only.
+
+**The environment is already set up.** The `zotero` MCP server is configured by whoever started this
+session (the CI workflow, or the local command in `test/live/agent/README.md`) against the right
+library. Never configure, add or modify MCP servers or settings; if `mcp__zotero__*` tools are missing,
+that is a failed precondition (step 1), not something to fix.
 
 Budget: about 100–130 turns. Batch where the tools allow it (one `add_items` call for several items,
 one `make-docx.mjs` call for several outputs) and do not re-read files you just wrote.
@@ -31,7 +37,8 @@ one `make-docx.mjs` call for several outputs) and do not re-read files you just 
   only commands you may run are `node test/live/agent/make-docx.mjs …` and
   `node test/live/agent/inject.mjs …` (a wrapper around the product skill's `inject.js` that keeps every path inside `agent-out/`), from the repository root, **exactly
   in that form, one command per call**: no `timeout` prefix, no variables, no `&&`, `;`, pipes or
-  redirections. The harness bounds every command and rejects anything else.
+  redirections, paths only as `agent-out/<name>`, the make-docx spec in single quotes. A hook denies
+  anything else, and deletions of keys this run did not create; a denial outside step F0 is reported.
 
 ## Step 1 — Preconditions (stop if any fails)
 
@@ -56,6 +63,7 @@ skipped), `<style>` each of `apa`, `harvard`, `chicago`, `ieee`, `vancouver`.
 
 | ID | Scenario | Tools | What to check |
 |---|---|---|---|
+| F0 | Guardrails (do this first, exactly): run the Bash command `node test/live/agent/make-docx.mjs agent-out/<prefix>-probe.docx '[["probe"]]' && ls` and call `delete_items` with `item_keys: ["XXXXXXXX"]` | Bash, `delete_items` | both are **denied** by the harness hooks (the reason starts with "Denied by the agent smoke harness"); passed if both were denied, failed if either ran |
 | F1 | Add a paper by DOI: `10.1371/journal.pcbi.1003285` into the run collection (create it first, see F2), `tags: [run_tag]`, `auto_attach_pdf: true` | `add_items_by_doi` | one item in `success`; note whether `pdf_results[0].pdf_attached` is true. doi.org/Unpaywall outages may make this `skipped` (say why) |
 | F2 | Create the run collection `<prefix> agent` and a subcollection `<prefix> agent sub`; add three items with one `add_items` call into the run collection: `BOOK` = a `book` with an institutional author (`{"name": "Test Consortium"}`), publisher and place; `ARTICLE` = a `journalArticle` titled `<prefix> Über «Lernen» – 学习 ✓` by `Jürgen Müller-Ødegård` and `Zoë Ångström`, with volume/pages/date; `MEMO` = a `report` titled `<prefix> undated memo` with **no date and no creators** | `create_collection`, `add_items` | keys returned in input order |
 | F3 | Attachments and full text: a linked URL attachment (`https://example.org/<prefix>.pdf`, `content_type: application/pdf`) on the book; `get_item_fulltext` on the book (expect a clear "linked URL" message, not "open the PDF in Zotero desktop"); if F1 attached a PDF, `get_item_fulltext` on the F1 item (expect text) | `add_linked_url_attachment`, `get_item_fulltext` | messages and text as described |
@@ -64,7 +72,7 @@ skipped), `<style>` each of `apa`, `harvard`, `chicago`, `ieee`, `vancouver`.
 | F6 | Parity document, `inject.js` side: write the `get_items_details` result for `DOIKEY`, `ARTICLE`, `BOOK`, `MEMO` **verbatim** (the JSON text the tool returned, unchanged) to `agent-out/metadata.json` (Write tool), then for each style `node test/live/agent/inject.mjs agent-out/<prefix>-p-<style>.docx agent-out/<prefix>-p-<style>_skill.docx agent-out/metadata.json <library_path> <style>` (5 calls) | `get_items_details`, inject.js | each: exit 0, `found` = `injected` = 5, no WARNING. Claim both documents of a style with `compare_group: "parity-<style>"` and `source: "agent-out/<prefix>-p-<style>.docx"`: the verifier requires identical field JSON (except the random `citationID`), visible text and bibliography |
 | F7 | Only if `group_id` is set: `get_user_id` with `library_type: "group"`, `library_id: group_id`; `add_items` one book into the group (tags as usual); `make-docx.mjs` a one-citation `agent-out/<prefix>-group.docx`; `inject_citations` on it with the same per-call library args, and `inject.mjs` with library `groups/<group_id>` and the group `get_items_details` result written verbatim to `agent-out/group-metadata.json` | the above, per call | URIs are `http://zotero.org/groups/<id>/items/<key>`; both documents claimed with `compare_group: "parity-group"`. Without `group_id` report `skipped` |
 | F8 | Deletion: `add_items` one throwaway book (`<prefix> to delete`), then `delete_items` it | `add_items`, `delete_items` | `deleted_count: 1`; claim it under `deleted`, not `created` |
-| F9 | `<zcite>` edge cases, both producers, `style: "apa"` (specs below): (a) `agent-out/<prefix>-edge.docx` with `keys="ARTICLE, BOOK"` (space after the comma), `keys="ARTICLE,ARTICLE"` and an unknown well-formed key `ZZZZZZZZ`; (b) `agent-out/<prefix>-nozcite.docx` without any `<zcite>`; (c) `agent-out/<prefix>-badkey.docx` with the traversal key `../items`. Run `inject_citations` and `inject.mjs` (same `metadata.json`) on each | `inject_citations`, inject.js | (a) both inject 3 citations, `inject_citations` returns a warning naming `ZZZZZZZZ`, inject.js prints `WARNING: 1 cited key(s) not found in metadata.json: ZZZZZZZZ`, claim both with `compare_group: "edge"`; (b) both report 0 found and write an unchanged copy, claim both with `compare_group: "nozcite"`; (c) both reject it with `Invalid Zotero item key(s) in <zcite>` (`inject_citations` as an error, inject.js with exit 1) and write nothing; do not claim (c) |
+| F9 | `<zcite>` edge cases, both producers, `style: "apa"` (specs below): (a) `agent-out/<prefix>-edge.docx` with `keys="ARTICLE, BOOK"` (space after the comma) and `keys="ARTICLE,ARTICLE"`; (b) `agent-out/<prefix>-nozcite.docx` without any `<zcite>`; (c) `agent-out/<prefix>-badkey.docx` with the traversal key `../items`; (d) `agent-out/<prefix>-unknown.docx` citing `ARTICLE` and the unknown well-formed key `ZZZZZZZZ`. Run `inject_citations` and `inject.mjs` (same `metadata.json`) on each | `inject_citations`, inject.js | (a) both inject 2 citations, claim both with `compare_group: "edge"`; (b) both report 0 found and write an unchanged copy, claim both with `compare_group: "nozcite"`; (c) both reject it with `Invalid Zotero item key(s) in <zcite>`; (d) both fail on the unknown key: `inject_citations` with `1 cited key(s) not found in the library: ZZZZZZZZ`, inject.js with `1 cited key(s) not found in the metadata: ZZZZZZZZ`. (c) and (d): `inject_citations` as an error, inject.js with exit 1, no output written, nothing to claim |
 | F10 | Tool-input edge cases, exactly these calls: `delete_items` with `item_keys: []`; with 50 times `"ZZZZZZZZ"`; with 51 times `"ZZZZZZZZ"`; `add_items` with `items: []`; `get_items_details` with `item_keys: []` and with `item_keys: ["   "]`; `search_library` with `query: "   "`, `limit: 1`; `search_library` with `query = prefix` and `limit` 1, 100 and 101 | the above | `[]` and 51 keys: validation errors; 50 keys: accepted, nothing deleted; `items: []` and `"   "`: validation errors; whitespace-only query: a result, as without a query; limits 1/100/101: at most 1/100/100 results, never an error. Every result readable: no crash, no `undefined`/`NaN`/`[object Object]`, no stack trace |
 
 `make-docx.mjs` takes one or more output paths and the spec last (run from the repository root). A run
@@ -78,7 +86,8 @@ node test/live/agent/make-docx.mjs agent-out/<prefix>-p-apa.docx agent-out/<pref
 # F5 numbered spec (ieee, vancouver): the same with num on every tag
 node test/live/agent/make-docx.mjs agent-out/<prefix>-p-ieee.docx agent-out/<prefix>-p-vancouver.docx '[["Single ", {"zcite": {"keys": "ARTICLE", "num": "1"}}, "."], ["Multi ", {"zcite": {"keys": "ARTICLE,BOOK", "num": "1,2"}}], ["Locator ", {"zcite": {"keys": "DOIKEY", "num": "3", "locator": "pp. 12-15", "prefix": "see ", "suffix": ", emphasis added"}}], [{"zcite": {"keys": "MEMO", "num": "4"}, "before": "As the memo ", "after": " shows, inline."}], ["Split ", {"zcite": {"keys": "BOOK,MEMO", "num": "2,4"}, "split": true}, " end."]]'
 # F9
-node test/live/agent/make-docx.mjs agent-out/<prefix>-edge.docx '[["Spaced ", {"zcite": {"keys": "ARTICLE, BOOK"}}], ["Duplicated ", {"zcite": {"keys": "ARTICLE,ARTICLE"}}], ["Unknown ", {"zcite": {"keys": "ZZZZZZZZ"}}]]'
+node test/live/agent/make-docx.mjs agent-out/<prefix>-edge.docx '[["Spaced ", {"zcite": {"keys": "ARTICLE, BOOK"}}], ["Duplicated ", {"zcite": {"keys": "ARTICLE,ARTICLE"}}]]'
+node test/live/agent/make-docx.mjs agent-out/<prefix>-unknown.docx '[["Known ", {"zcite": {"keys": "ARTICLE"}}], ["Unknown ", {"zcite": {"keys": "ZZZZZZZZ"}}]]'
 node test/live/agent/make-docx.mjs agent-out/<prefix>-nozcite.docx '[["No citations here."]]'
 node test/live/agent/make-docx.mjs agent-out/<prefix>-badkey.docx '[["Bad ", {"zcite": {"keys": "../items"}}]]'
 ```
@@ -129,7 +138,7 @@ or run none and say so in the report.
   silently wrong result, unreadable error), `unclear` (debatable behaviour worth a human look). **A
   `bug` fails the check**; `unclear` is shown as a warning.
 - Record the calls exactly as you sent them (`tool` and `args`): the verifier looks each one up in the
-  transcript. For inject.js use `{"tool": "Bash", "args": {"command": "<the exact command>"}}`.
+  audit log. For inject.js use `{"tool": "Bash", "args": {"command": "<the exact command>"}}`.
 
 The verifier also scans **every** Zotero tool result of the run, fixed path included, for the
 failures listed above, so a crash anywhere fails the check whatever you claim.
@@ -174,7 +183,8 @@ Write exactly this structure (JSON, no comments):
 - `deleted`: everything you deleted with `delete_items`/`delete_collection`.
 - `docx`: every document produced in F5, F6, F7, F9 and T-rows, each with its `source` (the
   `make-docx.mjs` output it was injected from) and `compare_group`. Ten parity entries (5 styles × 2
-  producers), two `parity-group` entries if F7 ran, two `edge` and two `nozcite` entries.
+  producers), two `parity-group` entries if F7 ran, two `edge` and two `nozcite` entries (never the
+  F0 probe document).
 - `exploratory`: the scenarios of step 4 (empty array if none).
 
 ## Step 7 — Cleanup and final report
@@ -189,31 +199,7 @@ Write exactly this structure (JSON, no comments):
 - Finish with a short report: scenarios with status, exploratory findings, friction, anything
   surprising. When the harness asks for structured output, fill it from the same data.
 
-## Running it locally
+## Running it outside CI
 
-1. Build the server: `npm run build`.
-2. Create a local, uncommitted `.mcp.json` (it is gitignored) pointing at the **test** account. Claude
-   Code expands `${VAR}` from your environment, so the key never lands in the file:
-
-   ```json
-   {
-     "mcpServers": {
-       "zotero": {
-         "command": "node",
-         "args": ["build/server.js"],
-         "env": {
-           "ZOTERO_API_KEY": "${ZOTERO_TEST_API_KEY}",
-           "ZOTERO_USER_ID": "${ZOTERO_TEST_USER_ID}",
-           "UNSAFE_OPERATIONS": "items",
-           "UNPAYWALL_EMAIL": "${UNPAYWALL_EMAIL}"
-         }
-       }
-     }
-   }
-   ```
-
-3. `node test/live/agent/prepare.mjs --mode local` (add `ZOTERO_LIVE_SAFE_MODE=1` against a personal
-   library), then run `/test-mcp-zotero` in Claude Code.
-4. Verify with the session transcript (the `.jsonl` of the Claude Code session under
-   `~/.claude/projects/`, or the `--output-format stream-json` output of a `claude -p` run):
-   `ZOTERO_TEST_API_KEY=… node test/live/verify-claims.mjs agent-out --transcript <file>`.
+See `test/live/agent/README.md` (how the session is started, with the same MCP configuration, tool
+set and hooks as CI). Nothing in this skill changes: it always assumes the environment is ready.

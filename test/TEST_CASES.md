@@ -591,6 +591,18 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
   `__mzt_disposable__`; passa all'agente un gruppo solo se il suo nome inizia con `mzt-test`. Se prepare fallisce o viene
   annullato, rilascia subito il lock. L'action accetta come attore solo `github-actions[bot]` oltre agli umani
   (`allowed_bots`), per le run avviate da deps-update.yml.
+- **Ambiente preparato da chi avvia la sessione** (mai dall'agente, `test/live/agent/README.md`): server MCP dal template
+  `test/live/agent/mcp.template.json` (in CI reso da `render-mcp.mjs` in `$RUNNER_TEMP`, in locale passato a
+  `--mcp-config` così com'è: Claude Code espande `${VAR}`), `--tools "Skill,Read,Edit,Write,Bash"` (Write serve per
+  creare file: con solo Edit l'agente non può crearli, provato), `--permission-mode dontAsk` (ciò che le regole non
+  ammettono è negato senza chiedere) e gli hook di `.claude/agent-smoke/settings.json` (sulle PR `.claude/` viene dal
+  branch di base): PreToolUse su Bash che ammette solo le due forme esatte dei wrapper (niente concatenazioni, pipe,
+  redirezioni, sostituzioni, variabili, altri interpreti, opzioni di node, percorsi fuori da `agent-out/`); PreToolUse
+  sulle cancellazioni che ammette solo chiavi create dalla run (lette dall'audit) o inesistenti
+  (`ZZZZZZZZ`/`YYYYYYYY`), mai delete_collection in safe mode; PostToolUse/PostToolUseFailure che scrive ogni chiamata
+  Zotero e ogni comando Bash con il risultato in `agent-audit/audit.jsonl` (le negazioni in `denials.jsonl`), fuori
+  da `agent-out/` dove l'agente scrive. Un errore dell'hook nega. Il contesto per gli hook (`agent-audit/context.json`)
+  lo scrive prepare.mjs (in CI il job dell'agente lo copia prima di avviarlo).
 - **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
   comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
   docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
@@ -603,15 +615,17 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
 - **Sulle PR** claude-code-action ripristina `.claude/` e `CLAUDE.md` dal branch di base (configurazione dell'agente
   scritta nella PR = non fidata): gira la skill del branch di base. Se lì la skill non c'è ancora (la PR che la
   introduce), il job lo segnala e salta; il primo collaudo vero è l'avvio manuale da `main` dopo il merge.
-- **Percorso**: P0 precondizioni (15 tool, get_user_id, sentinella o safe mode); F1 DOI con PDF OA; F2 collezione,
+- **Percorso**: P0 precondizioni (15 tool, get_user_id, sentinella o safe mode); F0 sonde dei guardrail (un comando
+  Bash concatenato con `&& ls` e `delete_items` di `XXXXXXXX`, chiave inesistente: entrambi devono essere negati dagli
+  hook); F1 DOI con PDF OA; F2 collezione,
   sottocollezione, add_items di tre voci (libro con autore istituzionale, articolo con titolo e autori non ASCII,
   report senza data né autori); F3 link e fulltext (messaggio "linked URL"); F4 ricerca, collezione, dettagli;
   F5/F6 **parità esplicita inject_citations ⇄ inject.js a ogni run**: lo stesso documento (citazione singola,
   multi-chiave, locator+prefix+suffix, zcite in linea a metà frase, zcite spezzato su tre run; variante con `num` per
   ieee e vancouver) iniettato dai due produttori in tutti e 5 gli stili, un `compare_group` per stile; F7 gruppo (solo
   con gruppo, con la coppia di parità sul gruppo); F8 cancellazione; F9 casi limite dei `<zcite>` con i due produttori
-  (chiave sconosciuta ben formata → stesso avviso e segnaposto; chiave malformata `../items` → stesso rifiuto; `keys="A, B"`;
-  chiave ripetuta; documento senza zcite); F10 casi limite degli input dei tool (array vuoti, stringhe di soli spazi,
+  (chiave sconosciuta ben formata → stesso errore, nessun output; chiave malformata `../items` → stesso rifiuto;
+  `keys="A, B"`; chiave ripetuta; documento senza zcite); F10 casi limite degli input dei tool (array vuoti, stringhe di soli spazi,
   limiti 0/1/max/max+1 dove lo schema li fissa: delete_items 1..50, add_items almeno 1, search_library massimo 100);
   poi gli scenari T-… per i file toccati, fino a 5 **scenari esplorativi** X1..X5 scelti dall'agente in base al diff
   (null, tipi sbagliati, vuoti, spazi, stringhe lunghissime, unicode, limiti, duplicati, valori validi e non validi
@@ -623,18 +637,21 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
   `collection_key` di delete_collection riuscito (lettura strutturale della trascrizione con `--transcript`, mai una
   semplice occorrenza nel testo, ad esempio in `not_found`) e risponde 404; ogni docx sta in
   `agent-out/`, passa `validateDocx` (le differenze di testo contano negli stili autore-anno) e cita solo voci create
-  dalla run (o `ZZZZZZZZ`/`YYYYYYYY` con itemData segnaposto, verificate inesistenti); in locale non restano voci con il tag.
+  dalla run; in locale non restano voci con il tag.
   **Parità**: i documenti di uno stesso `compare_group` (uno per produttore, stesso stile, libreria e `source`) devono
   avere lo stesso JSON di ogni campo tranne il `citationID` casuale (citationItems con uris, itemData, locator, label,
   prefix, suffix; properties con formattedCitation), lo stesso testo visibile di ogni citazione e di ogni paragrafo e gli
   stessi campi di bibliografia; in ogni stile serve un gruppo verificato sul documento di parità (lo script legge il
   sorgente: multi-chiave, locator+prefix+suffix, in linea, spezzato, `num` su ogni tag negli stili numerici; nelle
   citazioni almeno un autore istituzionale, una voce senza data né autori, metadati non ASCII), più il gruppo di test se
-  F7 è passato e i due documenti di F9. **Trascrizione obbligatoria** (`--transcript`, exit 2 senza): F9 (stesso
-  avviso per la chiave sconosciuta, stesso rifiuto per quella malformata, 0 citazioni senza zcite) e F10 (esiti attesi
-  per ogni chiamata fissa) si controllano sulle chiamate vere; ogni chiamata esplorativa dichiarata deve comparire con gli
-  stessi argomenti, massimo 5 scenari, verdetto `bug` = check fallito, `unclear` = avviso nel riepilogo.
-  **Robustezza** su tutti i risultati Zotero della trascrizione: server connesso all'avvio, ogni chiamata con un
+  F7 è passato e i due documenti di F9. **Evidenza dagli hook** (`--audit`, exit 2 senza): F0 (le due sonde fra le
+  negazioni; altre negazioni = avvisi), F9 (stesso errore per la chiave sconosciuta, stesso rifiuto per quella
+  malformata, 0 citazioni senza zcite) e F10 (esiti attesi per ogni chiamata fissa) si controllano sulle chiamate
+  registrate dall'audit; ogni chiamata esplorativa dichiarata deve comparire con gli stessi argomenti, massimo 5
+  scenari, verdetto `bug` = check fallito, `unclear` = avviso nel riepilogo. Con `--transcript` (in CI il file di
+  esecuzione) ogni chiamata Zotero della trascrizione deve stare nell'audit o fra le negazioni (altrimenti gli hook non
+  erano attivi) e il server zotero dev'essere connesso all'avvio.
+  **Robustezza** su tutti i risultati Zotero dell'audit: server connesso all'avvio, ogni chiamata con un
   risultato, nessuna connessione chiusa/timeout/crash, risultati riusciti in JSON MCP, nessun risultato con `error` senza
   isError, nessun `[object Object]`, `undefined`, `NaN`, stack trace o errore JavaScript nel testo (esclusi i campi di
   contenuto della libreria e i token che l'agente stesso ha inviato in quella chiamata; `undefined`/`NaN` ammessi negli
@@ -660,11 +677,35 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
 | VC-07 | make-docx: tag in linea e spezzato riconosciuti dal sorgente, `num` su ogni tag, spazi e chiave ripetuta (F9), percorso fuori agent-out e `"` nei valori rifiutati | caratteristiche lette correttamente; exit 2 |
 | VC-08 | 5 stili: inject_citations (server con Zotero finto) e inject.js (via inject.mjs, metadata da get_items_details) sul documento di parità | docx validi, 5 citazioni, impronte identiche, copertura istituzionale/senza metadati/non ASCII, testo attorno ai tag in linea e spezzato conservato, una bibliografia |
 | VC-08b | impronta alterata: citationID diverso / locator / testo visibile / bibliografia | nessuna differenza / percorso della prima differenza |
-| VC-09a/b | script completo senza rete: senza `--transcript`; claims incompleti con una cancellazione non attribuibile | exit 2; exit 1 e `verdict.json` con scenari mancanti, sicurezza, F10, parità, F9; la chiave non compare nell'output |
+| VC-09a/b | script completo senza rete: senza `--audit`; claims incompleti, cancellazione non attribuibile, chiamata della trascrizione assente dall'audit | exit 2; exit 1 e `verdict.json` con scenari mancanti, sicurezza, sonde F0, buco dell'audit, F10, parità, F9; la chiave non compare nell'output |
+| VC-10a | audit degli hook → chiamate: chiavi create, robustezza, chiamata esplorativa Bash | come dalla trascrizione |
+| VC-10b | chiamata Zotero della trascrizione assente da audit e negazioni / negata | problema / nessuno |
+| VC-10c | sonde F0 negate; altra negazione; nessuna negazione | nessun problema; avviso; due problemi |
 
-Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`):
-26 turni, 0,26 USD, 54 s; P0, F1-F6, F8 passati, F7 saltato (nessun gruppo); verify-claims verde (9 controlli);
-con claims alterati (cancellazione falsa, F5 failed, docx non iniettato) verify-claims fallisce con 5 problemi.
+### Hook dell'agente smoke (`test/utils/agent-hooks.test.ts`) e template MCP (`test/utils/render-mcp.test.ts`)
+| ID | Scenario | Atteso |
+|---|---|---|
+| AH-01a | make-docx con uno o più output e spec JSON (anche `../items` dentro lo spec), inject.mjs con `users/<id>`, `groups/<id>`, id numerico | ammessi |
+| AH-01b | `;`, `&&`, `\|\|`, pipe, `>`, `<`, `2>&1`, `$( )`, backtick, `&` o backslash nello spec, a capo, virgolette doppie, prefisso di variabile, `node -e/--eval/--require/--import`, node con percorso assoluto, bash, altro script, `./`, doppio spazio, `agent-out/../`, percorso assoluto, metadata non json, opzione in più, stile o libreria non validi, commento, argomento dopo lo spec, spec senza virgolette, comando vuoto | negati |
+| AH-01c | `run_in_background`, input senza comando | negati |
+| AH-02a | delete_items di chiave creata, di 51 chiavi finte, di `[]` / di chiave non creata (sonda F0), malformata, delete_collection in safe mode, gruppo in safe mode | ammessi / negati con il motivo |
+| AH-02b | fuori safe mode: delete_collection di collezione creata, gruppo diverso da quello di test, contesto mancante | ammesso; negati |
+| AH-02c | chiavi create lette dall'audit (create_collection, add_items_by_doi con PDF; esclusi errori, tool di lettura, Bash) | solo le chiavi create |
+| AH-02d | testo dei risultati: stringa, blocchi MCP, `{content}`, Bash `{stdout, stderr}` | testo concatenato |
+| AH-03a/b | bash-guard come processo: comando ammesso / negato / stdin non JSON | nessun output / `permissionDecision: deny` con motivo e riga in denials.jsonl / negato |
+| AH-03c | audit.mjs (PostToolUse, PostToolUseFailure, tool non registrato) poi delete-guard | audit con le due chiamate Zotero; chiave creata ammessa, altra negata |
+| AH-03d | delete-guard senza `agent-audit/context.json` | negato |
+| AH-03e | `.claude/agent-smoke/settings.json` | tre hook sugli eventi e matcher giusti, comandi via `$CLAUDE_PROJECT_DIR`, timeout |
+| RM-01..03 | template MCP: variabili e default, node e server assoluti, opzionali vuote omesse; variabile obbligatoria mancante; nessun valore nel template | config concreta; errore che la nomina; solo segnaposto |
+
+Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`, stessa
+configurazione della CI: template MCP, `--tools`, `dontAsk`, hook): 78 turni, 0,69 USD, 2 min 20 s (i limiti in CI,
+160 turni e 10 USD, lasciano ampio margine). P0, F0-F6, F8-F10 e 8 righe T passati, F7 saltato (nessun gruppo);
+18 docx in 9 `compare_group` (parità nei 5 stili, edge, nozcite, nonum-ieee, bare-id) tutti identici fra i due
+produttori; 4 esplorativi (1 ok, 3 unclear, nessun bug). Hook: 69 chiamate nell'audit, esattamente 2 negazioni, le
+due sonde F0 (`… && ls` e `delete_items` di `XXXXXXXX`), nessuna sul percorso normale. verify-claims con `--audit` e
+`--transcript`: 43 controlli, 0 problemi, 3 avvisi (gli unclear). Dopo la pulizia nessun `mzt-*` e 551/551 chiavi
+della libreria come prima.
 
 ### Le 5 righe segnate OK a mano nel collaudo 2.0.0 (LIVE-STALE)
 
@@ -679,6 +720,10 @@ Indagate una per una su `main` @ 5a0f772.
 | LIVE-STALE-5 | import_pdf_to_zotero con `content_type: text/html`, atteso successo senza fulltext | rifiutato con not_pdf: il tool controlla sempre i byte `%PDF-`; `content_type` è solo il MIME salvato sull'allegato | **assertion** sbagliata (il tool è solo PDF); ora LIVE-IP-05. La descrizione di `content_type` ("MIME type of the file") lascia intendere altri formati: da chiarire nella descrizione |
 
 ## Lacune note
+- Trovato dall'agente smoke (X1, unclear, 2026-10-11): `add_items_by_doi` con DOI vuoto o di soli spazi riporta per quel DOI
+  l'errore grezzo di parsing `Unexpected token '<', "<!DOCTYPE "... is not valid JSON` (doi.org risponde con una pagina
+  HTML) invece di "DOI non valido"; il risultato complessivo è comunque un errore con isError. Da correggere con una
+  validazione dell'input (correzione del prodotto in una PR separata).
 - Le fixture usano chiavi nel formato reale di Zotero (8 caratteri da `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`): chiavi con 0/1/O o
   più corte vengono rifiutate prima di qualsiasi richiesta.
 - Attriti segnalati dall'agente smoke, lasciati come sono (comportamento attuale, non bug): `get_collection_items`

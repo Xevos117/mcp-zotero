@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "zotero": {
+      "command": "node",
+      "args": ["build/server.js"],
+      "env": {
+        "ZOTERO_API_KEY": "${ZOTERO_TEST_API_KEY}",
+        "ZOTERO_USER_ID": "${ZOTERO_TEST_USER_ID}",
+        "UNSAFE_OPERATIONS": "${UNSAFE_OPERATIONS:-items}",
+        "UNPAYWALL_EMAIL": "${UNPAYWALL_EMAIL:-}"
+      }
+    }
+  }
+}

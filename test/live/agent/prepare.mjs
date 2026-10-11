@@ -2,16 +2,19 @@
 // Prepares agent-out/ for the test-mcp-zotero skill (CI and local use the same files):
 //   agent-out/context.json   run id/tag/prefix, mode, safe mode, group, cleanup owner
 //   agent-out/diff.txt       changed files + patch against the base (truncated), for the targeted path
+//   agent-audit/             emptied; context.json copy for the hooks of .claude/agent-smoke (outside agent-out/,
+//                            so the agent cannot edit it), then audit.jsonl / denials.jsonl written by the hooks
 // Usage: node test/live/agent/prepare.mjs [--mode ci|local] [--base <git-ref>] [--run-id <id>]
 // Env: ZOTERO_LIVE_SAFE_MODE=1, ZOTERO_TEST_GROUP_ID, AGENT_UNSAFE_OPERATIONS (default items).
 // CI mode also requires ZOTERO_TEST_API_KEY and ZOTERO_TEST_USERNAME and exits non-zero, before the agent
 // starts, unless the key belongs to that user and the library has the __mzt_disposable__ sentinel.
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const OUT = "agent-out";
+const AUDIT = "agent-audit";
 const MAX_PATCH_BYTES = 100_000;
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -101,6 +104,9 @@ const context = {
   created_at: new Date().toISOString(),
 };
 writeFileSync(join(OUT, "context.json"), JSON.stringify(context, null, 2) + "\n");
+rmSync(AUDIT, { recursive: true, force: true });
+mkdirSync(AUDIT, { recursive: true });
+writeFileSync(join(AUDIT, "context.json"), JSON.stringify(context, null, 2) + "\n");
 
 const names = git("diff", "--name-status", `${base}...HEAD`);
 let patch = git("diff", "--unified=2", `${base}...HEAD`);

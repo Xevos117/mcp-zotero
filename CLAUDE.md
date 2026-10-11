@@ -53,6 +53,12 @@ Against a personal library run it with `ZOTERO_LIVE_SAFE_MODE=1`. Assertions mus
 the run creates (never absolute library counts), and every created key must carry the run markers so
 the global teardown can remove it. After an interrupted run: `npm run test:live:cleanup -- [runId]`.
 
+The agent smoke test (`.github/workflows/claude-agent-smoke.yml`, skill `.claude/skills/test-mcp-zotero`)
+gets its environment from whoever starts the session, never from the agent: MCP server from
+`test/live/agent/mcp.template.json`, `--tools`, `--permission-mode dontAsk` and the hooks of
+`.claude/agent-smoke/settings.json` (Bash allowlist, delete policy, audit log used as evidence by
+`test/live/verify-claims.mjs`). Local runs use the same pieces: `test/live/agent/README.md`.
+
 ## Scheduled workflows
 
 GitHub disables `schedule:` triggers after 60 days without repository activity on public repos.
