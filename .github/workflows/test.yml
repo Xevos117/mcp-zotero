@@ -5,6 +5,9 @@ on:
     branches: [main]
   # No base-branch filter: stacked PRs target the branch below them, not main.
   pull_request:
+  # Started on the dependency branch by deps-update.yml (a GITHUB_TOKEN push triggers no other event);
+  # the check runs attach to the branch head, i.e. the PR head.
+  workflow_dispatch:
 
 permissions:
   contents: read
