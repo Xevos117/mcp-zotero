@@ -1,0 +1,79 @@
+{
+  "5XBM6KB2": {
+    "itemType": "report",
+    "title": "mzt-mv4dx8y5-1d21 undated memo",
+    "authors": "No authors listed"
+  },
+  "FFXI9PVP": {
+    "itemType": "journalArticle",
+    "title": "mzt-mv4dx8y5-1d21 Über «Lernen» – 学习 ✓",
+    "authors": "Jürgen Müller-Ødegård, Zoë Ångström",
+    "creators": [
+      {
+        "creatorType": "author",
+        "firstName": "Jürgen",
+        "lastName": "Müller-Ødegård"
+      },
+      {
+        "creatorType": "author",
+        "firstName": "Zoë",
+        "lastName": "Ångström"
+      }
+    ],
+    "publicationTitle": "Journal of Tests",
+    "date": "2021-05-04",
+    "volume": "12",
+    "pages": "100-120"
+  },
+  "BUVP8FGW": {
+    "itemType": "book",
+    "title": "mzt-mv4dx8y5-1d21 Consortium book",
+    "authors": "Test Consortium",
+    "creators": [
+      {
+        "creatorType": "author",
+        "name": "Test Consortium"
+      }
+    ],
+    "date": "2020",
+    "publisher": "Test Press",
+    "place": "Milano"
+  },
+  "W2XZ23SM": {
+    "itemType": "journalArticle",
+    "title": "Ten Simple Rules for Reproducible Computational Research",
+    "authors": "Geir Kjetil Sandve, Anton Nekrutenko, James Taylor, Eivind Hovig",
+    "creators": [
+      {
+        "creatorType": "author",
+        "firstName": "Geir Kjetil",
+        "lastName": "Sandve"
+      },
+      {
+        "creatorType": "author",
+        "firstName": "Anton",
+        "lastName": "Nekrutenko"
+      },
+      {
+        "creatorType": "author",
+        "firstName": "James",
+        "lastName": "Taylor"
+      },
+      {
+        "creatorType": "author",
+        "firstName": "Eivind",
+        "lastName": "Hovig"
+      }
+    ],
+    "publicationTitle": "PLoS Computational Biology",
+    "publisher": "Public Library of Science (PLoS)",
+    "date": "2013-10-24",
+    "volume": "9",
+    "issue": "10",
+    "pages": "e1003285",
+    "DOI": "10.1371/journal.pcbi.1003285",
+    "url": "http://dx.doi.org/10.1371/journal.pcbi.1003285",
+    "ISSN": "1553-7358",
+    "language": "en"
+  }
+}

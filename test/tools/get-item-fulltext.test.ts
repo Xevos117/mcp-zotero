@@ -7,7 +7,7 @@ import {
   expectToolError,
   carriesApiKey,
 } from "../helpers/mcp-harness.js";
-import { jsonResponse, networkError } from "../helpers/fake-net.js";
+import { jsonResponse, networkError, statusResponse } from "../helpers/fake-net.js";
 import { ZBASE, zList, zSingle, zError, article, pdfAttachment } from "../helpers/zotero-fake.js";
 
 const PARENT = `${ZBASE}/items/PARQQQQR`;
@@ -58,6 +58,18 @@ describe("get_item_fulltext (MCP)", () => {
     expect(out.json).toMatchObject({ item_key: "ATTQQQQR", attachment_key: "ATTQQQQR", text: "abc" });
     expect(out.json).not.toHaveProperty("pages");
     expect(h.net.requests("GET", /\/children$/)).toHaveLength(0);
+  });
+
+  it.each<[string, string]>([
+    ["pagina HTML", "<html>maintenance</html>"],
+    ["corpo vuoto", ""],
+    ["JSON non oggetto", "[1,2]"],
+  ])("GIF-23 fulltext risponde 200 con %s → isError leggibile, mai l'errore grezzo di JSON.parse", async (_label, body) => {
+    h.net.on("GET", `${ZBASE}/items/ATTQQQQR`, zSingle(pdfAttachment("ATTQQQQR", "PARQQQQR")));
+    h.net.on("GET", FULLTEXT, statusResponse(200, body, { "Content-Type": "text/html" }));
+    const out = await h.call("get_item_fulltext", { item_key: "ATTQQQQR" });
+    expectErrorJson(out, "Zotero fulltext API: response is not a JSON object (HTTP 200, text/html)");
+    expect(out.text).not.toMatch(/Unexpected token|is not valid JSON|JSON\.parse/);
   });
 
   it("GIF-03 tronca a max_characters", async () => {

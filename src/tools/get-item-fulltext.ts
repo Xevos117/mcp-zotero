@@ -1,3 +1,4 @@
+import { InvalidJsonResponseError, readJsonObject } from "../utils/json-response.js";
 import { z } from "zod";
 import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface, ZoteroItemData, ZoteroFulltextResponse, isZoteroApiError } from "../types/zotero-types.js";
@@ -123,8 +124,11 @@ async function fetchFulltext(
 
   let data: ZoteroFulltextResponse;
   try {
-    data = (await response.json()) as ZoteroFulltextResponse;
+    data = await readJsonObject<ZoteroFulltextResponse>(response);
   } catch (err) {
+    if (err instanceof InvalidJsonResponseError) {
+      return formatErrorResponse(`Zotero fulltext API: ${err.message}`, { item_key: itemKey, attachment_key: attachmentKey });
+    }
     if (!isTimeoutAbort(err)) throw err;
     return formatErrorResponse(timeoutError("Zotero fulltext request", url, TIMEOUTS.zoteroApiMs).message, {
       item_key: itemKey,

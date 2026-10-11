@@ -99,6 +99,17 @@ describe("import_pdf_to_zotero (MCP)", () => {
     expect(h.net.toHost(UPLOAD_HOST)).toHaveLength(0);
   });
 
+  it("IP-15 autorizzazione dell'upload risponde con HTML (200) → errore leggibile con lo status, mai l'errore grezzo di JSON.parse", async () => {
+    servePdf(h.net, PDF_URL);
+    h.net.on("POST", ITEMS, zWrite({ keys: ["IMP00015"] }));
+    h.net.on("POST", FILE_ROUTE, statusResponse(200, "<!DOCTYPE html><html>proxy</html>", { "Content-Type": "text/html" }));
+    const out = await h.call("import_pdf_to_zotero", { url: PDF_URL });
+    expect(out.isError).toBe(true);
+    expect(out.json).toMatchObject({ error: "Upload authorization failed", status: 200, details: "response is not a JSON object (HTTP 200, text/html)" });
+    expect(out.text).not.toMatch(/Unexpected token|is not valid JSON|JSON\.parse/);
+    expect(h.net.toHost(UPLOAD_HOST)).toHaveLength(0);
+  });
+
   it("IP-03 figlio di parent_item: parentItem impostato, collections forzate a [], tags", async () => {
     servePdf(h.net, PDF_URL);
     h.net.on("POST", ITEMS, zWrite({ keys: ["IMP00003"] }));

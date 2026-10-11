@@ -136,6 +136,7 @@ test normali. Non restano `it.fails` nella suite.
 | GIF-20 | solo un allegato linked_url con contentType PDF | errore con "linked URL", attachment_key e url del link, nessuna GET fulltext |
 | GIF-21 | link elencato prima di un PDF importato | usa il PDF importato |
 | GIF-22 | chiave di un allegato linked_url | errore con "linked URL" e url, nessuna GET fulltext |
+| GIF-23 | fulltext 200 con HTML, corpo vuoto o JSON non oggetto | isError "Zotero fulltext API: response is not a JSON object (HTTP 200, text/html)", mai l'errore grezzo di JSON.parse |
 
 ## get_user_id (`get-user-id.test.ts`)
 | ID | Scenario | Atteso |
@@ -189,6 +190,9 @@ test normali. Non restano `it.fails` nella suite.
 | AID-08 | doi.org 500 | in failed, nessun retry |
 | AID-09 | DOI con `<>();` e titolo unicode | codificato nell'URL, round-trip |
 | AID-10 | `[]` | errore strutturato, nessuna chiamata HTTP |
+| AID-28 | DOI `""`, `"   "`, tab | errore di validazione "DOI must not be empty", nessuna chiamata HTTP |
+| AID-29 | DOI con spazi attorno | ripulito prima della risoluzione |
+| AID-30 | doi.org risponde 200 con HTML, corpo vuoto o `null`; 404 con HTML | per quel DOI "DOI not found or not resolvable: … (response is not a JSON object (HTTP 200, text/html))" / "DOI resolution failed … 404"; l'altro DOI creato; mai "Unexpected token"/"is not valid JSON" |
 | AID-11 | scrittura `failed` | errore strutturato "Zotero API write failed: Item 0 ..." |
 | AID-12 | scrittura parziale | non isError; success con i creati, failed con `{ doi, error }` |
 | AID-12b | 60 DOI | POST da 50 + 10, ordine dei DOI preservato |
@@ -199,6 +203,7 @@ test normali. Non restano `it.fails` nella suite.
 | AID-18 | **Unpaywall senza OA** (closed) | "No open access PDF found", nessun upload |
 | AID-19 | green con sola landing page | landing_url + suggerimento import_pdf_to_zotero |
 | AID-20 | Unpaywall 404/500/rete | item creati, pdf_attached false |
+| AID-31 | Unpaywall risponde 200 con HTML | item creato, pdf_attached false, nessun errore grezzo |
 | AID-21 | **quota storage** (413) | storage_quota_warning, item creati |
 | AID-22 | quota piena su 12 DOI | upload successivi saltati |
 | AID-23 | un download 404 | risultati per singolo item |
@@ -263,6 +268,7 @@ test normali. Non restano `it.fails` nella suite.
 | IP-11 | 100 MB + 1 | "100 MB", nessun item creato |
 | IP-12/13 | creazione item `failed`, HTTP 4xx/5xx | errore strutturato "import_pdf_to_zotero failed" |
 | IP-14 | **quota storage** (auth 413) | errore strutturato con item_key orfano, suggestion, nota delete_items |
+| IP-15 | autorizzazione dell'upload 200 con HTML | isError "Upload authorization failed", status 200, details "response is not a JSON object (HTTP 200, text/html)", nessun upload |
 | IP-15/16 | auth 403/412/500, rete | "Upload authorization failed" |
 | IP-17/18 | upload 500 / register 412 | "File upload failed" / "Upload registration failed" |
 | IP-19/20 | fulltext 413 / PDF non estraibile | successo, fulltext_indexed false con motivo |

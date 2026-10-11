@@ -1,3 +1,4 @@
+import { InvalidJsonResponseError, readJsonObject } from "./json-response.js";
 import { fetchWithRetry } from "./fetch-retry.js";
 import { logger } from "./logger.js";
 import { errorMessage } from "./error-formatter.js";
@@ -76,7 +77,14 @@ export async function lookupOaPdfWithFallbacks(doi: string): Promise<{
     return { primary: { ...UNAVAILABLE_RESULT }, fallback_urls: [] };
   }
 
-  const data = (await response.json()) as UnpaywallResult;
+  let data: UnpaywallResult;
+  try {
+    data = await readJsonObject<UnpaywallResult>(response);
+  } catch (err) {
+    if (!(err instanceof InvalidJsonResponseError)) throw err;
+    logger.error("Unpaywall API returned an invalid response", { doi, error: err.message });
+    return { primary: { ...UNAVAILABLE_RESULT }, fallback_urls: [] };
+  }
 
   const locations = data.is_oa
     ? [data.best_oa_location, ...(data.oa_locations ?? [])].filter((l): l is UnpaywallOaLocation => l !== null && l !== undefined)

@@ -2,6 +2,7 @@ import { CslItemData } from "../types/csl-types.js";
 import { mapWithConcurrency } from "./concurrency.js";
 import { fetchWithRetry } from "./fetch-retry.js";
 import { errorMessage } from "./error-formatter.js";
+import { InvalidJsonResponseError, readJsonObject } from "./json-response.js";
 
 export async function resolveDoi(doi: string): Promise<CslItemData> {
   const response = await fetchWithRetry(`https://doi.org/${encodeURIComponent(doi)}`, {
@@ -17,7 +18,13 @@ export async function resolveDoi(doi: string): Promise<CslItemData> {
     );
   }
 
-  return (await response.json()) as CslItemData;
+  try {
+    return await readJsonObject<CslItemData>(response);
+  } catch (err) {
+    // doi.org answers some unresolvable DOIs with an HTML page and status 200
+    if (err instanceof InvalidJsonResponseError) throw new Error(`DOI not found or not resolvable: ${doi} (${err.message})`);
+    throw err;
+  }
 }
 
 export interface DoiResolutionResult {

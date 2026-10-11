@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "run_id": "mv4dx8y5-1d21",
+  "run_tag": "mzt-run:mv4dx8y5-1d21",
+  "prefix": "mzt-mv4dx8y5-1d21",
+  "mode": "local",
+  "safe_mode": true,
+  "unsafe_operations": "items",
+  "group_id": null,
+  "cleanup": "agent",
+  "base": "main",
+  "created_at": "2026-10-11T22:18:33.485Z"
+}

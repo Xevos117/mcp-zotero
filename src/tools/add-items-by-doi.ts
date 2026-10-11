@@ -22,7 +22,7 @@ WORKFLOW TIPS:
 - To create a cited Word document, use the returned item_keys as <zcite keys="ITEMKEY"/> placeholders in a .docx, then call inject_citations. See inject_citations description for the full workflow.`,
   inputSchema: {
     dois: z
-      .array(z.string())
+      .array(z.string().trim().min(1, "DOI must not be empty"))
       .describe(
         'Array of DOI strings (e.g. ["10.1038/s41586-023-06647-8"]). Each DOI will be resolved and added to Zotero.'
       ),

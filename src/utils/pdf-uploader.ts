@@ -1,3 +1,4 @@
+import { InvalidJsonResponseError, readJsonObject } from "./json-response.js";
 import { createHash } from "node:crypto";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { logger } from "./logger.js";
@@ -311,7 +312,17 @@ export async function downloadAndUploadPdf(
     };
   }
 
-  const authData = (await authResponse.json()) as UploadAuthResponse | { exists: 1 };
+  let authData: UploadAuthResponse | { exists: 1 };
+  try {
+    authData = await readJsonObject<UploadAuthResponse | { exists: 1 }>(authResponse);
+  } catch (err) {
+    if (!(err instanceof InvalidJsonResponseError)) throw err;
+    return {
+      success: false,
+      itemKey,
+      error: { code: "auth_failed", message: `Upload authorization failed: ${err.message}`, status: authResponse.status, networkDetail: err.message },
+    };
+  }
 
   // 6-7. Upload binary + register (skip if already exists)
   if (!("exists" in authData)) {
