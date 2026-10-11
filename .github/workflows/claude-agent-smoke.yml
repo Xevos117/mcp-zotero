@@ -159,6 +159,18 @@ jobs:
           RUN_ID: ${{ steps.prepare.outputs.run_id }}
         run: node test/live/lock.mjs acquire "$RUN_ID"
 
+      # Artifacts of a public repo are readable by anyone: identifiers are replaced by placeholders
+      # (restored in the next jobs) and the step fails if any of them, or a secret, survives.
+      - name: Redact agent-out
+        if: steps.skill.outputs.available == 'true'
+        timeout-minutes: 2
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+        run: node test/live/agent/redact.mjs redact agent-out
       - name: Pack the workspace for the agent job
         if: steps.skill.outputs.available == 'true'
         timeout-minutes: 3
@@ -202,6 +214,12 @@ jobs:
       - name: Unpack the workspace
         timeout-minutes: 3
         run: tar -xzf "$RUNNER_TEMP/workspace.tgz"
+      - name: Restore agent-out
+        timeout-minutes: 2
+        env:
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+        run: node test/live/agent/redact.mjs restore agent-out
 
       # The Zotero key goes only into this file; the agent's environment never contains it.
       - name: MCP config for the agent
@@ -265,22 +283,19 @@ jobs:
           mkdir -p agent-out
           if [ -n "$AGENT_REPORT" ]; then printf '%s' "$AGENT_REPORT" > agent-out/agent-report.json; else echo '{}' > agent-out/agent-report.json; fi
           if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" agent-out/execution.json; fi
-      # The raw output (needed by the verifier: docx, claims, transcript) is uploaded only if neither the
-      # Zotero key nor the Unpaywall email is in it; the 7-day artifact is scrubbed by the next job.
-      - name: Check the agent output for secrets
+      # Passed to the verifier with identifiers replaced by placeholders (restored there); the step fails,
+      # and nothing is uploaded, if any identifier or secret survives.
+      - name: Redact the agent output
         if: always()
-        timeout-minutes: 1
+        timeout-minutes: 2
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
           UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
         run: |
-          for secret in "$ZOTERO_TEST_API_KEY" "$UNPAYWALL_EMAIL"; do
-            if [ -n "$secret" ] && grep -rqF -- "$secret" agent-out; then
-              echo "::error::a secret appears in the agent output: not uploading it"
-              rm -rf agent-out
-              exit 1
-            fi
-          done
+          node test/live/agent/redact.mjs redact agent-out || { rm -rf agent-out; exit 1; }
       - if: always()
         timeout-minutes: 3
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -337,6 +352,13 @@ jobs:
         with:
           name: agent-output
           path: agent-out
+      - name: Restore agent-out
+        if: needs.prepare.outputs.run_id != ''
+        timeout-minutes: 2
+        env:
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+        run: node test/live/agent/redact.mjs restore agent-out
 
       # Deterministic verdict: this step, not the agent, decides the check.
       - name: Verify the agent's claims

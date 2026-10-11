@@ -593,8 +593,10 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
   comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
   docx con i `<zcite>`) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
   negati; `--max-turns 80`, `--max-budget-usd 5`, `MCP_TOOL_TIMEOUT` 120 s, step 25 min. La chiave Zotero sta solo nel file
-  di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente; l'output grezzo passa al job
-  successivo solo se non contiene né la chiave né l'email.
+  di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente. Gli artifact fra i job
+  (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
+  nel job successivo), username, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne resta uno
+  (anche dentro i docx); conservazione 1 giorno.
 - **Sulle PR** claude-code-action ripristina `.claude/` e `CLAUDE.md` dal branch di base (configurazione dell'agente
   scritta nella PR = non fidata): gira la skill del branch di base. Se lì la skill non c'è ancora (la PR che la
   introduce), il job lo segnala e salta; il primo collaudo vero è l'avvio manuale da `main` dopo il merge.
@@ -605,10 +607,16 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
 - **verify-claims** (exit 0/1/2, `verdict.json` e riepilogo nello step summary): scenari fissi presenti e non falliti
   (F1 può essere `skipped` con motivo); ogni oggetto dichiarato esiste con i marcatori della run e lo stato dichiarato
   (titolo, DOI, collezione, genitore, link_mode, PDF); ogni cancellazione dichiarata ha una chiave nel formato Zotero,
-  compare in un risultato di un tool Zotero della trascrizione dell'agente (`--transcript`, file di esecuzione
-  dell'action: cioè l'ha creata la run) e risponde 404; ogni docx sta in
+  è stata creata da una chiamata di tool Zotero della run o compare nei `deleted_keys` di delete_items / nel
+  `collection_key` di delete_collection riuscito (lettura strutturale della trascrizione con `--transcript`, mai una
+  semplice occorrenza nel testo, ad esempio in `not_found`) e risponde 404; ogni docx sta in
   `agent-out/`, passa `validateDocx` (le differenze di testo contano negli stili autore-anno) e cita solo voci create
   dalla run; i documenti con lo stesso `compare_group` hanno lo stesso JSON; in locale non restano voci con il tag.
+
+| ID | Scenario (`test/utils/verify-claims.test.ts`) | Atteso |
+|---|---|---|
+| VC-01 | trascrizione con create_collection, add_items, add_items_by_doi (con PDF), add_linked_url_attachment, delete_items, delete_collection | chiavi create e cancellate lette dai risultati dei tool |
+| VC-02 | chiave ripetuta solo in `not_found`, in un risultato d'errore o in un tool non Zotero (Write) | non attribuita né come creata né come cancellata |
 
 Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`):
 26 turni, 0,26 USD, 54 s; P0, F1-F6, F8 passati, F7 saltato (nessun gruppo); verify-claims verde (9 controlli);
