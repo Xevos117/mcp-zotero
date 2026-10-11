@@ -54,6 +54,21 @@ export function track(runId: string, kind: "item" | "collection", ...keys: Array
   appendFileSync(registryPath(runId), valid.map((key) => JSON.stringify({ kind, key }) + "\n").join(""));
 }
 
+/** Skip di casi soft della run (servizio esterno giù), contati dal teardown. */
+export function softSkipsPath(runId: string): string {
+  return join(ROOT, ".vitest", `live-soft-${runId}.jsonl`);
+}
+
+export function recordSoftSkip(runId: string, test: string, note: string): void {
+  mkdirSync(join(ROOT, ".vitest"), { recursive: true });
+  appendFileSync(softSkipsPath(runId), JSON.stringify({ test, note }) + "\n");
+}
+
+export function softSkips(runId: string): number {
+  const p = softSkipsPath(runId);
+  return existsSync(p) ? readFileSync(p, "utf8").split("\n").filter(Boolean).length : 0;
+}
+
 export function readRegistry(runId: string): { items: string[]; collections: string[] } {
   const out = { items: new Set<string>(), collections: new Set<string>() };
   const p = registryPath(runId);

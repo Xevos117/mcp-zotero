@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, createItems, title, trackItems, rawItem } from "./helpers/live.js";
+import { live, startLive, LiveServer, createItems, title, trackItems, rawItem, FAKE_KEY } from "./helpers/live.js";
 
 describe.skipIf(!live.enabled)("add_linked_url_attachment (live)", () => {
   let s: LiveServer;
@@ -41,7 +41,7 @@ describe.skipIf(!live.enabled)("add_linked_url_attachment (live)", () => {
 
   it("LIVE-ALU-04 URL non valido → errore di validazione; genitore inesistente → isError leggibile", async () => {
     expect((await s.call("add_linked_url_attachment", { url: "not a url" })).text).toMatch(/url/);
-    const r = await s.call("add_linked_url_attachment", { url: "https://example.org/x", title: title("ALU orphan"), parent_item: "ZZZZZZZZ" });
+    const r = await s.call("add_linked_url_attachment", { url: "https://example.org/x", title: title("ALU orphan"), parent_item: FAKE_KEY });
     trackItems(r.json?.item_key);
     expect(r.isError).toBe(true);
     expect(r.text).not.toMatch(/\[object Object\]/);

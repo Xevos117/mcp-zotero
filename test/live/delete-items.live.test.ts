@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, createItems, title, rawItem, web } from "./helpers/live.js";
+import { live, startLive, LiveServer, createItems, title, rawItem, web, FAKE_KEY } from "./helpers/live.js";
 
 describe.skipIf(!live.enabled)("delete_items (live)", () => {
   let none: LiveServer;
@@ -42,19 +42,19 @@ describe.skipIf(!live.enabled)("delete_items (live)", () => {
   // Ex riga segnata OK a mano (LIVE-STALE-1): il messaggio è "No items found for the given keys" con
   // status "not_found"; la vecchia regex /not found/ non poteva combaciare con "No items found".
   it("LIVE-DI-03 solo chiavi sconosciute → isError, status not_found", async () => {
-    const r = await items.call("delete_items", { item_keys: ["ZZZZZZZZ"] });
+    const r = await items.call("delete_items", { item_keys: [FAKE_KEY] });
     expect(r.isError).toBe(true);
-    expect(r.json).toMatchObject({ error: "No items found for the given keys", status: "not_found", item_keys: ["ZZZZZZZZ"] });
+    expect(r.json).toMatchObject({ error: "No items found for the given keys", status: "not_found", item_keys: [FAKE_KEY] });
   });
 
   it("LIVE-DI-04 chiave propria + sconosciuta → 1 cancellata, la sconosciuta in not_found", async () => {
-    const r = await items.call("delete_items", { item_keys: [own[30], "ZZZZZZZZ"] });
-    expect(r.json).toMatchObject({ deleted_count: 1, not_found: ["ZZZZZZZZ"] });
+    const r = await items.call("delete_items", { item_keys: [own[30], FAKE_KEY] });
+    expect(r.json).toMatchObject({ deleted_count: 1, not_found: [FAKE_KEY] });
     expect(await rawItem(own[30])).toBeNull();
   });
 
   it("LIVE-DI-05 51 chiavi o nessuna → errore di validazione, niente cancellato", async () => {
-    expect((await items.call("delete_items", { item_keys: Array.from({ length: 51 }, (_, i) => `ZZZZZZ${String(i).padStart(2, "0")}`) })).text).toMatch(/item_keys/);
+    expect((await items.call("delete_items", { item_keys: Array.from({ length: 51 }, (_, i) => `ZZZZZ0${String(i).padStart(2, "0")}`) })).text).toMatch(/item_keys/);
     expect((await items.call("delete_items", { item_keys: [] })).text).toMatch(/item_keys/);
   });
 

@@ -51,7 +51,7 @@ plugin checklist for releases is in `test/WORD_CHECKLIST.md`.
 The live suite only ever uses `ZOTERO_TEST_*` variables (see the LIVE section of `test/TEST_CASES.md`).
 Against a personal library run it with `ZOTERO_LIVE_SAFE_MODE=1`. Assertions must be relative to what
 the run creates (never absolute library counts), and every created key must carry the run markers so
-the global teardown can remove it.
+the global teardown can remove it. After an interrupted run: `npm run test:live:cleanup -- [runId]`.
 
 ## Scheduled workflows
 

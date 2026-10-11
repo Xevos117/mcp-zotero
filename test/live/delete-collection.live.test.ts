@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, createCollection, createItems, title, rawItem, web } from "./helpers/live.js";
+import { live, startLive, LiveServer, createCollection, createItems, title, rawItem, web, FAKE_KEY } from "./helpers/live.js";
 
 describe.skipIf(!live.enabled)("delete_collection (live)", () => {
   let none: LiveServer;
@@ -50,7 +50,7 @@ describe.skipIf(!live.enabled)("delete_collection (live)", () => {
     });
 
     it("LIVE-DC-03 chiave sconosciuta → errore; chiave vuota → errore di validazione", async () => {
-      expect((await all.call("delete_collection", { collection_key: "ZZZZZZZZ" })).isError).toBe(true);
+      expect((await all.call("delete_collection", { collection_key: FAKE_KEY })).isError).toBe(true);
       expect((await all.call("delete_collection", { collection_key: "" })).text).toMatch(/collection_key/);
     });
   });

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, title, trackItems, rawItem } from "./helpers/live.js";
+import { live, startLive, LiveServer, title, trackItems, rawItem, FAKE_KEY } from "./helpers/live.js";
 
 describe.skipIf(!live.enabled)("add_items (live)", () => {
   let s: LiveServer;
@@ -60,7 +60,7 @@ describe.skipIf(!live.enabled)("add_items (live)", () => {
   });
 
   it("LIVE-AI-04 collection_key inesistente → fallimento leggibile", async () => {
-    const r = await s.call("add_items", { items: [{ itemType: "book", title: title("AI bad collection") }], collection_key: "ZZZZZZZZ", tags: [live.runTag] });
+    const r = await s.call("add_items", { items: [{ itemType: "book", title: title("AI bad collection") }], collection_key: FAKE_KEY, tags: [live.runTag] });
     trackItems(...keysOf(r));
     expect(r.isError || r.json?.failed?.length === 1).toBe(true);
     expect(r.text).not.toMatch(/\[object Object\]/);

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, title } from "./helpers/live.js";
+import { live, startLive, LiveServer, title, FAKE_KEY, FAKE_KEY_2 } from "./helpers/live.js";
 
 describe.skipIf(!live.enabled)("get_items_details (live)", () => {
   let s: LiveServer;
@@ -48,10 +48,10 @@ describe.skipIf(!live.enabled)("get_items_details (live)", () => {
   });
 
   it("LIVE-GID-04 solo chiavi sconosciute → risultato vuoto senza isError; miste → solo le note", async () => {
-    const none = await s.call("get_items_details", { item_keys: ["ZZZZZZZZ", "YYYYYYYY"] });
+    const none = await s.call("get_items_details", { item_keys: [FAKE_KEY, FAKE_KEY_2] });
     expect(none.isError).toBe(false);
     expect(none.json.message).toBe("No items found for the given keys");
-    const mixed = await s.call("get_items_details", { item_keys: [live.fixtures.book, "ZZZZZZZZ"] });
+    const mixed = await s.call("get_items_details", { item_keys: [live.fixtures.book, FAKE_KEY] });
     expect(Object.keys(mixed.json)).toEqual([live.fixtures.book]);
   });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFile } from "node:fs/promises";
-import { live, startLive, LiveServer } from "./helpers/live.js";
+import { live, startLive, LiveServer, FAKE_KEY } from "./helpers/live.js";
 import { expectUrisResolve } from "./helpers/docx.js";
 import { makeDocx, para, zcite, tempDir, TempDir } from "../helpers/fixtures.js";
 import { expectValidDocx, CitationStyle } from "../helpers/docx-validate.js";
@@ -44,7 +44,7 @@ describe.skipIf(!live.enabled)("inject_citations (live)", () => {
   );
 
   it("LIVE-IC-02 chiave inesistente → isError (404), nessun output", async () => {
-    const input = await dir.file("live-missing.docx", await makeDocx(para(zcite({ keys: "ZZZZZZZZ" }))));
+    const input = await dir.file("live-missing.docx", await makeDocx(para(zcite({ keys: FAKE_KEY }))));
     const r = await s.call("inject_citations", { file_path: input });
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/404/);

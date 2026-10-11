@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { TestProject } from "vitest/node";
@@ -12,6 +12,8 @@ import {
   unpaywallEmail,
   readRegistry,
   registryPath,
+  softSkips,
+  softSkipsPath,
   scrub,
   RUN_PREFIX,
   SENTINEL_COLLECTION,
@@ -33,7 +35,13 @@ import type { LiveInfo } from "./helpers/live.js";
  * appartenenza alle collezioni della run o genitore già verificato), prima le voci e poi le collezioni,
  * perché delete_collection lascia le voci al loro posto. La pulizia degli avanzi di run vecchie parte solo
  * se esiste la collezione sentinella `__mzt_disposable__` e lo username della chiave è quello atteso.
- * Sull'account dedicato controlla che i conteggi tornino quelli iniziali.
+ * Sull'account dedicato controlla che i conteggi tornino quelli iniziali; in safe mode avvisa se crescono.
+ *
+ * Run concorrenti sulla stessa libreria si serializzano con un lock (collezione `mzt-lock <runId>`).
+ *
+ * Solo pulizia (ZOTERO_LIVE_CLEANUP_ONLY=1, oppure `npm run test:live:cleanup -- [runId…]`): nessuna fixture,
+ * tutti i test saltati; pulisce le run indicate in ZOTERO_LIVE_CLEANUP_RUN_IDS e quelle di cui restano in
+ * `.vitest/` il marcatore `live-run-<runId>.json` o il registro `live-created-<runId>.jsonl` (run interrotte).
  */
 
 const SETUP_BOUND_MS = 300_000;
@@ -217,21 +225,121 @@ async function cleanupRun(z: ZoteroWeb, runId: string, runTag: string, prefix: s
   return { items: keys.length, collections: colls.length, refused: refused.length };
 }
 
-/** Avanzi di run precedenti (> 6 h): solo sull'account dedicato, mai in safe mode. */
+/** runId = `<timestamp base36>-<4 hex>` (vedi setup); il timestamp dice quando è iniziata la run. */
+const RUN_ID_RE = /^([0-9a-z]{8,9})-([0-9a-f]{4})$/;
+const RUN_NAME_RE = /^mzt-([0-9a-z]{8,9})-([0-9a-f]{4})(?: |$)/;
+const runIdTime = (runId: string) => {
+  const m = RUN_ID_RE.exec(runId);
+  return m ? parseInt(m[1], 36) : NaN;
+};
+
+/**
+ * Avanzi di run precedenti (> 6 h): solo sull'account dedicato, mai in safe mode. Una run è riconosciuta
+ * dal nome stretto `mzt-<runId>` delle collezioni e dei titoli o dal tag `mzt-run:<runId>`; si cancellano
+ * anche le voci delle sue collezioni (voci da DOI, allegati standalone) prima delle collezioni.
+ */
 async function sweepStale(z: ZoteroWeb) {
   const cutoff = Date.now() - STALE_AFTER_MS;
-  const runTime = (name: string) => {
-    const m = /^mzt-([0-9a-z]+)-[0-9a-f]+/.exec(name);
-    return m ? parseInt(m[1], 36) : NaN;
+  const stale = (runId: string | undefined) => !!runId && runIdTime(runId) < cutoff;
+  const nameRun = (name: string) => {
+    const m = RUN_NAME_RE.exec(name);
+    return m ? `${m[1]}-${m[2]}` : undefined;
   };
-  const colls = (await z.getAll<any>("collections")).filter((c) => runTime(String(c.data.name)) < cutoff);
-  const items = (await z.getAll<any>(`items?q=${RUN_PREFIX}&qmode=titleCreatorYear`)).filter(
-    (it) => String(it.data.title ?? "").startsWith(RUN_PREFIX) && Date.parse(it.data.dateAdded) < cutoff
-  );
-  if (items.length) await z.deleteKeys("items", items.map((i) => i.key));
-  if (colls.length) await z.deleteKeys("collections", colls.map((c) => c.key));
-  log(`pulizia avanzi: ${items.length} voci, ${colls.length} collezioni più vecchie di 6 h`);
+  const staleColls = (await z.getAll<any>("collections")).filter((c) => stale(nameRun(String(c.data.name))));
+  const keys = new Set<string>();
+  for (const c of staleColls) for (const it of await z.getAll<any>(`collections/${c.key}/items`)) keys.add(it.key);
+  for (const it of await z.getAll<any>(`items?q=${RUN_PREFIX}&qmode=titleCreatorYear`)) {
+    if (stale(nameRun(String(it.data.title ?? "")))) keys.add(it.key);
+  }
+  const tags = await z.getAll<any>(`tags?q=${encodeURIComponent("mzt-run:")}&qmode=startsWith`);
+  for (const t of tags) {
+    if (!stale(String(t.tag).slice("mzt-run:".length))) continue;
+    for (const it of await z.getAll<any>(`items?tag=${encodeURIComponent(t.tag)}`)) keys.add(it.key);
+  }
+  if (keys.size) await z.deleteKeys("items", [...keys]);
+  if (staleColls.length) await z.deleteKeys("collections", staleColls.map((c) => c.key));
+  log(`pulizia avanzi: ${keys.size} voci, ${staleColls.length} collezioni più vecchie di 6 h`);
 }
+
+// ─── Lock tra run concorrenti sulla stessa libreria (anche da worktree o macchine diverse) ───
+const LOCK_PREFIX = "mzt-lock ";
+const LOCK_STALE_MS = 45 * 60 * 1000; // più del job CI (30 min): un lock più vecchio è di una run morta
+const LOCK_WAIT_MS = 10 * 60 * 1000;
+
+/**
+ * Collezione `mzt-lock <runId>`: se esiste un lock più vecchio e non scaduto di un'altra run, si aspetta
+ * (fino a 10 min) e poi si rinuncia con un errore chiaro. A parità di corsa vince il runId più vecchio.
+ */
+async function acquireLock(z: ZoteroWeb, runId: string): Promise<string> {
+  const [lockKey] = await z.create("collections", [{ name: `${LOCK_PREFIX}${runId}` }]);
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    const others = (await z.getAll<any>("collections"))
+      .map((c) => ({ key: c.key as string, runId: String(c.data.name).startsWith(LOCK_PREFIX) ? String(c.data.name).slice(LOCK_PREFIX.length) : "" }))
+      .filter((l) => l.runId && l.key !== lockKey && Number.isFinite(runIdTime(l.runId)));
+    for (const l of others.filter((o) => Date.now() - runIdTime(o.runId) > LOCK_STALE_MS)) {
+      log(`lock scaduto della run ${l.runId} rimosso`);
+      await z.deleteKeys("collections", [l.key]);
+    }
+    const older = others.filter((o) => Date.now() - runIdTime(o.runId) <= LOCK_STALE_MS && o.runId < runId);
+    if (older.length === 0) return lockKey;
+    if (Date.now() > deadline) {
+      await z.deleteKeys("collections", [lockKey]);
+      throw new Error(`un'altra run dal vivo (${older.map((o) => o.runId).join(", ")}) usa questa libreria da oltre ${LOCK_WAIT_MS / 60000} min: riprovare più tardi`);
+    }
+    log(`in attesa della run ${older[0].runId} sulla stessa libreria…`);
+    await sleep(15_000);
+  }
+}
+
+const runMarker = (runId: string) => join(ROOT, ".vitest", `live-run-${runId}.json`);
+
+/** Run da pulire in modalità solo pulizia: quelle indicate, quelle interrotte (marcatore) e quelle con un registro. */
+function runsToClean(): string[] {
+  const ids = new Set((process.env.ZOTERO_LIVE_CLEANUP_RUN_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+  try {
+    for (const f of readdirSync(join(ROOT, ".vitest"))) {
+      const m = /^live-(?:run|created)-(.+)\.jsonl?$/.exec(f);
+      if (m) ids.add(m[1]);
+    }
+  } catch {
+    // nessuna cartella .vitest: nessuna run interrotta
+  }
+  for (const id of ids) if (!RUN_ID_RE.test(id)) throw new Error(`runId non valido per la pulizia: ${id}`);
+  return [...ids];
+}
+
+async function verifiedGroup(z: ZoteroWeb): Promise<string | null> {
+  if (!requestedGroupId || safeMode) return null;
+  const g = await z.get<any>(`/groups/${requestedGroupId}`);
+  if (g.status === 200 && String(g.data?.data?.name ?? "").startsWith(GROUP_NAME_PREFIX)) return requestedGroupId;
+  log(`gruppo ${requestedGroupId} ignorato: non accessibile o nome senza prefisso ${GROUP_NAME_PREFIX}`);
+  return null;
+}
+
+/** Solo pulizia: stesse regole sui marcatori del teardown, per le run interrotte o indicate. */
+async function cleanupOnly(z: ZoteroWeb, disposable: boolean): Promise<void> {
+  const groupId = await verifiedGroup(z);
+  const ids = runsToClean();
+  if (ids.length === 0) log("pulizia: nessuna run da pulire");
+  for (const runId of ids) {
+    const prefix = `${RUN_PREFIX}${runId}`;
+    const tag = `mzt-run:${runId}`;
+    if (groupId) await withBound("pulizia gruppo", cleanupRun(z.withLibrary(`groups/${groupId}`), runId, tag, prefix));
+    const removed = await withBound("pulizia", cleanupRun(z, runId, tag, prefix));
+    const locks = (await z.getAll<any>("collections")).filter((c) => c.data.name === `${LOCK_PREFIX}${runId}`);
+    if (locks.length) await z.deleteKeys("collections", locks.map((c) => c.key));
+    const leftover = await z.totalResults(`items?tag=${encodeURIComponent(tag)}`);
+    log(`pulizia run ${runId}: rimossi ${removed.items} voci e ${removed.collections} collezioni, avanzi ${leftover}`);
+    if (leftover) throw new Error(`pulizia run ${runId}: restano ${leftover} voci`);
+    rmSync(runMarker(runId), { force: true });
+    rmSync(registryPath(runId), { force: true });
+    rmSync(softSkipsPath(runId), { force: true });
+  }
+  if (disposable) await withBound("pulizia avanzi", sweepStale(z));
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export default async function setup(project: TestProject) {
   const disabled = (reason: string): LiveInfo =>
@@ -245,6 +353,7 @@ export default async function setup(project: TestProject) {
   const runId = `${Date.now().toString(36)}-${randomBytes(2).toString("hex")}`;
   const runTag = `mzt-run:${runId}`;
   const prefix = `${RUN_PREFIX}${runId}`;
+  const cleanupOnlyMode = process.env.ZOTERO_LIVE_CLEANUP_ONLY === "1";
 
   const keyInfo = await withBound("keys/current", new ZoteroWeb(apiKey, "").getOk<any>("/keys/current"));
   const userId = String(keyInfo.data.userID);
@@ -255,17 +364,25 @@ export default async function setup(project: TestProject) {
   const z = new ZoteroWeb(apiKey, `users/${userId}`);
   const sentinel = (await z.getAll<any>("collections")).some((c) => c.data.name === SENTINEL_COLLECTION);
   const disposable = !safeMode && sentinel && !!expectedUsername && expectedUsername === username;
+  if (cleanupOnlyMode) {
+    await cleanupOnly(z, disposable);
+    project.provide("live", disabled("ZOTERO_LIVE_CLEANUP_ONLY=1: solo pulizia"));
+    return;
+  }
+  mkdirSync(join(ROOT, ".vitest"), { recursive: true });
+  writeFileSync(runMarker(runId), JSON.stringify({ runId, started: new Date(started).toISOString() }));
   log(`run ${runId}: ${safeMode ? "SAFE MODE" : "modalità completa"}, account dedicato: ${disposable ? "sì" : "no"}`);
-  if (disposable) await withBound("pulizia avanzi", sweepStale(z));
+  const lockKey = await withBound("lock", acquireLock(z, runId), LOCK_WAIT_MS + 60_000);
+  const releaseLock = () => z.deleteKeys("collections", [lockKey]).catch((e) => log(`lock non rimosso: ${e}`));
+  try {
+    if (disposable) await withBound("pulizia avanzi", sweepStale(z));
+  } catch (e) {
+    await releaseLock();
+    throw e;
+  }
 
   const before = await withBound("conteggi iniziali", counts(z));
-
-  let groupId: string | null = null;
-  if (requestedGroupId && !safeMode) {
-    const g = await z.get<any>(`/groups/${requestedGroupId}`);
-    if (g.status === 200 && String(g.data?.data?.name ?? "").startsWith(GROUP_NAME_PREFIX)) groupId = requestedGroupId;
-    else log(`gruppo ${requestedGroupId} ignorato: non accessibile o nome senza prefisso ${GROUP_NAME_PREFIX}`);
-  }
+  const groupId = await verifiedGroup(z);
 
   let fixtureServer: FixtureServer | undefined;
   try {
@@ -295,10 +412,19 @@ export default async function setup(project: TestProject) {
   } catch (e) {
     await fixtureServer?.close();
     await withBound("pulizia dopo setup fallito", cleanupRun(z, runId, runTag, prefix)).catch((err) => log(`pulizia fallita: ${err}`));
+    await releaseLock();
     throw new Error(scrub(e instanceof Error ? e.message : String(e)));
   }
 
   return async () => {
+    try {
+      await teardown();
+    } finally {
+      await releaseLock();
+    }
+  };
+
+  async function teardown() {
     await fixtureServer?.close();
     if (groupId) {
       const g = await withBound("teardown gruppo", cleanupRun(z.withLibrary(`groups/${groupId}`), runId, runTag, prefix));
@@ -325,8 +451,15 @@ export default async function setup(project: TestProject) {
     log(`conteggi prima ${JSON.stringify(before)} dopo ${JSON.stringify(after)}`);
     if (leftoverItems || leftoverColls) throw new Error(`teardown: restano ${leftoverItems} voci e ${leftoverColls} collezioni della run ${runId}`);
     rmSync(registryPath(runId), { force: true });
+    rmSync(runMarker(runId), { force: true });
+    const grew = (Object.keys(before) as Array<keyof Counts>).filter((k) => after[k] > before[k]);
+    if (grew.length) log(`ATTENZIONE: conteggi cresciuti (${grew.join(", ")}): qualcosa creato dalla run non porta i marcatori, oppure un'altra attività sulla libreria`);
+    const skips = softSkips(runId);
+    rmSync(softSkipsPath(runId), { force: true });
+    const maxSkips = Number(process.env.ZOTERO_LIVE_MAX_SOFT_SKIPS ?? Infinity);
+    if (skips > maxSkips) throw new Error(`${skips} casi soft saltati per servizi esterni (massimo ${maxSkips})`);
     if (disposable && JSON.stringify(before) !== JSON.stringify(after)) {
       throw new Error(`account dedicato: conteggi non tornati a quelli iniziali (${JSON.stringify(before)} → ${JSON.stringify(after)})`);
     }
-  };
+  }
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createHash } from "node:crypto";
-import { live, startLive, LiveServer, createItems, title, trackItems, rawItem, rawChildren } from "./helpers/live.js";
+import { live, startLive, LiveServer, createItems, title, trackItems, rawItem, rawChildren, FAKE_KEY } from "./helpers/live.js";
 import { makePdf } from "../helpers/fixtures.js";
 import { FIXTURE_PDF_TEXT } from "./helpers/fixture-server.js";
 
@@ -73,7 +73,7 @@ describe.skipIf(!live.enabled)("import_pdf_to_zotero (live)", () => {
   });
 
   it("LIVE-IP-07 genitore inesistente → isError leggibile; URL non valido → errore di validazione", async () => {
-    const r = await s.call("import_pdf_to_zotero", { url: `${live.fixtureBase}/paper.pdf`, parent_item: "ZZZZZZZZ", title: title("IP orphan") });
+    const r = await s.call("import_pdf_to_zotero", { url: `${live.fixtureBase}/paper.pdf`, parent_item: FAKE_KEY, title: title("IP orphan") });
     trackItems(r.json?.item_key);
     expect(r.isError).toBe(true);
     expect(r.text).not.toMatch(/\[object Object\]/);

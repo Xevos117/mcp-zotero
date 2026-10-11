@@ -478,9 +478,26 @@ il tag `mzt-run:<runId>` e il runId nel titolo; avvia un server HTTP locale (PDF
 pagina HTML, 404) e sceglie un DOI OA con PDF ≤ 2 MB verificato con HEAD. I test registrano le chiavi create
 (`.vitest/live-created-<runId>.jsonl`). Il teardown cancella, prima le voci e poi le collezioni, solo ciò che porta un
 marcatore della run (titolo con il runId, tag della run, collezione della run, oppure genitore già verificato) e
-fallisce se resta qualcosa. I casi che dipendono da doi.org/Crossref/Unpaywall/editori sono `soft`: un secondo
-tentativo, poi skip con il motivo (anche su stderr). Le asserzioni sono relative a ciò che la run crea, mai a
-conteggi assoluti della libreria.
+fallisce se resta qualcosa; in safe mode avvisa se i conteggi della libreria crescono (qualcosa creato senza
+marcatori). I casi che dipendono da doi.org/Crossref/Unpaywall/editori sono `soft`, ma si salta **solo** per un guasto
+esterno riconosciuto (`ExternalServiceError`: verifica diretta del servizio prima della chiamata, oppure testo del tool
+con timeout, errori di rete, 429/5xx di doi.org, "Download failed for all…"): un secondo tentativo, poi skip con il
+motivo. Qualsiasi altro errore, asserzioni comprese, fa fallire il test. Gli skip soft sono contati: oltre
+`ZOTERO_LIVE_MAX_SOFT_SKIPS` il teardown fallisce. Le asserzioni sono relative a ciò che la run crea, mai a conteggi
+assoluti della libreria; le chiavi inesistenti usate nei casi negativi (`ZZZZZZZ0`, `YYYYYYY1`) contengono 0/1, che le
+chiavi Zotero non usano, quindi non possono mai coincidere con una voce vera.
+
+**Run concorrenti**: all'avvio la run crea la collezione `mzt-lock <runId>`; se ne trova una più vecchia e non scaduta
+(45 min) di un'altra run, aspetta fino a 10 min e poi si ferma con un errore chiaro. I DELETE ritentano fino a 8 volte
+con jitter sui 412 (versione della libreria cambiata nel frattempo).
+
+**Pulizia dopo una run interrotta** (processo ucciso, timeout): `npm run test:live:cleanup -- [runId…]` con le stesse
+variabili della suite (in safe mode compresa). Senza argomenti pulisce le run che hanno lasciato in `.vitest/` il
+marcatore `live-run-<runId>.json` o il registro `live-created-<runId>.jsonl`; stesse regole sui marcatori del teardown.
+
+**Pulizia degli avanzi** (solo account dedicato: sentinella + username, mai in safe mode): run più vecchie di 6 h
+riconosciute dal nome stretto `mzt-<8-9 caratteri base36>-<4 hex>` di collezioni e titoli o dal tag `mzt-run:<runId>`;
+si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standalone).
 
 | File | Casi |
 |---|---|

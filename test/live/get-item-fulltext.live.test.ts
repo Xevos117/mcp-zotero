@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, createItems, title, trackItems } from "./helpers/live.js";
+import { live, startLive, LiveServer, createItems, title, trackItems, FAKE_KEY } from "./helpers/live.js";
 import { FIXTURE_PDF_TEXT } from "./helpers/fixture-server.js";
 
 describe.skipIf(!live.enabled)("get_item_fulltext (live)", () => {
@@ -62,7 +62,7 @@ describe.skipIf(!live.enabled)("get_item_fulltext (live)", () => {
   });
 
   it("LIVE-GIF-07 chiave inesistente → Item not found; max_characters non numerico → errore", async () => {
-    expect((await s.call("get_item_fulltext", { item_key: "ZZZZZZZZ" })).json?.error).toBe("Item not found");
+    expect((await s.call("get_item_fulltext", { item_key: FAKE_KEY })).json?.error).toBe("Item not found");
     expect((await s.call("get_item_fulltext", { item_key: parent, max_characters: "x" })).text).toMatch(/max_characters/);
   });
 

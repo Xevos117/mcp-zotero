@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inject, TestContext } from "vitest";
 import { startServerProcess, call as rawCall, Spawned } from "../../e2e/server-process.js";
-import { apiKey, scrub, track, unpaywallEmail, LIVE_CALL_TIMEOUT_MS } from "./env.js";
+import { apiKey, scrub, track, recordSoftSkip, unpaywallEmail, LIVE_CALL_TIMEOUT_MS } from "./env.js";
 import { ZoteroWeb } from "./zotero-web.js";
 
 /** Valori preparati da test/live/global-setup.ts e condivisi con i file di test. */
@@ -79,17 +79,20 @@ export interface LiveServer {
 export async function startLive(opts: { unsafe?: "none" | "items" | "all"; env?: Record<string, string> } = {}): Promise<LiveServer> {
   const unsafe = opts.unsafe ?? "none";
   if (live.safeMode && unsafe === "all") throw new Error("safe mode: UNSAFE_OPERATIONS=all non ammesso");
+  const reserved = Object.keys(opts.env ?? {}).filter((k) => ["ZOTERO_API_KEY", "ZOTERO_USER_ID", "UNSAFE_OPERATIONS"].includes(k));
+  if (reserved.length) throw new Error(`startLive: env non può sovrascrivere ${reserved.join(", ")}`);
   const cwd = mkdtempSync(join(tmpdir(), "mzt-live-"));
   let s: Spawned;
   try {
     s = await startServerProcess({
       cwd,
       env: {
+        ...opts.env,
+        ...(unpaywallEmail ? { UNPAYWALL_EMAIL: unpaywallEmail } : {}),
+        // dopo opts.env: chiave, utente e guardia sulle cancellazioni non sono sovrascrivibili
         ZOTERO_API_KEY: apiKey,
         ZOTERO_USER_ID: live.userId,
         UNSAFE_OPERATIONS: unsafe,
-        ...(unpaywallEmail ? { UNPAYWALL_EMAIL: unpaywallEmail } : {}),
-        ...opts.env,
       },
       connectTimeoutMs: 30_000,
       callTimeoutMs: LIVE_CALL_TIMEOUT_MS,
@@ -127,23 +130,71 @@ export function title(label: string): string {
   return `${live.prefix} ${label}`;
 }
 
+/** Chiavi che non possono esistere: le chiavi Zotero non usano 0, 1 e O. */
+export const FAKE_KEY = "ZZZZZZZ0";
+export const FAKE_KEY_2 = "YYYYYYY1";
+
+/** Guasto di un servizio esterno (doi.org, Crossref, Unpaywall, editori, rete): l'unico motivo di skip in soft(). */
+export class ExternalServiceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExternalServiceError";
+  }
+}
+
+const EXTERNAL_PATTERNS = [
+  /DOI resolution failed for [^"\n]*?: (?:429|5\d\d)\b/,
+  /timed out after/i,
+  /fetch failed|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|socket hang up/i,
+  /Download failed for all \d+ URL/,
+  /(?:status|HTTP) (?:50[234]|429)\b/,
+];
+
+/** Motivo per cui il risultato di un tool indica un guasto esterno, o null. */
+export function externalFailure(r: CallResult): string | null {
+  const hit = EXTERNAL_PATTERNS.find((re) => re.test(r.text));
+  return hit ? (r.text.match(hit)?.[0] ?? "external failure") : null;
+}
+
+/** Da chiamare subito dopo il tool, prima delle asserzioni: un guasto esterno diventa ExternalServiceError. */
+export function assertNotExternal(r: CallResult, service: string): void {
+  const reason = externalFailure(r);
+  if (reason) throw new ExternalServiceError(`${service}: ${reason}`);
+}
+
+/** Verifica diretta che un servizio esterno risponda (rete, 429 o 5xx → ExternalServiceError). */
+export async function probe(url: string, service: string, init: RequestInit = {}): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(url, { ...init, redirect: "follow", signal: AbortSignal.timeout(15_000) });
+  } catch (e) {
+    throw new ExternalServiceError(`${service} non raggiungibile: ${message(e)}`);
+  }
+  await res.arrayBuffer().catch(() => undefined);
+  if (res.status === 429 || res.status >= 500) throw new ExternalServiceError(`${service}: HTTP ${res.status}`);
+}
+
 /**
- * Caso che dipende da servizi esterni (doi.org, Crossref, Unpaywall, editori): un secondo tentativo,
- * poi skip con il motivo invece di un fallimento. Da usare solo per la parte che dipende dalla rete
- * esterna; le asserzioni sul comportamento del tool restano dentro `fn`.
+ * Caso che dipende da servizi esterni: si ritenta una volta e si salta (con il motivo) solo se l'errore è
+ * un ExternalServiceError, cioè un guasto della rete o del servizio (vedi assertNotExternal/probe). Ogni
+ * altro errore, asserzioni comprese, fa fallire il test: una regressione del tool non diventa mai uno skip.
+ * Gli skip vengono contati (`.vitest/live-soft-<runId>.jsonl`): oltre ZOTERO_LIVE_MAX_SOFT_SKIPS il teardown fallisce.
  */
 export async function soft(ctx: TestContext, service: string, fn: () => Promise<void>): Promise<void> {
   try {
     await fn();
     return;
   } catch (first) {
+    if (!(first instanceof ExternalServiceError)) throw first;
     try {
       await fn();
       ctx.annotate(scrub(`soft: riuscito al secondo tentativo (${service}): ${message(first)}`));
       return;
     } catch (second) {
-      const note = scrub(`soft: ${service} non ha risposto come atteso due volte: ${message(second)}`);
+      if (!(second instanceof ExternalServiceError)) throw second;
+      const note = scrub(`soft: ${service} non disponibile due volte: ${message(second)}`);
       console.warn(`[live] ${ctx.task.name}: ${note}`);
+      recordSoftSkip(live.runId, ctx.task.name, note);
       ctx.skip(note);
     }
   }

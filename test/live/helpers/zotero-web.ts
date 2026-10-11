@@ -137,7 +137,11 @@ export class ZoteroWeb {
           "If-Unmodified-Since-Version": String(version),
         });
         if (r.status === 204) break;
-        if (r.status === 412 && attempt < 4) continue;
+        // 412: la libreria è cambiata tra la lettura della versione e il DELETE (altra attività): ritenta con jitter
+        if (r.status === 412 && attempt < 8) {
+          await sleep(250 * attempt + Math.floor(Math.random() * 500));
+          continue;
+        }
         throw new Error(scrub(`DELETE ${kind} → ${r.status} ${r.text.slice(0, 200)}`));
       }
     }

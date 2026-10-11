@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, title, trackCollections, web } from "./helpers/live.js";
+import { live, startLive, LiveServer, title, trackCollections, web, FAKE_KEY } from "./helpers/live.js";
 
 describe.skipIf(!live.enabled)("create_collection (live)", () => {
   let s: LiveServer;
@@ -39,7 +39,7 @@ describe.skipIf(!live.enabled)("create_collection (live)", () => {
   });
 
   it("LIVE-CC-05 genitore inesistente → isError leggibile", async () => {
-    const r = await s.call("create_collection", { name: title("orphan"), parent_collection: "ZZZZZZZZ" });
+    const r = await s.call("create_collection", { name: title("orphan"), parent_collection: FAKE_KEY });
     trackCollections(r.json?.collection_key);
     expect(r.isError).toBe(true);
     expect(r.text).not.toMatch(/\[object Object\]/);

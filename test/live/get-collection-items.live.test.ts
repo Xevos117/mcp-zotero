@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, createCollection, createItems, title } from "./helpers/live.js";
+import { live, startLive, LiveServer, createCollection, createItems, title, FAKE_KEY } from "./helpers/live.js";
 
 describe.skipIf(!live.enabled)("get_collection_items (live)", () => {
   let s: LiveServer;
@@ -67,7 +67,7 @@ describe.skipIf(!live.enabled)("get_collection_items (live)", () => {
   });
 
   it("LIVE-GCI-06 collezione inesistente → isError; collectionKey mancante → errore di validazione", async () => {
-    expect((await s.call("get_collection_items", { collectionKey: "ZZZZZZZZ" })).isError).toBe(true);
+    expect((await s.call("get_collection_items", { collectionKey: FAKE_KEY })).isError).toBe(true);
     expect((await s.call("get_collection_items", {})).text).toMatch(/collectionKey/);
   });
 

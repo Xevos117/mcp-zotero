@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, createCollection, createItems, title, trackItems, rawChildren, soft } from "./helpers/live.js";
+import { live, startLive, LiveServer, createCollection, createItems, title, trackItems, rawChildren, soft, assertNotExternal, probe, FAKE_KEY } from "./helpers/live.js";
+import { unpaywallEmail } from "./helpers/env.js";
 
 describe.skipIf(!live.enabled)("find_and_attach_pdfs (live)", () => {
   let s: LiveServer;
@@ -29,15 +30,22 @@ describe.skipIf(!live.enabled)("find_and_attach_pdfs (live)", () => {
     await s?.close();
   });
 
+  // Unpaywall raggiungibile? (senza email o senza DOI OA non serve: il tool non lo interroga per davvero)
+  const probeUnpaywall = async () => {
+    if (live.oaDoi && unpaywallEmail) {
+      await probe(`https://api.unpaywall.org/v2/${encodeURIComponent(live.oaDoi)}?email=${encodeURIComponent(unpaywallEmail)}`, "Unpaywall");
+    }
+  };
+
   it("LIVE-FA-01 item_keys e collection_key insieme, o nessuno dei due → errore", async () => {
     expect((await s.call("find_and_attach_pdfs", { item_keys: [noDoi], collection_key: coll })).text).toMatch(/either/i);
     expect((await s.call("find_and_attach_pdfs", {})).text).toMatch(/either/i);
   });
 
   it("LIVE-FA-02 chiave sconosciuta e voce senza DOI → error con il motivo, senza servizi esterni", async () => {
-    const r = await s.call("find_and_attach_pdfs", { item_keys: ["ZZZZZZZZ", noDoi], dry_run: true });
+    const r = await s.call("find_and_attach_pdfs", { item_keys: [FAKE_KEY, noDoi], dry_run: true });
     expect(r.json.results).toEqual([
-      expect.objectContaining({ item_key: "ZZZZZZZZ", status: "error", reason: "Item not found" }),
+      expect.objectContaining({ item_key: FAKE_KEY, status: "error", reason: "Item not found" }),
       expect.objectContaining({ item_key: noDoi, status: "error", reason: "No DOI" }),
     ]);
   });
@@ -53,7 +61,9 @@ describe.skipIf(!live.enabled)("find_and_attach_pdfs (live)", () => {
   // non con un numero fisso; gli allegati standalone della collezione non vengono processati.
   it("LIVE-FA-04 collezione in dry_run → processed = voci regolari create, un risultato per voce", async (ctx) => {
     await soft(ctx, "Unpaywall", async () => {
+      await probeUnpaywall();
       const r = await s.call("find_and_attach_pdfs", { collection_key: coll, dry_run: true });
+      assertNotExternal(r, "Unpaywall");
       expect(r.isError, r.text).toBe(false);
       expect(r.json.dry_run).toBe(true);
       expect(r.json.processed).toBe(regularInCollection);
@@ -65,8 +75,10 @@ describe.skipIf(!live.enabled)("find_and_attach_pdfs (live)", () => {
 
   it("LIVE-FA-05 collezione reale → processed = voci regolari; la voce OA riceve il PDF", async (ctx) => {
     await soft(ctx, "Unpaywall/editore", async () => {
+      await probeUnpaywall();
       const r = await s.call("find_and_attach_pdfs", { collection_key: coll });
       if (oaItem) trackItems(...(await rawChildren(oaItem)).map((c) => c.key));
+      assertNotExternal(r, "Unpaywall/editore");
       expect(r.isError, r.text).toBe(false);
       expect(r.json.processed).toBe(regularInCollection);
       expect(r.json.attached + r.json.not_found + r.json.skipped + r.json.errors + r.json.quota_exceeded).toBe(regularInCollection);
