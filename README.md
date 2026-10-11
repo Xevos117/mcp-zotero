@@ -268,27 +268,35 @@ all required checks pass, anything else waits for review. GitHub Actions version
 The agents authenticate to the Claude API with Anthropic Workload Identity Federation (GitHub OIDC, no
 API key). Recommended: one federation rule per environment, as narrow as possible:
 
-| Rule for | subject (exact, no `*`) | claims | job_workflow_ref |
+| Rule for | subject (exact, no `*`) | claims (exact string pairs) | condition (CEL) |
 |---|---|---|---|
-| `zotero-live` | `repo:Xevos117/mcp-zotero:environment:zotero-live` | `repository_id: 1152178663`, `repository_owner_id: 86290818` | `Xevos117/mcp-zotero/.github/workflows/claude-agent-smoke.yml@*` (PR runs use the PR ref) |
-| `claude-deps` | `repo:Xevos117/mcp-zotero:environment:claude-deps` | `repository_id: 1152178663`, `repository_owner_id: 86290818` | `Xevos117/mcp-zotero/.github/workflows/deps-update.yml@refs/heads/main` |
+| `zotero-live` | `repo:Xevos117/mcp-zotero:environment:zotero-live` | `repository_id: 1152178663`, `repository_owner_id: 86290818` | `claims.job_workflow_ref.startsWith("Xevos117/mcp-zotero/.github/workflows/claude-agent-smoke.yml@")` (PR runs use the PR ref) |
+| `claude-deps` | `repo:Xevos117/mcp-zotero:environment:claude-deps` | `repository_id: 1152178663`, `repository_owner_id: 86290818`, `job_workflow_ref: Xevos117/mcp-zotero/.github/workflows/deps-update.yml@refs/heads/main` | — |
+
+Claims are exact-match string pairs (only `subject_prefix` supports a trailing `*`), so a prefix such as
+"this workflow on any ref" must be written as a CEL `condition`, as above; an exact `job_workflow_ref`
+(claude-deps, main only) can be a plain claim.
 
 Audience `https://api.anthropic.com`. The subject is an exact match unless it ends with `*`; jobs that use
 an environment get the OIDC subject `repo:Xevos117/mcp-zotero:environment:<environment>`, so a rule
 written for a branch or PR subject never matches. Numeric ids (not names) keep a renamed or re-created
 repository/account from matching.
 
-Trade-off for `zotero-live`: `claude-agent-smoke.yml@*` is needed for the agent smoke test to run on pull
+Trade-off for `zotero-live`: the "any ref" condition is needed for the agent smoke test to run on pull
 requests, but it also accepts a modified copy of that workflow file pushed to any branch of this repository
-(only people with write access can push). Pinning it to `@refs/heads/main` closes that gap but disables the
-agent smoke test on PRs (it would then run only on `main` and manual runs from `main`).
+(only people with write access can push). Pinning it to the exact claim
+`job_workflow_ref: Xevos117/mcp-zotero/.github/workflows/claude-agent-smoke.yml@refs/heads/main` closes that
+gap but disables the agent smoke test on PRs (it would then run only on `main` and manual runs from `main`).
 
 Other owner settings:
 
 - The Zotero test account needs a collection named `__mzt_disposable__`.
 - Repository settings: "Allow auto-merge", and "Allow GitHub Actions to create and approve pull requests"
-  (the dependency workflow opens its PR with `GITHUB_TOKEN`). The latter is safe only while the ruleset
-  requires **0 approvals**: if approvals are ever required, it would let a workflow approve its own PR.
+  (the dependency workflow opens its PR with `GITHUB_TOKEN`). Keep the ruleset at **0 required approvals**:
+  auto-merge of the dependency PR relies on it, and it is also what makes the second setting acceptable. That
+  setting is a conscious trade-off: it lets workflows open PRs (needed) and approve them (not used by any
+  workflow here); if approvals are ever required, it would let a workflow approve its own PR, so revisit it
+  together with any approval requirement.
 - No GitHub App is used by any workflow (the agents authenticate to Anthropic with Workload Identity
   Federation and use only `GITHUB_TOKEN` on GitHub, read-only for the agents). If the Claude GitHub App is
   installed on this repository, uninstall it.
