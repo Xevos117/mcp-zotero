@@ -6,6 +6,7 @@ Suite aggiunta in `test/` (i test storici restano in `src/**/*.test.ts`).
 |---|---|---|
 | `npx vitest run` (= `npm test`) | unit: `src/**` + `test/tools/**` + `test/utils/**` + `test/skills/**` | ~10 s |
 | `npm run test:e2e` | `npm run build`, poi `test/e2e/**` con `vitest.e2e.config.ts` | ~4 s + build |
+| `npm run test:live` | `npm run build`, poi `test/live/**/*.live.test.ts` con `vitest.live.config.ts` contro un account Zotero reale (solo con `ZOTERO_TEST_API_KEY`, vedi sezione LIVE) | ~2-3 min |
 
 Timeout: unit `testTimeout`/`hookTimeout` 10 s (`vitest.config.ts`); e2e 60 s, ogni chiamata MCP 15 s,
 processo server ucciso con SIGKILL se ancora vivo 5 s dopo la chiusura.
@@ -358,6 +359,7 @@ una PR separata, il caso diventa normale) o le smentisce (il caso si rimuove). i
 | SK-08 | metadata.json da get_items_details (cognomi multiparola, nome istituzionale, nessun autore) | itemData e testo identici a inject_citations |
 | SK-V01 | stili apa, harvard, chicago, ieee, vancouver; singola, multi-chiave con locator/prefix, ripetuta | output di inject.js valido (struttura, schema, URI, citeproc con 2 voci in bibliografia, parti chiave) |
 | SK-V02 | libreria `groups/777` | URI di gruppo validi |
+| SK-09 (`it.fails`) | `place` restituito da get_items_details | atteso `publisher-place` nell'itemData come in inject_citations; oggi inject.js legge solo `publisherPlace` (trovato da LIVE-SK-01) |
 
 Gli output di SK-01, SK-02 e SK-08 passano anche da `expectValidDocx`.
 
@@ -451,6 +453,66 @@ Server avviato con `ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID=777` (e `ZOTE
 | E2E-G12 | `library_id` non numerico ("abc", path traversal, "12a", "", "-1"), `library_type` sconosciuto | isError, nessuna chiamata HTTP |
 | E2E-G13 | group senza `ZOTERO_LIBRARY_ID` | exit code 1 entro 5 s, "requires ZOTERO_LIBRARY_ID", nessuna chiamata HTTP |
 | E2E-G14 | `ZOTERO_LIBRARY_ID` non numerico / `ZOTERO_LIBRARY_TYPE` sconosciuto | exit code 1 con messaggio dedicato |
+
+## Suite dal vivo (`test/live/`, `npm run test:live`)
+
+Gira contro la Web API Zotero vera con il server compilato su stdio. Si attiva **solo** con
+`ZOTERO_TEST_API_KEY` (mai con `ZOTERO_API_KEY`); senza, tutti i file risultano saltati.
+
+| Variabile | Uso |
+|---|---|
+| `ZOTERO_TEST_API_KEY` | chiave dell'account di test, passata al server come `ZOTERO_API_KEY` solo nell'ambiente del processo figlio |
+| `ZOTERO_TEST_USER_ID` | id atteso, confrontato con `/keys/current` (diverso → suite interrotta) |
+| `ZOTERO_TEST_USERNAME` | con la collezione sentinella `__mzt_disposable__` abilita la pulizia degli avanzi > 6 h e il controllo dei conteggi |
+| `ZOTERO_TEST_GROUP_ID` | casi di scrittura di gruppo, solo se il nome del gruppo inizia con `mzt-test` |
+| `UNPAYWALL_EMAIL` | email reale per i casi open access (senza: LIVE-AID-05 saltato, FA-04/05 senza voce OA) |
+| `ZOTERO_LIVE_SAFE_MODE=1` | libreria personale: `UNSAFE_OPERATIONS` al massimo `items`, LIVE-DC-02/03 e gruppi saltati, nessuna pulizia degli avanzi |
+
+Configurazione: un file alla volta, 120 s per test, 300 s per gli hook, ogni chiamata MCP 90 s, ogni
+richiesta diretta alla Web API 30 s con retry su 429/502/503/504 (Retry-After/Backoff). Report JSON in
+`.vitest/live-report.json`, riepilogo della run (conteggi prima/dopo, voci rimosse) in `.vitest/live-summary.json`.
+
+**Fixture e pulizia** (`test/live/global-setup.ts`): ogni run ha un `runId` (`<timestamp base36>-<hex>`); crea la
+collezione `mzt-<runId>` con una sottocollezione, 6 voci di tipi diversi e una collezione `bulk` con 105 voci, tutte con
+il tag `mzt-run:<runId>` e il runId nel titolo; avvia un server HTTP locale (PDF validi, HTML servito come PDF,
+pagina HTML, 404) e sceglie un DOI OA con PDF ≤ 2 MB verificato con HEAD. I test registrano le chiavi create
+(`.vitest/live-created-<runId>.jsonl`). Il teardown cancella, prima le voci e poi le collezioni, solo ciò che porta un
+marcatore della run (titolo con il runId, tag della run, collezione della run, oppure genitore già verificato) e
+fallisce se resta qualcosa. I casi che dipendono da doi.org/Crossref/Unpaywall/editori sono `soft`: un secondo
+tentativo, poi skip con il motivo (anche su stderr). Le asserzioni sono relative a ciò che la run crea, mai a
+conteggi assoluti della libreria.
+
+| File | Casi |
+|---|---|
+| `get-user-id` | LIVE-GUI-01 libreria della chiave; 02 senza arguments / argomenti in più; 03 15 tool |
+| `search-library` | LIVE-SL-01 query sul titolo → solo quella voce; 02 sort title asc sul prefisso della run; 03 5 sort × 2 direzioni; 04 limit 500 → min(100, totale); 05 dateAdded desc ordinato; 06 nessun risultato senza isError; 07 argomenti non validi; 08 override utente, gruppo senza id, gruppo inesistente |
+| `get-collections` | LIVE-GC-01 collezione e sottocollezione con genitore; 02 include_trashed; 03 override e tipo sbagliato |
+| `get-collection-items` | LIVE-GCI-01 collezione con 3 voci note + inclusione delle fixture; 02 sottocollezione; 03 105 voci (paginazione >100); 04 allegato standalone escluso/incluso; 05 vuota; 06 inesistente / chiave mancante; 07 override |
+| `get-items-details` | LIVE-GID-01 campi per tipo e creators; 02 include_abstract; 03 105 chiavi; 04 sconosciute / miste; 05 override, lista vuota |
+| `get-item-fulltext` | LIVE-GIF-01 PDF importato → testo; 02 max_characters; 03 chiave dell'allegato; 04 webpage; 05 URL senza allegati; 06 nessun PDF; 07 inesistente / max_characters non numerico; **08 `it.fails`** (LIVE-STALE-3) |
+| `create-collection` | LIVE-CC-01 primo livello; 02 sottocollezione; 03 nome ripulito + override; 04 nome vuoto; 05 genitore inesistente leggibile |
+| `add-items` | LIVE-AI-01 8 tipi con collezione e tag, campi verificati via API; 02 55 voci in due POST; 03 tipo/campo/creatorType non validi, lista vuota; 04 collezione inesistente leggibile |
+| `add-items-by-doi` (soft) | LIVE-AID-01 metadati Crossref, nessun allegato; 02 DOI inesistente; 03 parziale; 04 forma URL `https://doi.org/…` risolta da doi.org, campo DOI senza prefisso; 05 DOI OA → PDF allegato; 06 lista vuota |
+| `add-linked-url-attachment` | LIVE-ALU-01 figlio con content_type e tag; 02 standalone in due collezioni; 03 override; 04 URL non valido, genitore inesistente |
+| `import-pdf-to-zotero` | LIVE-IP-01 PDF figlio: size, md5, fulltext, verificati via API; 02 standalone con filename/titolo/collezioni; 03 nome da Content-Disposition; 04 HTML come PDF → not_pdf, nessun allegato; 05 text/html (LIVE-STALE-5); 06 404; 07 genitore inesistente, URL non valido; 08 override |
+| `find-and-attach-pdfs` (soft per 04/05) | LIVE-FA-01 entrambi/nessuno; 02 chiave sconosciuta e senza DOI; 03 skipped e skip_if_attachment_exists false; 04 collezione dry_run → processed = voci regolari create (LIVE-STALE-2); 05 collezione reale (LIVE-STALE-4); 06 override |
+| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci cancellate definitivamente (non nel cestino); 03 solo sconosciute (LIVE-STALE-1); 04 mista; 05 51/0 chiavi; 06 genitore → anche il figlio; 07 override |
+| `delete-collection` | LIVE-DC-01 UNSAFE none/items rifiutato; 02-03 (solo fuori safe mode) cancellata con la voce che resta, chiave sconosciuta/vuota |
+| `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente; 03 override |
+| `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations (salvo publisher-place, SK-09) |
+| `groups` | LIVE-GRP-01/02 solo con gruppo `mzt-test…`: get_user_id, create_collection, add_items, get_collection_items e inject nel gruppo |
+
+### Le 5 righe segnate OK a mano nel collaudo 2.0.0 (LIVE-STALE)
+
+Indagate una per una su `main` @ 5a0f772.
+
+| ID | Riga del vecchio collaudo | Comportamento reale | Decisione |
+|---|---|---|---|
+| LIVE-STALE-1 | delete_items con sole chiavi sconosciute, atteso `/not found/i` | `isError`, `{"error":"No items found for the given keys","status":"not_found"}`: "No items found" non contiene "not found" | **assertion** sbagliata; ora LIVE-DI-03 controlla `status: "not_found"` |
+| LIVE-STALE-2 | find_and_attach_pdfs su collezione in dry_run con `processed >= 70` | `processed` = 69: le voci regolari create (8 tipi + 55 batch + 6 da DOI); gli allegati standalone non sono processati e il DOI fallito non crea voci | **assertion** sbagliata (conteggio a mano); ora LIVE-FA-04 confronta con le voci regolari create dalla run |
+| LIVE-STALE-3 | get_item_fulltext su voce con solo un URL collegato, regex sul messaggio guida | la voce aveva un allegato linked_url con `contentType: application/pdf`; `isPdfAttachment` non guarda `linkMode`, quindi il link viene trattato come PDF e il tool risponde "Full text not indexed… Open the PDF in Zotero desktop", consiglio impossibile per un link | **codice**: allegati linked_url da escludere (o messaggio dedicato). Tracciato come `it.fails` LIVE-GIF-08, correzione in una PR separata |
+| LIVE-STALE-4 | find_and_attach_pdfs reale sulla stessa collezione, `processed >= 70` | come LIVE-STALE-2 | **assertion** sbagliata; ora LIVE-FA-05 |
+| LIVE-STALE-5 | import_pdf_to_zotero con `content_type: text/html`, atteso successo senza fulltext | rifiutato con not_pdf: il tool controlla sempre i byte `%PDF-`; `content_type` è solo il MIME salvato sull'allegato | **assertion** sbagliata (il tool è solo PDF); ora LIVE-IP-05. La descrizione di `content_type` ("MIME type of the file") lascia intendere altri formati: da chiarire nella descrizione |
 
 ## Lacune note
 - Le fixture usano chiavi nel formato reale di Zotero (8 caratteri da `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`): chiavi con 0/1/O o

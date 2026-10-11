@@ -37,6 +37,7 @@ shipped as a release zip, not in the npm package).
 | `npm test` | unit + per-tool suites: `src/**/*.test.ts`, `test/**/*.test.ts` (excluding `test/e2e`) | none (fetch faked) |
 | `npm run test:e2e` | builds, then `test/e2e/**` against `build/server.js` over stdio | none (fetch redirected to a local fake) |
 | `npm run smoke` | `scripts/smoke-stdio.mjs`: built server, user + group library, stubbed fetch | none |
+| `npm run test:live` | builds, then `test/live/**/*.live.test.ts` against the real Zotero Web API | real (needs `ZOTERO_TEST_API_KEY`, skipped otherwise) |
 
 Run `npm run build`, `npm test`, `npm run test:e2e` and `npm run smoke` (each under a timeout)
 before declaring a change done. Test cases are documented per tool in `test/TEST_CASES.md`; add
@@ -46,6 +47,11 @@ URIs, citeproc rendering with the vendored styles in `test/fixtures/csl/`). `scr
 has its own lightweight structural docx check (plain .mjs, no citeproc): keep it in sync with the
 validator when the field format changes. A manual Word + Zotero
 plugin checklist for releases is in `test/WORD_CHECKLIST.md`.
+
+The live suite only ever uses `ZOTERO_TEST_*` variables (see the LIVE section of `test/TEST_CASES.md`).
+Against a personal library run it with `ZOTERO_LIVE_SAFE_MODE=1`. Assertions must be relative to what
+the run creates (never absolute library counts), and every created key must carry the run markers so
+the global teardown can remove it.
 
 ## Scheduled workflows
 

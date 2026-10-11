@@ -28,7 +28,8 @@
     "smoke": "node scripts/smoke-stdio.mjs",
     "start": "node build/server.js",
     "prepublishOnly": "npm test && npm run build",
-    "test:e2e": "npm run build && vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "npm run build && vitest run --config vitest.e2e.config.ts",
+    "test:live": "npm run build && vitest run --config vitest.live.config.ts"
   },
   "keywords": [
     "mcp",
