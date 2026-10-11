@@ -95,16 +95,26 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+        # Only a pull request whose base branch does not have the skill yet may skip; anywhere else a missing
+        # skill (or an unresolvable base ref) is an error, never a silent pass.
         run: |
           path=.claude/skills/test-mcp-zotero/SKILL.md
           if [ "$EVENT" = "pull_request" ]; then
-            git cat-file -e "origin/$BASE_REF:$path" 2>/dev/null && found=true || found=false
+            if ! git rev-parse --verify --quiet "origin/$BASE_REF^{commit}" >/dev/null; then
+              echo "::error::base ref origin/$BASE_REF cannot be resolved"
+              exit 1
+            fi
+            if git cat-file -e "origin/$BASE_REF:$path" 2>/dev/null; then found=true; else found=false; fi
+            echo "available=$found" >> "$GITHUB_OUTPUT"
+            if [ "$found" != "true" ]; then
+              echo "::notice::$path is not on the base branch yet: agent smoke skipped (it runs from main after merge)"
+            fi
           else
-            [ -f "$path" ] && found=true || found=false
-          fi
-          echo "available=$found" >> "$GITHUB_OUTPUT"
-          if [ "$found" != "true" ]; then
-            echo "::notice::$path is not on the base branch yet: agent smoke skipped (it runs from main after merge)"
+            if [ ! -f "$path" ]; then
+              echo "::error::$path missing on $GITHUB_REF: the agent smoke test cannot run"
+              exit 1
+            fi
+            echo "available=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Require secrets and federation variables
@@ -324,11 +334,13 @@ jobs:
           retention-days: 1
           if-no-files-found: warn
 
-  # The required check: the deterministic verdict, cleanup and lock release. No id-token here.
+  # The deterministic verdict on the agent's claims. No id-token here. Not after a workflow cancellation (a
+  # superseded run); cleanup and the lock release are the separate agent-smoke-cleanup job, the required check
+  # is the agent-smoke job below.
   verify:
-    name: agent-smoke
+    name: agent-smoke-verify
     needs: [changes, prepare, agent-run]
-    if: always() && needs.prepare.result != 'skipped'
+    if: ${{ !cancelled() && needs.prepare.result != 'skipped' }}
     runs-on: ubuntu-latest
     environment: zotero-live
     timeout-minutes: 20
@@ -388,25 +400,6 @@ jobs:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
         run: node test/live/verify-claims.mjs agent-out --audit agent-out/audit.jsonl --transcript agent-out/execution.json
 
-      - name: Clean up the agent's run
-        if: always() && needs.prepare.outputs.run_id != ''
-        timeout-minutes: 5
-        env:
-          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
-          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
-          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
-          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
-          RUN_ID: ${{ needs.prepare.outputs.run_id }}
-        run: npm run test:live:cleanup -- "$RUN_ID"
-
-      - name: Release the test-account lock
-        if: always() && needs.prepare.outputs.run_id != ''
-        timeout-minutes: 3
-        env:
-          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
-          RUN_ID: ${{ needs.prepare.outputs.run_id }}
-        run: node test/live/lock.mjs release "$RUN_ID"
-
       - name: Scrub agent output
         if: always() && needs.prepare.outputs.run_id != ''
         timeout-minutes: 2
@@ -434,5 +427,84 @@ jobs:
           PREPARE: ${{ needs.prepare.result }}
           AGENT: ${{ needs.agent-run.result }}
         run: |
-          if [ "$PREPARE" != "success" ]; then echo "::error::agent-smoke-prepare: $PREPARE"; exit 1; fi
+          if [ "$PREPARE" = "failure" ] || [ "$PREPARE" = "cancelled" ]; then echo "::error::agent-smoke-prepare: $PREPARE"; exit 1; fi
           if [ "$AGENT" = "failure" ] || [ "$AGENT" = "cancelled" ]; then echo "::error::agent-smoke-run: $AGENT"; exit 1; fi
+
+  # The required check. It runs unless the workflow itself was cancelled (a superseded run ends "cancelled",
+  # not red) and is never skipped, since a skipped required check counts as passed: a failed `changes` job, or a
+  # failed or timed-out (concluded "cancelled") prepare, agent or verify job, makes it fail. It passes without
+  # an agent run only when `changes` succeeded and found nothing relevant, for fork PRs and Dependabot (no
+  # secrets), or on a pull request whose base branch does not have the skill yet.
+  verdict:
+    name: agent-smoke # required check name
+    needs: [changes, prepare, agent-run, verify]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Outcome of the agent smoke test
+        timeout-minutes: 1
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RELEVANT: ${{ needs.changes.outputs.relevant }}
+          PREPARE: ${{ needs.prepare.result }}
+          AVAILABLE: ${{ needs.prepare.outputs.available }}
+          AGENT: ${{ needs.agent-run.result }}
+          VERIFY: ${{ needs.verify.result }}
+        run: |
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::changes: $CHANGES (the file filter must succeed, or the check would pass without running)"
+            exit 1
+          fi
+          if [ "$RELEVANT" != "true" ]; then echo "::notice::no change relevant to the agent smoke test"; exit 0; fi
+          if [ "$PREPARE" = "skipped" ]; then echo "::notice::fork PRs and Dependabot get no secrets: not run"; exit 0; fi
+          if [ "$PREPARE" != "success" ]; then echo "::error::agent-smoke-prepare: $PREPARE"; exit 1; fi
+          if [ "$AVAILABLE" != "true" ]; then echo "::notice::skill not on the base branch yet: nothing to verify"; exit 0; fi
+          if [ "$AGENT" != "success" ]; then echo "::error::agent-smoke-run: $AGENT"; exit 1; fi
+          if [ "$VERIFY" != "success" ]; then echo "::error::agent-smoke-verify: $VERIFY"; exit 1; fi
+          echo "agent smoke verified"
+
+  # Removes what the run created and releases the test-account lock after the verdict, and also when the
+  # workflow is cancelled or a job failed (always()). It does not decide the check.
+  cleanup:
+    name: agent-smoke-cleanup
+    needs: [prepare, agent-run, verify]
+    if: always() && needs.prepare.outputs.run_id != ''
+    runs-on: ubuntu-latest
+    environment: zotero-live
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 3
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        timeout-minutes: 5
+        with:
+          name: agent-workspace
+          path: ${{ runner.temp }}
+      - name: Unpack the workspace
+        timeout-minutes: 3
+        run: tar -xzf "$RUNNER_TEMP/workspace.tgz"
+      - name: Clean up the agent's run
+        timeout-minutes: 5
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+          RUN_ID: ${{ needs.prepare.outputs.run_id }}
+        run: npm run test:live:cleanup -- "$RUN_ID"
+      - name: Release the test-account lock
+        if: always()
+        timeout-minutes: 3
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          RUN_ID: ${{ needs.prepare.outputs.run_id }}
+        run: node test/live/lock.mjs release "$RUN_ID"

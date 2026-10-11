@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   # Path filter at job level (not `on.paths`): a required check that never starts would block
-  # docs-only PRs, while a skipped job counts as passed.
+  # docs-only PRs. The required check is the live-tests job below, which decides from these results.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -59,7 +59,7 @@ jobs:
           fi
 
   live:
-    name: live-tests # required check name
+    name: live-tests-run
     needs: changes
     if: >-
       needs.changes.outputs.relevant == 'true' &&
@@ -137,6 +137,38 @@ jobs:
           path: live-artifacts/
           retention-days: 7
           if-no-files-found: warn
+
+  # The required check. It runs unless the workflow itself was cancelled (a superseded run ends "cancelled",
+  # not red) and is never skipped, since a skipped required check counts as passed: a failed `changes` job, or a
+  # failed or timed-out (concluded "cancelled") live-tests-run, makes it fail. It passes without the suite only
+  # when `changes` succeeded and found nothing relevant, or for fork PRs and Dependabot, which get no secrets.
+  verdict:
+    name: live-tests # required check name
+    needs: [changes, live]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Outcome of the live suite
+        timeout-minutes: 1
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RELEVANT: ${{ needs.changes.outputs.relevant }}
+          LIVE: ${{ needs.live.result }}
+        run: |
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::changes: $CHANGES (the file filter must succeed, or the check would pass without running)"
+            exit 1
+          fi
+          if [ "$RELEVANT" != "true" ]; then
+            echo "::notice::no change relevant to the live suite"
+            exit 0
+          fi
+          case "$LIVE" in
+            success) echo "live suite passed" ;;
+            skipped) echo "::notice::fork PRs and Dependabot get no secrets: live suite not run" ;;
+            *) echo "::error::live-tests-run: $LIVE"; exit 1 ;;
+          esac
 
   # Nightly failures open (or update) one issue; it carries links and test names, never data.
   report-nightly:

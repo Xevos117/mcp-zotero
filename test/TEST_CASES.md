@@ -555,8 +555,13 @@ si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standal
 
 ### In CI (`.github/workflows/live-tests.yml`)
 
-Il job (check `live-tests`) gira sulle PR dello stesso repo (le PR da fork e di Dependabot risultano saltate), su `main`, ogni notte e a mano (anche avviato da deps-update.yml sul branch delle dipendenze),
-nell'environment `zotero-live`. Concurrency per workflow e PR/ref (`cancel-in-progress` solo sulle PR: un nuovo push
+Il job `live-tests-run` gira sulle PR dello stesso repo (saltato per le PR da fork e di Dependabot, che non hanno i
+secret), su `main`, ogni notte e a mano (anche avviato da deps-update.yml sul branch delle dipendenze), nell'environment
+`zotero-live`. Il check obbligatorio è il job `live-tests` (senza environment), che gira sempre tranne quando l'intero
+workflow è annullato (una run sostituita risulta "cancelled", non rossa) e non viene mai saltato (un check obbligatorio
+saltato vale come superato): fallisce se `changes` non è riuscito o se `live-tests-run` è fallito o scaduto (un job
+scaduto termina "cancelled"); passa senza la suite solo se `changes` è riuscito e non ha trovato file rilevanti, o per
+fork e Dependabot. Concurrency per workflow e PR/ref (`cancel-in-progress` solo sulle PR: un nuovo push
 sostituisce la run precedente della stessa PR); le run di PR diverse e dell'agente si serializzano sul lato Zotero con
 `test/live/lock.mjs` (attesa fino a 70 min, poi "test account busy": l'agente smoke tiene l'account fino a circa 80 min), così le PR in stack non si annullano a vicenda i
 check obbligatori. Job di 100 min, step dei test di 85 (attesa del lock compresa). Il filtro sui file è un job
@@ -580,10 +585,15 @@ Un agente Claude Code vero (claude-code-action v1.0.248 fissata per SHA, Claude 
 test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non è dell'agente**: lo decide
 `test/live/verify-claims.mjs`, poi la stessa pulizia di live-tests (solo pulizia, sul runId dell'agente).
 
-- **Tre job, credenziali separate**: `agent-smoke-prepare` (nessun id-token) fa `npm ci --ignore-scripts`, build,
+- **Job, credenziali separate**: `agent-smoke-prepare` (nessun id-token) fa `npm ci --ignore-scripts`, build,
   `prepare.mjs --mode ci` e prende il lock; `agent-smoke-run` è l'unico job con `id-token: write` (scambio della
-  federazione, fatto dall'action, che toglie `ACTIONS_ID_TOKEN_REQUEST_*` all'agente) e non esegue npm; `agent-smoke`
-  (il check obbligatorio, nessun id-token) verifica i claims, pulisce, rilascia il lock e pubblica il report mascherato.
+  federazione, fatto dall'action, che toglie `ACTIONS_ID_TOKEN_REQUEST_*` all'agente) e non esegue npm;
+  `agent-smoke-verify` (nessun id-token) verifica i claims e pubblica il report mascherato; `agent-smoke-cleanup`
+  (`always()`, anche dopo un annullamento) pulisce la run e rilascia il lock senza decidere l'esito; `agent-smoke` è il
+  check obbligatorio (senza environment): gira sempre tranne quando l'intero workflow è annullato, non viene mai
+  saltato, fallisce se `changes` non è riuscito o se prepare, agente o verifica sono falliti o scaduti, e passa senza
+  agente solo se `changes` non ha trovato file rilevanti, per fork e Dependabot o su una PR il cui branch di base non ha
+  ancora la skill. Fuori dalle PR una skill mancante è un errore, e sulle PR anche un branch di base non risolvibile.
   Gira solo per modifiche del proprietario del repo o di un bot (escluso Dependabot).
 - **Preparazione** (`test/live/agent/prepare.mjs`, uguale in CI e in locale): `agent-out/context.json` (runId, tag,
   prefisso, modalità, safe mode, gruppo, chi pulisce) e `agent-out/diff.txt` (file cambiati e patch troncata). In CI
