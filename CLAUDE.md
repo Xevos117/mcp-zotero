@@ -64,7 +64,7 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging on Node 22/24/26 |
-| `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `npm run test:live` in environment `zotero-live`; always cleans up (`ZOTERO_LIVE_CLEANUP_ONLY=1`), uploads a scrubbed report; nightly failures open/update one issue |
+| `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; nightly failures open/update one issue |
 | `claude-agent-smoke.yml` | same-repo PRs, `main`, manual | a Claude Code agent follows `.claude/skills/test-mcp-zotero`; `test/live/verify-claims.mjs` decides the result |
 | `deps-update.yml` | 1st of the month, manual | a Claude Code agent follows `.claude/skills/deps-update`; `scripts/deps-merge-gate.mjs` enables auto-merge only for patch-only PRs |
 | `release.yml` | GitHub release published, manual | tests, npm publish, skill zips (owner only) |
@@ -73,6 +73,14 @@ The agents authenticate to the Claude API with Anthropic Workload Identity Feder
 variables `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`,
 `ANTHROPIC_WORKSPACE_ID` in `zotero-live` / `claude-deps`, job permission `id-token: write`); there is no
 Anthropic API key secret. Zotero secrets stay in `zotero-live`.
+
+The deps gate enables auto-merge with `GITHUB_TOKEN`: the resulting squash-merge push to `main`
+triggers no workflows (events caused by `GITHUB_TOKEN` never do). That is acceptable because every
+required check already ran on the PR; the nightly `live-tests.yml` run then covers `main`.
+
+Live runs are serialized on the Zotero side by `test/live/lock.mjs` (lock collection
+`mzt-lock <runId>`, wait up to 25 min, then "test account busy"); workflow concurrency is per PR/ref,
+so stacked PRs never cancel each other's required checks.
 
 Path filters are job-level `if` conditions (a skipped job satisfies a required check; a workflow
 filtered by `on.paths` would leave the check pending). Actions in the new workflows are pinned by

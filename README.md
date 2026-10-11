@@ -266,7 +266,11 @@ all required checks pass, anything else waits for review. GitHub Actions version
 | `claude-deps` (dependency agent) | — | the same four `ANTHROPIC_*` variables (the federation rule may differ) |
 
 The agents authenticate to the Claude API with Anthropic Workload Identity Federation (GitHub OIDC, no
-API key); each federation rule is bound to `repo:Xevos117/mcp-zotero:environment:<environment>`. The
+API key). The Anthropic federation rule: issuer GitHub Actions, audience `https://api.anthropic.com`,
+claim `repository_owner: Xevos117`, and **subject_prefix `repo:Xevos117/mcp-zotero:environment:*`**. The
+subject prefix is an exact match unless it ends with `*`; jobs that use an environment get the OIDC
+subject `repo:Xevos117/mcp-zotero:environment:<environment>` (e.g. `…:environment:zotero-live`), so a
+rule without the trailing `*` (or with a branch/PR subject) never matches. The
 Zotero test account needs a collection named `__mzt_disposable__`; the dependency agent needs the Claude
 GitHub App installed and "Allow auto-merge" enabled in the repository settings.
 
