@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Correzioni
+### Fixed
 
 - **Every network call is bounded** (`src/utils/timeouts.ts`): Zotero Web API requests made through `zotero-api-client` (each request gets its own `AbortSignal.timeout`), fulltext GET/PUT, upload authorization and registration: 30 s; doi.org and Unpaywall: 30 s per attempt; PDF download (body included) and upload to Zotero storage: 180 s. Before, a server that accepted the connection and never answered blocked the tool until the MCP client gave up. A timeout is reported with the operation, bound and host (e.g. `PDF download timed out after 180 s (example.org)`); `import_pdf_to_zotero` now includes the network detail for authorization, upload and registration failures.
 - **`get_item_fulltext` and linked URL attachments**: a `linked_url` attachment with content type `application/pdf` was taken for a stored PDF, so the tool answered "Full text not indexed… Open the PDF in Zotero desktop", which cannot work for a web link. Stored PDFs are now preferred over links; an item (or attachment key) with only a linked PDF gets a dedicated message with the link URL.
@@ -42,7 +42,7 @@ Toolchain and dependency upgrade, plus group library support. Tool names are unc
   - A per-call `library_type: "group"` without `library_id` is rejected instead of reusing the user ID; `library_type: "user"` on a group server falls back to `ZOTERO_USER_ID`.
   - `get_user_id` now also returns `library_type`, `library_id` and `library_path`; the skill script `inject.js` accepts `groups/<id>` / `users/<id>` (a bare numeric ID still means a user library), so skill-generated citations point at the right library.
 
-### Correzioni
+### Fixed
 
 - **Tool errors now set `isError: true`** (MCP convention). Every structured error (`{ "error": ... }`) was previously returned as a normal result. Partial successes (`add_items`, `add_items_by_doi`, `find_and_attach_pdfs`, `delete_items` with `not_found`) are still normal results.
 - **Empty results are no longer errors**: "No results found" / "No items found" (`search_library`), "No collections found" (`get_collections`), "Collection is empty" / "No valid items found in collection" (`get_collection_items`), "No items found for the given keys" (`get_items_details`) and "No items to process" (`find_and_attach_pdfs`) are normal results without `isError`, shaped `{ "message": ..., ...details }` (the text moved from `error` to `message`; details such as `suggestion`, `status`, `query` are unchanged).
