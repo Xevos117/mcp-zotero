@@ -1,0 +1,13 @@
+# Actions are pinned in the workflows; Dependabot keeps them current.
+# npm dependencies are handled by the monthly deps-update agent, not here.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    groups:
+      github-actions:
+        patterns: ["*"]

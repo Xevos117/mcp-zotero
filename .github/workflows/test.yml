@@ -3,8 +3,11 @@ name: Tests
 on:
   push:
     branches: [main]
+  # No base-branch filter: stacked PRs target the branch below them, not main.
   pull_request:
-    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   test:

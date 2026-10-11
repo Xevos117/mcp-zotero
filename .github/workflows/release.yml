@@ -16,7 +16,7 @@ jobs:
   # ── 1. Run tests before publishing anything ──────────────────
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -31,6 +31,9 @@ jobs:
         timeout-minutes: 5
       - run: npm run smoke
         timeout-minutes: 2
+      - name: E2E tests (built server over stdio, fake Zotero API)
+        run: npx vitest run --config vitest.e2e.config.ts
+        timeout-minutes: 5
 
   # ── 2. Publish to npm ───────────────────────────────────────
   npm-publish:
@@ -65,6 +68,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Create skill zip archives
+        timeout-minutes: 3
         run: |
           mkdir -p dist-skills
           for skill_dir in skills/*/; do
@@ -75,10 +79,12 @@ jobs:
 
       - name: Resolve or create release
         id: tag
+        timeout-minutes: 3
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed through env, never interpolated into the script (workflow_dispatch input).
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
           # Create the release if it doesn't exist yet
           if ! gh release view "$TAG" > /dev/null 2>&1; then
             gh release create "$TAG" --title "$TAG" --generate-notes
@@ -86,9 +92,11 @@ jobs:
           echo "name=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Upload zips to GitHub Release
+        timeout-minutes: 3
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
         run: |
           for zip_file in dist-skills/*.zip; do
-            gh release upload "${{ steps.tag.outputs.name }}" "$zip_file" --clobber
+            gh release upload "$TAG" "$zip_file" --clobber
           done
