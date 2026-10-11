@@ -1,0 +1,113 @@
+{
+    "description": "JSON schema for CSL citation objects",
+    "$schema" : "http://json-schema.org/draft-07/schema#",
+    "$id": "https://resource.citationstyles.org/schema/latest/input/json/csl-citation.json",
+    "type": "object",
+    "properties": {
+        "schema": {
+            "type": "string",
+            "enum" : [
+                "https://resource.citationstyles.org/schema/latest/input/json/csl-citation.json" 
+            ] 
+        },
+        "citationID": {
+            "type": [
+                "string",
+                "number" 
+            ]
+        },
+        "citationItems": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": [
+                            "string",
+                            "number" 
+                        ]
+                    },
+                    "itemData": {
+                        "$ref": "https://resource.citationstyles.org/schema/v1.0/input/json/csl-data.json#/items" 
+                    },
+                    "prefix": {
+                        "type": "string" 
+                    },
+                    "suffix": {
+                        "type": "string" 
+                    },
+                    "locator": {
+                        "type": "string" 
+                    },
+                    "label": {
+                        "type": "string",
+                        "enum": [
+                            "act",
+                            "appendix",
+                            "article-locator",
+                            "book",
+                            "canon",
+                            "chapter",
+                            "column",
+                            "elocation",
+                            "equation",
+                            "figure",
+                            "folio",
+                            "issue",
+                            "line",
+                            "note",
+                            "opus",
+                            "page",
+                            "paragraph",
+                            "part",
+                            "rule",
+                            "scene",
+                            "section",
+                            "sub-verbo",
+                            "supplement",
+                            "table",
+                            "timestamp",
+                            "title-locator",
+                            "verse",
+                            "version",
+                            "volume" 
+                        ] 
+                    },
+                    "suppress-author": {
+                        "type": [
+                            "string",
+                            "number",
+                            "boolean" 
+                        ] 
+                    },
+                    "author-only": {
+                        "type": [
+                            "string",
+                            "number",
+                            "boolean" 
+                        ] 
+                    },
+                    "uris": {
+                        "type": "array",
+                        "items": {
+                            "type": "string" 
+                        } 
+                    } 
+                },
+                "required": ["id"],
+                "additionalProperties" : false 
+            } 
+        },
+        "properties": {
+            "type": "object",
+            "properties": {
+                "noteIndex": {
+                    "type": "number" 
+                } 
+            },
+            "additionalProperties" : false 
+        } 
+    },
+    "required": ["schema", "citationID"],
+    "additionalProperties" : false 
+}

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { makeDocx, para, zcite, readDocumentXml, tempDir, TempDir } from "../helpers/fixtures.js";
 import { startHarness } from "../helpers/mcp-harness.js";
 import { ZBASE, zLibraryQuery, zSingle, article } from "../helpers/zotero-fake.js";
+import { citations, expectValidDocx, CitationStyle } from "../helpers/docx-validate.js";
 
 /**
  * Script standalone della skill (skills/zotero-skill-mcp-integrations/scripts/inject.js),
@@ -26,12 +27,6 @@ function run(args: string[], cwd = ROOT, script = SCRIPT): Promise<Run> {
       done({ code, stdout, stderr });
     });
   });
-}
-
-function citations(xml: string): Array<Record<string, any>> {
-  return [...xml.matchAll(/ADDIN ZOTERO_ITEM CSL_CITATION (.*?) <\/w:instrText>/g)].map((m) =>
-    JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"))
-  );
 }
 
 // Formato restituito da get_items_details (DOI maiuscolo, authors come stringa)
@@ -80,6 +75,7 @@ describe("skill inject.js (processo reale)", () => {
     expect(cites[0].citationItems[0].itemData).toMatchObject({ DOI: "10.1/x", "container-title": "J. Tests", volume: "4", page: "1-9" });
     expect(cites[0].properties.formattedCitation).toBe("(Smith, 2023)");
     expect(xml).toContain("ZOTERO_BIBL");
+    await expectValidDocx(await readFile(out), { libraryPath: path });
   });
 
   it("SK-02 ieee con num → [1], [1,2], nessun warning", async () => {
@@ -89,6 +85,7 @@ describe("skill inject.js (processo reale)", () => {
     expect(r.stderr).not.toContain("WARNING");
     const cites = citations(await readDocumentXml(await readFile(out)));
     expect(cites.map((c) => c.properties.formattedCitation)).toEqual(["[1]", "[1,2]"]);
+    await expectValidDocx(await readFile(out), { style: "ieee" });
   });
 
   it("SK-03 vancouver senza num → WARNING su stderr e [?]", async () => {
@@ -170,6 +167,7 @@ describe("skill inject.js (processo reale)", () => {
         "(Caetano da Silva, 2020; Test Consortium, 2021)",
         '("Anonymous memo", 2019)',
       ]);
+      await expectValidDocx(await readFile(out));
     } finally {
       await h.close();
     }
@@ -184,5 +182,32 @@ describe("skill inject.js (processo reale)", () => {
     const r = await run([input, join(cjs, "out.docx"), meta, "424242"], cjs, join(cjs, "inject.mjs"));
     expect(r.stderr).not.toMatch(/SyntaxError|MODULE_TYPELESS/);
     expect(r.code).toBe(0);
+  });
+
+  describe("validazione docx (SK-V)", () => {
+    const BODY = (numbered: boolean) =>
+      para("A ", zcite({ keys: "SMITH001", ...(numbered && { num: "1" }) })) +
+      para("B ", zcite({ keys: "DOEROE01,SMITH001", locator: "p. 3", prefix: "see ", ...(numbered && { num: "2,1" }) })) +
+      para("C ", zcite({ keys: "DOEROE01", ...(numbered && { num: "2" }) }));
+
+    it.each<CitationStyle>(["apa", "harvard", "chicago", "ieee", "vancouver"])(
+      "SK-V01 stile %s: output di inject.js valido (struttura, schema, URI, citeproc, parti chiave)",
+      async (style) => {
+        const numbered = style === "ieee" || style === "vancouver";
+        const src = await dir.file(`skv-${style}.docx`, await makeDocx(BODY(numbered)));
+        const out = join(dir.path, `skv-${style}-out.docx`);
+        const r = await run([src, out, meta, "424242", style]);
+        expect(r.code).toBe(0);
+        expect(r.stderr).not.toContain("WARNING");
+        const report = await expectValidDocx(await readFile(out), { style, libraryPath: "users/424242" });
+        expect(report.rendered!.bibliography).toHaveLength(2);
+      }
+    );
+
+    it("SK-V02 libreria groups/<id> → URI di gruppo validi", async () => {
+      const out = join(dir.path, "skv-group-out.docx");
+      expect((await run([input, out, meta, "groups/777"])).code).toBe(0);
+      await expectValidDocx(await readFile(out), { libraryPath: "groups/777" });
+    });
   });
 });

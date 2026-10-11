@@ -4,7 +4,7 @@ Suite aggiunta in `test/` (i test storici restano in `src/**/*.test.ts`).
 
 | Comando | Cosa esegue | Durata indicativa |
 |---|---|---|
-| `npx vitest run` (= `npm test`) | unit: `src/**` + `test/tools/**` + `test/utils/**` | ~8 s |
+| `npx vitest run` (= `npm test`) | unit: `src/**` + `test/tools/**` + `test/utils/**` + `test/skills/**` | ~10 s |
 | `npm run test:e2e` | `npm run build`, poi `test/e2e/**` con `vitest.e2e.config.ts` | ~4 s + build |
 
 Timeout: unit `testTimeout`/`hookTimeout` 10 s (`vitest.config.ts`); e2e 60 s, ogni chiamata MCP 15 s,
@@ -326,6 +326,24 @@ test normali. Non restano `it.fails` nella suite.
 | IC-22 | `keys=" A, B ,"` con spazi | chiavi ripulite, URI senza spazi, nessuna richiesta fuori route |
 | IC-23 | itemData | volume/issue/page/publisher/publisher-place inclusi, abstract escluso, cognome multiparola intatto |
 
+Gli output di IC-01/02/03/04/07/19/23 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
+
+### Validazione docx (IC-V)
+| ID | Scenario | Atteso |
+|---|---|---|
+| IC-V01 | stili apa, harvard, chicago, ieee, vancouver; singola, coppia + 4 autori, locator/prefix/suffix, unicode + senza autore + istituzionale, chiave ripetuta (num coerenti con l'ordine di prima citazione) | docx valido: parti e content types, XML, campi bilanciati, schema csl-citation con deroghe, URI `users/<id>`; citeproc renderizza 5 citazioni e 7 voci di bibliografia; cognome/anno (o numeri) del testo visibile coincidono con lo stile CSL vero |
+| IC-V02 | `library_type: "group"`, `library_id: "777"` per chiamata | URI `http://zotero.org/groups/777/items/KEY` validi |
+| IC-04 (validato) | ieee senza `num` | struttura valida; il validatore segnala `[?]` come differenza dal numero che scriverà Zotero |
+| IC-V-H1 (`it.fails`) | ipotesi H-W1 | `docProps/custom.xml` con `ZOTERO_PREF_*` — oggi assente |
+| IC-V-H2 (`it.fails`) | ipotesi H-W2 | `properties.plainCitation` in ogni citazione — oggi assente |
+| IC-V-H3 (`it.fails`) | ipotesi H-W3 | `itemData.id` presente e `citationItems[].id` coerente per URI — oggi `id` = indice nella citazione, nessun `itemData.id` |
+| IC-V-H4 (`it.fails`) | ipotesi H-W4 | `label` accanto a `locator` — oggi assente |
+| IC-V-H5 (`it.todo`) | ipotesi H-W5 (gruppo non sincronizzato) | verificabile solo in Word |
+
+I casi IC-V-H* descrivono differenze rispetto a ciò che scrive Zotero for Word, non bug dimostrati: restano
+`it.fails` finché la checklist manuale (`test/WORD_CHECKLIST.md`) non le conferma (correzione del prodotto in
+una PR separata, il caso diventa normale) o le smentisce (il caso si rimuove). inject.js scrive lo stesso JSON.
+
 ## Skill inject.js (`test/skills/inject-script.test.ts`, processo node reale)
 | ID | Scenario | Atteso |
 |---|---|---|
@@ -337,6 +355,36 @@ test normali. Non restano `it.fails` nella suite.
 | SK-06 | argomenti mancanti, libreria non valida, stile `mla`, file inesistenti | exit 1 con messaggio |
 | SK-07 | copia `inject.mjs` sotto `package.json` `"type": "commonjs"` | esegue senza SyntaxError/warning |
 | SK-08 | metadata.json da get_items_details (cognomi multiparola, nome istituzionale, nessun autore) | itemData e testo identici a inject_citations |
+| SK-V01 | stili apa, harvard, chicago, ieee, vancouver; singola, multi-chiave con locator/prefix, ripetuta | output di inject.js valido (struttura, schema, URI, citeproc con 2 voci in bibliografia, parti chiave) |
+| SK-V02 | libreria `groups/777` | URI di gruppo validi |
+
+Gli output di SK-01, SK-02 e SK-08 passano anche da `expectValidDocx`.
+
+## Validatore docx (`test/utils/docx-validate.test.ts`, helper `test/helpers/docx-validate.ts`)
+Fixture CSL vendorizzate in `test/fixtures/csl/` (stili, locale en-US, schemi; fonti e licenze nel README).
+Deroghe allo schema ufficiale (`RELAXATIONS`): URL `schema` di Zotero, `uri` legacy, `formattedCitation`/
+`plainCitation`/`dontUpdate` in `properties`, `itemData` senza `id`. Lo stile `vancouver` usa
+`nlm-citation-sequence.csl`, `chicago` usa `chicago-author-date.csl`. citeproc riceve id sintetici (l'URI della voce).
+| ID | Scenario | Atteso |
+|---|---|---|
+| DV-01/01b | field code generati da `generateZoteroFieldCode` + bibliografia, 5 stili | nessun errore, 2 citazioni e 2 voci renderizzate |
+| DV-02 | non zip | errore |
+| DV-03 | `[Content_Types].xml` o `_rels/.rels` assenti, parte senza content type, Override di document.xml assente, rels senza officeDocument, XML malformato | errore specifico |
+| DV-04 | end mancante, separate o end senza begin, campo senza separate | errore specifico |
+| DV-05 | JSON CSL_CITATION non valido | errore |
+| DV-06 | campo sconosciuto in citationItem, label fuori enum, itemData senza type, URL schema sconosciuto, citationItems vuoto | errore di schema |
+| DV-06b | deroghe documentate | ammesse |
+| DV-07 | URI con chiave minuscola, https, libreria diversa da quella attesa | errore |
+| DV-08 | formattedCitation ≠ testo visibile | errore |
+| DV-09/10 | cognome/anno sbagliati (autore-anno), numerazione diversa dall'ordine di citazione (numerico) | differenza segnalata; `expectValidDocx` lancia |
+| DV-11 | `<zcite>` rimasto | errore (ammesso con `allowLeftoverZcite`) |
+| DV-12 | ZOTERO_BIBL assente o duplicato | errore |
+| DV-13 | `citationNumbers` | range espansi, `[?]` vuoto |
+| DV-14 | instrText su più run, campo annidato nel risultato | testo visibile ricostruito |
+| DV-15 | parità con Zotero | rileva ZOTERO_PREF, plainCitation, id coerenti, label; l'output del prodotto non li ha |
+
+Lo smoke (`scripts/smoke-stdio.mjs`) fa un controllo strutturale leggero dello stesso tipo (parti, XML, campi
+bilanciati, JSON, URI, testo visibile = formattedCitation, una bibliografia) senza schemi né citeproc.
 
 ## Validazione delle chiavi (`key-validation.test.ts`)
 Le chiavi finiscono nei path dell'API senza codifica (e l'URL risolve `..`) o nei filtri itemKey (ignorati dall'API se

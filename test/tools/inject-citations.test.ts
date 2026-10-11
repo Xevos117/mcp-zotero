@@ -13,6 +13,7 @@ import {
 import { networkError } from "../helpers/fake-net.js";
 import { ZBASE, zSingle, zError, article, USER_ID } from "../helpers/zotero-fake.js";
 import { makeDocx, para, zcite, readDocumentXml, tempDir, TempDir } from "../helpers/fixtures.js";
+import { citations, expectValidDocx, validateDocx, CitationStyle } from "../helpers/docx-validate.js";
 
 const ITEM_ROUTE = new RegExp(`^${ZBASE.replace(/\./g, "\\.")}/items/[A-Z0-9]+$`);
 
@@ -23,23 +24,6 @@ function serveItems(h: Harness, items: Record<string, Record<string, unknown>>) 
     const item = items[key];
     return item ? zSingle({ key, ...item }) : zError(404, "Item not found");
   });
-}
-
-/** Estrae i JSON CSL_CITATION dai field code del documento. */
-function citations(xml: string): Array<Record<string, any>> {
-  const out: Array<Record<string, any>> = [];
-  const re = /ADDIN ZOTERO_ITEM CSL_CITATION (.*?) <\/w:instrText>/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(xml)) !== null) {
-    const json = m[1]
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&amp;/g, "&");
-    out.push(JSON.parse(json));
-  }
-  return out;
 }
 
 const SMITH = article("SMITH001", {
@@ -87,6 +71,7 @@ describe("inject_citations (MCP)", () => {
     const [c] = citations(xml);
     expect(c.citationItems[0].uris).toEqual([`http://zotero.org/users/${USER_ID}/items/SMITH001`]);
     expect(c.citationItems[0].itemData).toMatchObject({ title: "On Testing" });
+    await expectValidDocx(await readFile(out.json.output_path), { libraryPath: `users/${USER_ID}` });
     // l'originale non viene toccato
     expect((await readFile(input)).equals(original)).toBe(true);
     expect(h.net.requests("GET", ITEM_ROUTE).map((r) => r.url.pathname)).toEqual([`/users/${USER_ID}/items/SMITH001`]);
@@ -108,6 +93,7 @@ describe("inject_citations (MCP)", () => {
     expect(xml).toContain("(Smith, 2023; Doe &amp; Roe, 2019)");
     expect(citations(xml)).toHaveLength(3);
     expect(h.net.requests("GET", ITEM_ROUTE)).toHaveLength(2);
+    await expectValidDocx(await readFile(out.json.output_path));
   });
 
   it('IC-22 keys="A, B" con spazi: chiavi ripulite, nessuna GET con spazio nel path', async () => {
@@ -150,6 +136,7 @@ describe("inject_citations (MCP)", () => {
       author: [{ family: "de Kroon", given: "Hans" }],
     });
     expect(c.citationItems[0].itemData).not.toHaveProperty("abstract");
+    await expectValidDocx(await readFile(out.json.output_path));
   });
 
   it("IC-03 attributi locator/prefix/suffix nel field code", async () => {
@@ -161,6 +148,7 @@ describe("inject_citations (MCP)", () => {
     const out = await h.call("inject_citations", { file_path: input });
     const [c] = citations(await readDocumentXml(await readFile(out.json.output_path)));
     expect(c.citationItems[0]).toMatchObject({ locator: "pp. 12-15", prefix: "see ", suffix: ", emphasis added" });
+    await expectValidDocx(await readFile(out.json.output_path));
   });
 
   it("IC-04 stile ieee con num → [n]; senza num → [?] e warning", async () => {
@@ -174,6 +162,9 @@ describe("inject_citations (MCP)", () => {
     const xml = await readDocumentXml(await readFile(out.json.output_path));
     expect(xml).toContain("[1]");
     expect(xml).toContain("[?]");
+    // struttura valida; "[?]" non corrisponde al numero che Zotero scriverà al Refresh
+    const report = await expectValidDocx(await readFile(out.json.output_path), { style: "ieee", allowMismatches: true });
+    expect(report.mismatches).toEqual([expect.stringContaining('"[?]"')]);
   });
 
   it("IC-05 vancouver con tutti i num → nessun warning", async () => {
@@ -208,6 +199,7 @@ describe("inject_citations (MCP)", () => {
     expect(xml).toContain("(Müller-Ødegård, 2021)");
     expect(xml).toMatch(/\(&quot;机器学习.{0,40}\.\.\.&quot;, n\.d\.\)/);
     expect(citations(xml)[0].citationItems[0].itemData.title).toBe("Über «Lernen» & 学习");
+    await expectValidDocx(await readFile(out.json.output_path));
   });
 
   it("IC-08 file non .docx → errore strutturato senza rete", async () => {
@@ -283,6 +275,7 @@ describe("inject_citations (MCP)", () => {
     expect(zip.file("word/document.xml")).not.toBeNull();
     expect(zip.file("[Content_Types].xml")).not.toBeNull();
     expect(zip.file("_rels/.rels")).not.toBeNull();
+    await expectValidDocx(await readFile(out.json.output_path));
   });
 
   // BUG: injector.ts:162/208 usa filePath.replace(".docx", "_cited.docx"), che
@@ -307,6 +300,92 @@ describe("inject_citations (MCP)", () => {
     ])("IC-21 rifiuta %s non valido (%j)", async (field, args) => {
       expectValidationError(await h.call("inject_citations", args), field);
       expect(h.net.calls).toHaveLength(0);
+    });
+  });
+
+  // Validazione strutturale + rendering citeproc con gli stili CSL veri (test/helpers/docx-validate.ts)
+  describe("validazione docx (IC-V)", () => {
+    const LIBRARY: Record<string, Record<string, unknown>> = {
+      SMITH001: SMITH,
+      DOEROE01: DOE_ROE,
+      MANY0001: article("MANY0001", {
+        title: "Many Authors",
+        date: "2020-06-25",
+        creators: ["Pessoa", "Sadykov", "Uchoa", "Vanderbeck"].map((lastName) => ({ creatorType: "author", firstName: "A.", lastName })),
+      }),
+      KROON001: article("KROON001", {
+        title: "Insects",
+        date: "2017-10-18",
+        creators: [
+          { creatorType: "author", firstName: "Caspar A.", lastName: "Hallmann" },
+          { creatorType: "author", firstName: "Hans", lastName: "de Kroon" },
+        ],
+      }),
+      UNI00001: article("UNI00001", { title: "Über «Lernen» & 学习", date: "2021", creators: [{ creatorType: "author", firstName: "Jürgen", lastName: "Müller-Ødegård" }] }),
+      NOAUTH01: article("NOAUTH01", { title: "Anonymous memo", date: "2019", creators: [] }),
+      CONSORT1: { itemType: "report", title: "Consortium report", date: "2021", creators: [{ creatorType: "author", name: "Test Consortium" }] },
+    };
+    // num coerenti con l'ordine di prima citazione, come li numera citeproc
+    const BODY = (numbered: boolean) =>
+      para("Single ", zcite({ keys: "SMITH001", ...(numbered && { num: "1" }) })) +
+      para("Pair and many ", zcite({ keys: "DOEROE01,MANY0001", ...(numbered && { num: "2,3" }) })) +
+      para("Locator ", zcite({ keys: "KROON001", locator: "pp. 12-15", prefix: "see ", suffix: ", fig. 2", ...(numbered && { num: "4" }) })) +
+      para("Unicode, no author, institution ", zcite({ keys: "UNI00001,NOAUTH01,CONSORT1", ...(numbered && { num: "5-7" }) })) +
+      para("Repeated ", zcite({ keys: "SMITH001", ...(numbered && { num: "1" }) }));
+
+    it.each<CitationStyle>(["apa", "harvard", "chicago", "ieee", "vancouver"])(
+      "IC-V01 stile %s: struttura, schema CSL, URI, citeproc (citazioni + bibliografia) e parti chiave del testo visibile",
+      async (style) => {
+        serveItems(h, LIBRARY);
+        const numbered = style === "ieee" || style === "vancouver";
+        const input = await dir.file(`matrix-${style}.docx`, await makeDocx(BODY(numbered)));
+        const out = await h.call("inject_citations", { file_path: input, style });
+        expect(out.isError).toBe(false);
+        expect(out.json).toMatchObject({ citations_found: 5, citations_injected: 5 });
+        const r = await expectValidDocx(await readFile(out.json.output_path), { style, libraryPath: `users/${USER_ID}` });
+        expect(r.citations).toHaveLength(5);
+        expect(r.rendered!.bibliography).toHaveLength(7);
+      }
+    );
+
+    it("IC-V02 libreria di gruppo per chiamata → URI /groups/<id>/ validi", async () => {
+      h.net.on("GET", /^api\.zotero\.org\/groups\/777\/items\/[A-Z0-9]+$/, (req) => {
+        const key = req.url.pathname.split("/").pop()!;
+        return zSingle({ key, ...LIBRARY[key] });
+      });
+      const input = await dir.file("group.docx", await makeDocx(para(zcite({ keys: "SMITH001,DOEROE01" }))));
+      const out = await h.call("inject_citations", { file_path: input, library_type: "group", library_id: "777" });
+      expect(out.isError).toBe(false);
+      await expectValidDocx(await readFile(out.json.output_path), { libraryPath: "groups/777" });
+    });
+
+    /**
+     * Ipotesi su Word (test/WORD_CHECKLIST.md, H-W1..H-W5): differenze rispetto ai campi che scrive Zotero
+     * for Word. Non è dimostrato che diano problemi in Word: sono it.fails finché la checklist manuale non
+     * le conferma (allora si corregge il prodotto e il caso diventa un test normale) o le smentisce
+     * (allora il caso si rimuove). inject.js produce lo stesso JSON, quindi valgono anche per la skill.
+     */
+    describe("ipotesi Word (it.fails finché la checklist non decide)", () => {
+      async function productReport() {
+        serveItems(h, LIBRARY);
+        const input = await dir.file("hyp.docx", await makeDocx(BODY(false)));
+        const out = await h.call("inject_citations", { file_path: input });
+        return validateDocx(await readFile(out.json.output_path));
+      }
+
+      it.fails("IC-V-H1 docProps/custom.xml con le preferenze ZOTERO_PREF_* (H-W1)", async () => {
+        expect((await productReport()).parity.hasDocumentPrefs).toBe(true);
+      });
+      it.fails("IC-V-H2 properties.plainCitation presente in ogni citazione (H-W2)", async () => {
+        expect((await productReport()).parity.allHavePlainCitation).toBe(true);
+      });
+      it.fails("IC-V-H3 itemData.id presente e citationItems[].id coerenti per URI in tutto il documento (H-W3)", async () => {
+        expect((await productReport()).parity.consistentItemIds).toBe(true);
+      });
+      it.fails("IC-V-H4 locator accompagnato da label (H-W4)", async () => {
+        expect((await productReport()).parity.locatorsHaveLabel).toBe(true);
+      });
+      it.todo("IC-V-H5 voci di un gruppo non sincronizzato nel client Zotero locale (H-W5): verificabile solo in Word");
     });
   });
 });
