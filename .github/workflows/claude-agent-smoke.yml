@@ -1,0 +1,221 @@
+name: Agent smoke test
+
+# A real Claude Code agent (claude-code-action, Agent SDK) uses the MCP server like a user, following
+# the versioned skill .claude/skills/test-mcp-zotero. The verdict is NOT the agent's: it comes from
+# test/live/verify-claims.mjs, which checks the agent's claims against the Zotero Web API.
+# Secrets (environment `zotero-live`): ANTHROPIC_API_KEY plus the live-test Zotero secrets.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zotero-live
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Changed files
+        id: filter
+        timeout-minutes: 2
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          printf '%s\n' "$changed"
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|skills/zotero-skill-mcp-integrations/|\.claude/skills/test-mcp-zotero/|test/live/agent/|test/live/verify-claims\.mjs|test/helpers/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|\.github/workflows/claude-agent-smoke\.yml)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  agent-smoke:
+    needs: changes
+    if: >-
+      needs.changes.outputs.relevant == 'true' &&
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: zotero-live
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 3
+        with:
+          node-version: 24
+          cache: npm
+
+      # On pull requests claude-code-action restores .claude/ and CLAUDE.md from the PR base branch
+      # (PR-authored agent config is untrusted), so the skill that runs is the base branch's version.
+      - name: Skill available
+        id: skill
+        timeout-minutes: 1
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          path=.claude/skills/test-mcp-zotero/SKILL.md
+          if [ "$EVENT" = "pull_request" ]; then
+            ref="origin/$BASE_REF"
+            git cat-file -e "$ref:$path" 2>/dev/null && found=true || found=false
+          else
+            [ -f "$path" ] && found=true || found=false
+          fi
+          echo "available=$found" >> "$GITHUB_OUTPUT"
+          if [ "$found" != "true" ]; then
+            echo "::notice::$path is not on the base branch yet: agent smoke skipped (it runs from main after merge)"
+          fi
+
+      - name: Require secrets
+        if: steps.skill.outputs.available == 'true'
+        timeout-minutes: 1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ] || [ -z "$ZOTERO_TEST_API_KEY" ]; then
+            echo "::error::zotero-live environment secrets missing (ANTHROPIC_API_KEY, ZOTERO_TEST_API_KEY)"
+            exit 1
+          fi
+      - if: steps.skill.outputs.available == 'true'
+        run: npm ci
+        timeout-minutes: 5
+      - if: steps.skill.outputs.available == 'true'
+        run: npm run build
+        timeout-minutes: 3
+
+      - name: Prepare agent-out (run id, diff)
+        id: prepare
+        if: steps.skill.outputs.available == 'true'
+        timeout-minutes: 2
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+          AGENT_UNSAFE_OPERATIONS: all
+        run: |
+          case "$EVENT" in
+            pull_request) base="origin/$BASE_REF" ;;
+            push) base="HEAD~1" ;;
+            *) base="origin/main" ;;
+          esac
+          node test/live/agent/prepare.mjs --mode ci --base "$base"
+          echo "run_id=$(node -p 'require("./agent-out/context.json").run_id')" >> "$GITHUB_OUTPUT"
+
+      # The Zotero key goes only into this file; the agent's environment never contains it.
+      - name: MCP config for the agent
+        if: steps.skill.outputs.available == 'true'
+        timeout-minutes: 1
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
+          MCP_CONFIG: ${{ runner.temp }}/mcp-zotero.json
+        run: |
+          umask 077
+          node -e '
+            const env = { ZOTERO_API_KEY: process.env.ZOTERO_TEST_API_KEY, ZOTERO_USER_ID: process.env.ZOTERO_TEST_USER_ID, UNSAFE_OPERATIONS: "all" };
+            if (process.env.UNPAYWALL_EMAIL) env.UNPAYWALL_EMAIL = process.env.UNPAYWALL_EMAIL;
+            const config = { mcpServers: { zotero: { command: process.execPath, args: [process.cwd() + "/build/server.js"], env } } };
+            require("fs").writeFileSync(process.env.MCP_CONFIG, JSON.stringify(config));
+          '
+
+      # Tool rules: Edit(...) also governs Write; reads inside the checkout are allowed by Claude Code
+      # anyway, while the MCP config in $RUNNER_TEMP is outside it. Any other command is denied (-p mode).
+      - name: Claude Code agent (skill test-mcp-zotero)
+        id: claude
+        if: steps.skill.outputs.available == 'true'
+        timeout-minutes: 25
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        env:
+          MCP_TIMEOUT: "30000"
+          MCP_TOOL_TIMEOUT: "120000"
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: "Carica la skill test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt."
+          claude_args: >-
+            --model claude-sonnet-5-5
+            --max-turns 80
+            --max-budget-usd 5
+            --mcp-config ${{ runner.temp }}/mcp-zotero.json
+            --strict-mcp-config
+            --allowedTools "Skill,mcp__zotero__*,Read(./agent-out/**),Edit(./agent-out/**),Bash(node test/live/agent/make-docx.mjs *),Bash(node skills/zotero-skill-mcp-integrations/scripts/inject.js *)"
+            --disallowedTools "WebFetch,WebSearch"
+            --json-schema '{"type":"object","properties":{"summary":{"type":"string"},"scenarios":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["passed","failed","skipped"]},"notes":{"type":"string"}},"required":["id","status"]}},"friction":{"type":"array","items":{"type":"object","properties":{"tool":{"type":"string"},"note":{"type":"string"}},"required":["tool","note"]}}},"required":["summary","scenarios"]}'
+
+      - name: Remove the MCP config
+        if: always()
+        timeout-minutes: 1
+        env:
+          MCP_CONFIG: ${{ runner.temp }}/mcp-zotero.json
+        run: rm -f "$MCP_CONFIG"
+
+      # Deterministic verdict: this step, not the agent, decides the check.
+      - name: Verify the agent's claims
+        if: always() && steps.prepare.outcome == 'success'
+        timeout-minutes: 5
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          AGENT_REPORT: ${{ steps.claude.outputs.structured_output }}
+        run: |
+          printf '%s' "${AGENT_REPORT:-{}}" > agent-out/agent-report.json
+          node test/live/verify-claims.mjs agent-out
+
+      - name: Clean up the agent's run
+        if: always() && steps.prepare.outcome == 'success'
+        timeout-minutes: 5
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+          ZOTERO_LIVE_CLEANUP_ONLY: "1"
+          ZOTERO_LIVE_CLEANUP_RUN_IDS: ${{ steps.prepare.outputs.run_id }}
+        run: npx vitest run --config vitest.live.config.ts
+
+      - name: Scrub agent output
+        if: always() && steps.prepare.outcome == 'success'
+        timeout-minutes: 2
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+          UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: node test/live/scrub-report.mjs live-artifacts agent-out ${EXECUTION_FILE:+"$EXECUTION_FILE"}
+      - name: Upload scrubbed agent output
+        if: always() && steps.prepare.outcome == 'success'
+        timeout-minutes: 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: agent-smoke
+          path: live-artifacts/
+          retention-days: 7
+          if-no-files-found: warn

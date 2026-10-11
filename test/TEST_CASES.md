@@ -553,6 +553,52 @@ si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standal
 | `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations |
 | `groups` | solo con gruppo `mzt-test…`: LIVE-GRP-01 server in modalità gruppo dall'ambiente (`ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID`): get_user_id → `groups/<id>` con lo user_id dell'utente (get_user_id descrive sempre la libreria dell'ambiente, gli argomenti per chiamata non si applicano); 02 create_collection, add_items, get_collection_items e inject nel gruppo per singola chiamata; 03 server in modalità gruppo senza argomenti di libreria: legge collezione e voce create in 02, override per chiamata verso la libreria utente |
 
+### In CI (`.github/workflows/live-tests.yml`)
+
+Gira sulle PR dello stesso repo (le PR da fork e di Dependabot risultano saltate), su `main`, ogni notte e a mano,
+nell'environment `zotero-live`, con `concurrency: zotero-live` condivisa con l'agente. Il filtro sui file è un job
+(`changes`), non `on.paths`, così una PR di sola documentazione ha il check "saltato" (che vale come superato).
+Senza i secret lo step "Require the test account" fallisce invece di far passare una suite tutta saltata.
+Lo step dei test (18 min) è più corto del job (30 min); poi, sempre:
+- **solo pulizia** (`ZOTERO_LIVE_CLEANUP_ONLY=1`): nessuna fixture, tutti i test saltati; pulisce le run indicate in
+  `ZOTERO_LIVE_CLEANUP_RUN_IDS` e quelle interrotte (file `.vitest/live-run-<runId>.json` scritto all'avvio e tolto a
+  fine teardown), con le stesse regole sui marcatori; sull'account dedicato anche gli avanzi > 6 h;
+- `test/live/scrub-report.mjs`: copia report e riepilogo mascherando chiave, user id, username, gruppo ed email, e
+  fallisce se un segreto sopravvive; artifact conservato 7 giorni.
+Un job separato con `issues: write` apre o aggiorna la issue "Test dal vivo notturni falliti" solo per i fallimenti
+notturni, con il link alla run e i nomi dei test (mai dati).
+
+## Agente smoke (`.github/workflows/claude-agent-smoke.yml`, skill `.claude/skills/test-mcp-zotero`)
+
+Un agente Claude Code vero (claude-code-action v1.0.248 fissata per SHA, Claude Code 2.1.296, modello
+`claude-sonnet-5-5`) carica la skill di progetto e usa il server come un utente. Il prompt è solo "Carica la skill
+test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non è dell'agente**: lo decide
+`test/live/verify-claims.mjs`, poi la stessa pulizia di live-tests (solo pulizia, sul runId dell'agente).
+
+- **Preparazione** (`test/live/agent/prepare.mjs`, uguale in CI e in locale): `agent-out/context.json` (runId, tag,
+  prefisso, modalità, safe mode, gruppo, chi pulisce) e `agent-out/diff.txt` (file cambiati e patch troncata).
+- **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
+  comandi: `node test/live/agent/make-docx.mjs` (crea il docx con i `<zcite>`, senza shell generica) e
+  `node skills/zotero-skill-mcp-integrations/scripts/inject.js`. WebFetch/WebSearch negati; `--max-turns 80`,
+  `--max-budget-usd 5`, `MCP_TOOL_TIMEOUT` 120 s, step 25 min. La chiave Zotero sta solo nel file di config MCP in
+  `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente.
+- **Sulle PR** claude-code-action ripristina `.claude/` e `CLAUDE.md` dal branch di base (configurazione dell'agente
+  scritta nella PR = non fidata): gira la skill del branch di base. Se lì la skill non c'è ancora (la PR che la
+  introduce), il job lo segnala e salta; il primo collaudo vero è l'avvio manuale da `main` dopo il merge.
+- **Percorso**: P0 precondizioni (15 tool, get_user_id, sentinella o safe mode); F1 DOI con PDF OA; F2 collezione,
+  sottocollezione, add_items; F3 link e fulltext (messaggio "linked URL"); F4 ricerca, collezione, dettagli;
+  F5 inject_citations; F6 stesso documento con inject.js e confronto; F7 gruppo (solo con gruppo); F8 cancellazione;
+  poi gli scenari T-… per i file toccati (tabella nella skill), la valutazione d'uso e `agent-out/claims.json`.
+- **verify-claims** (exit 0/1/2, `verdict.json` e riepilogo nello step summary): scenari fissi presenti e non falliti
+  (F1 può essere `skipped` con motivo); ogni oggetto dichiarato esiste con i marcatori della run e lo stato dichiarato
+  (titolo, DOI, collezione, genitore, link_mode, PDF); ogni cancellazione dichiarata risponde 404; ogni docx sta in
+  `agent-out/`, passa `validateDocx` (le differenze di testo contano negli stili autore-anno) e cita solo voci create
+  dalla run; i documenti con lo stesso `compare_group` hanno lo stesso JSON; in locale non restano voci con il tag.
+
+Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`):
+26 turni, 0,26 USD, 54 s; P0, F1-F6, F8 passati, F7 saltato (nessun gruppo); verify-claims verde (9 controlli);
+con claims alterati (cancellazione falsa, F5 failed, docx non iniettato) verify-claims fallisce con 5 problemi.
+
 ### Le 5 righe segnate OK a mano nel collaudo 2.0.0 (LIVE-STALE)
 
 Indagate una per una su `main` @ 5a0f772.
