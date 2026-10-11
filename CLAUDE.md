@@ -66,7 +66,7 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 | `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging on Node 22/24/26 |
 | `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; nightly failures open/update one issue |
 | `claude-agent-smoke.yml` | same-repo PRs by the owner or a bot, `main`, manual | three jobs: prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → `agent-smoke` (verdict by `test/live/verify-claims.mjs`, cleanup, lock release) |
-| `deps-update.yml` | 1st of the month, manual | three jobs: agent (read-only token, no install scripts, leaves a patch) → open-pr (no npm, Claude App token, opens the PR) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for test/live/agent-smoke on the exact SHA, `--match-head-commit`) |
+| `deps-update.yml` | 1st of the month, manual | three jobs: agent (read-only token, no install scripts, leaves a patch) → open-pr (no npm, no id-token: pushes `deps/<date>` and opens the PR with `GITHUB_TOKEN`, then starts test/live-tests/agent-smoke on the branch with `workflow_dispatch`) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for those checks on the exact SHA, `--match-head-commit`) |
 | `release.yml` | GitHub release published, manual | tests, npm publish, skill zips (owner only) |
 
 The agents authenticate to the Claude API with Anthropic Workload Identity Federation (environment
@@ -74,9 +74,14 @@ variables `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPI
 `ANTHROPIC_WORKSPACE_ID` in `zotero-live` / `claude-deps`, job permission `id-token: write`); there is no
 Anthropic API key secret. Zotero secrets stay in `zotero-live`.
 
-The deps gate enables auto-merge with `GITHUB_TOKEN`: the resulting squash-merge push to `main`
-triggers no workflows (events caused by `GITHUB_TOKEN` never do). That is acceptable because every
-required check already ran on the PR; the nightly `live-tests.yml` run then covers `main`.
+The deps workflow uses only `GITHUB_TOKEN` on GitHub. Events caused by `GITHUB_TOKEN` start no
+`pull_request`/`push` workflows, so open-pr starts the required ones with `workflow_dispatch` (the one
+exception GitHub allows) on the dependency branch; their check runs attach to the PR head. The gate's
+auto-merge produces a push to `main` that likewise triggers no workflows: every required check already
+ran on the PR, and the nightly `live-tests.yml` run covers `main`.
+
+Required checks to set in the ruleset after the stack merges (names as GitHub shows them):
+`test (node 22)`, `test (node 24)`, `test (node 26)`, `live-tests`, `agent-smoke`.
 
 Live runs are serialized on the Zotero side by `test/live/lock.mjs` (lock collection
 `mzt-lock <runId>`, wait up to 25 min, then "test account busy"); workflow concurrency is per PR/ref,

@@ -277,8 +277,11 @@ Audience `https://api.anthropic.com`. The subject is an exact match unless it en
 an environment get the OIDC subject `repo:Xevos117/mcp-zotero:environment:<environment>`, so a rule
 written for a branch or PR subject never matches. Numeric ids (not names) keep a renamed or re-created
 repository/account from matching. The
-Zotero test account needs a collection named `__mzt_disposable__`; the dependency agent needs the Claude
-GitHub App installed and "Allow auto-merge" enabled in the repository settings.
+Zotero test account needs a collection named `__mzt_disposable__`. For the dependency agent enable, in
+the repository settings, "Allow auto-merge" and "Allow GitHub Actions to create and approve pull requests"
+(it opens the PR with `GITHUB_TOKEN`; the ruleset's required checks still gate the merge). No GitHub App
+is needed. Required checks after the stack merges: `test (node 22)`, `test (node 24)`, `test (node 26)`,
+`live-tests`, `agent-smoke`.
 
 ### Releasing
 
