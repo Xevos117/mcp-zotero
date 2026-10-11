@@ -2,14 +2,35 @@
 // Deterministic verdict for the agent smoke test (test-mcp-zotero skill). The agent's own report is
 // informative only: this script checks what the agent claims in agent-out/claims.json against the
 // Zotero Web API and validates every produced .docx with test/helpers/docx-validate.ts.
-// Usage: ZOTERO_TEST_API_KEY=... node test/live/verify-claims.mjs [agent-out]
+// Usage: ZOTERO_TEST_API_KEY=... node test/live/verify-claims.mjs [agent-out] [--transcript <execution.json>]
+// With --transcript (CI: the claude-code-action execution file), every claimed deletion must name a key
+// that appeared in a Zotero tool result of the run, i.e. something this run created.
 // Exit 0 = verified, 1 = claims not verified, 2 = setup error. Writes <dir>/verdict.json and, in CI,
 // a summary to $GITHUB_STEP_SUMMARY. No secret or library content is printed.
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { citations, validateDocx } from "../helpers/docx-validate.ts";
 
-const DIR = resolve(process.argv[2] ?? "agent-out");
+const args = process.argv.slice(2);
+const tIdx = args.indexOf("--transcript");
+const TRANSCRIPT = tIdx >= 0 ? args[tIdx + 1] : undefined;
+const DIR = resolve(args.find((a, i) => !a.startsWith("--") && (tIdx < 0 || i !== tIdx + 1)) ?? "agent-out");
+const ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
+
+/** Text of every Zotero MCP tool result in the agent transcript (array of SDK messages), or null. */
+function zoteroToolOutput(path) {
+  if (!path || !existsSync(path)) return null;
+  const messages = JSON.parse(readFileSync(path, "utf8"));
+  const zoteroCalls = new Set();
+  const out = [];
+  for (const m of Array.isArray(messages) ? messages : []) {
+    for (const block of m?.message?.content ?? []) {
+      if (block?.type === "tool_use" && String(block.name).startsWith("mcp__zotero__")) zoteroCalls.add(block.id);
+      if (block?.type === "tool_result" && zoteroCalls.has(block.tool_use_id)) out.push(JSON.stringify(block.content));
+    }
+  }
+  return out.join("\n");
+}
 const KEY = process.env.ZOTERO_TEST_API_KEY ?? "";
 const REQUEST_TIMEOUT_MS = 30_000;
 const REQUIRED = ["P0", "F1", "F2", "F3", "F4", "F5", "F6", "F8"];
@@ -151,10 +172,16 @@ async function main() {
     else ok(`${c.kind} ${c.key}`);
   }
 
-  // Deleted objects are really gone
+  // Deleted objects are really gone, and were created by this run (seen in a tool result of the run)
+  const toolOutput = zoteroToolOutput(TRANSCRIPT);
+  if (TRANSCRIPT && toolOutput === null) fail(`transcript ${TRANSCRIPT} missing: deletions cannot be attributed to the run`);
   for (const dItem of claims.deleted ?? []) {
-    if (!LIB.test(dItem.library_path ?? "")) {
-      fail(`deleted entry with invalid library_path: ${dItem.key}`);
+    if (!LIB.test(dItem.library_path ?? "") || !ZOTERO_KEY.test(String(dItem.key ?? ""))) {
+      fail(`deleted entry with invalid library_path/key: ${JSON.stringify({ key: dItem.key, library_path: dItem.library_path })}`);
+      continue;
+    }
+    if (toolOutput !== null && !toolOutput.includes(dItem.key)) {
+      fail(`deleted ${dItem.key} never appeared in a Zotero tool result of this run`);
       continue;
     }
     const kind = dItem.kind === "collection" ? "collections" : "items";

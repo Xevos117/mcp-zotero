@@ -4,6 +4,8 @@
 //   agent-out/diff.txt       changed files + patch against the base (truncated), for the targeted path
 // Usage: node test/live/agent/prepare.mjs [--mode ci|local] [--base <git-ref>] [--run-id <id>]
 // Env: ZOTERO_LIVE_SAFE_MODE=1, ZOTERO_TEST_GROUP_ID, AGENT_UNSAFE_OPERATIONS (default items).
+// CI mode also requires ZOTERO_TEST_API_KEY and ZOTERO_TEST_USERNAME and exits non-zero, before the agent
+// starts, unless the key belongs to that user and the library has the __mzt_disposable__ sentinel.
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -25,6 +27,35 @@ const base = arg("base", "origin/main");
 const safeMode = process.env.ZOTERO_LIVE_SAFE_MODE === "1";
 const unsafe = process.env.AGENT_UNSAFE_OPERATIONS || "items";
 if (safeMode && unsafe === "all") throw new Error("safe mode: UNSAFE_OPERATIONS=all is not allowed");
+
+/** CI: the agent may only ever run against the dedicated, disposable test account. */
+async function assertDisposableAccount() {
+  const key = process.env.ZOTERO_TEST_API_KEY ?? "";
+  const expected = process.env.ZOTERO_TEST_USERNAME ?? "";
+  if (!key || !expected) throw new Error("CI mode needs ZOTERO_TEST_API_KEY and ZOTERO_TEST_USERNAME");
+  const get = async (path) => {
+    const r = await fetch(`https://api.zotero.org/${path}`, {
+      headers: { "Zotero-API-Key": key, "Zotero-API-Version": "3" },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!r.ok) throw new Error(`GET ${path.split("?")[0]}: HTTP ${r.status}`);
+    return r.json();
+  };
+  const me = await get("keys/current");
+  if (String(me.username ?? "") !== expected) throw new Error("the Zotero key does not belong to ZOTERO_TEST_USERNAME: refusing to start the agent");
+  const lib = `users/${me.userID}`;
+  for (let start = 0; ; start += 100) {
+    const page = await get(`${lib}/collections?limit=100&start=${start}`);
+    if (page.some((c) => c.data?.name === "__mzt_disposable__")) return;
+    if (page.length < 100) break;
+  }
+  throw new Error("no __mzt_disposable__ collection in the test library: refusing to start the agent");
+}
+
+if (mode === "ci") {
+  if (safeMode) throw new Error("CI mode runs only on the dedicated account, not in safe mode");
+  await assertDisposableAccount();
+}
 
 const git = (...args) => {
   try {

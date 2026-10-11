@@ -580,14 +580,21 @@ Un agente Claude Code vero (claude-code-action v1.0.248 fissata per SHA, Claude 
 test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non è dell'agente**: lo decide
 `test/live/verify-claims.mjs`, poi la stessa pulizia di live-tests (solo pulizia, sul runId dell'agente).
 
+- **Tre job, credenziali separate**: `agent-smoke-prepare` (nessun id-token) fa `npm ci --ignore-scripts`, build,
+  `prepare.mjs --mode ci` e prende il lock; `agent-smoke-run` è l'unico job con `id-token: write` (scambio della
+  federazione, fatto dall'action, che toglie `ACTIONS_ID_TOKEN_REQUEST_*` all'agente) e non esegue npm; `agent-smoke`
+  (il check obbligatorio, nessun id-token) verifica i claims, pulisce, rilascia il lock e pubblica il report mascherato.
+  Gira solo per modifiche del proprietario del repo o di un bot (escluso Dependabot).
 - **Preparazione** (`test/live/agent/prepare.mjs`, uguale in CI e in locale): `agent-out/context.json` (runId, tag,
-  prefisso, modalità, safe mode, gruppo, chi pulisce) e `agent-out/diff.txt` (file cambiati e patch troncata).
+  prefisso, modalità, safe mode, gruppo, chi pulisce) e `agent-out/diff.txt` (file cambiati e patch troncata). In CI
+  si ferma con errore, prima che l'agente parta, se la chiave non è di `ZOTERO_TEST_USERNAME` o se manca la sentinella
+  `__mzt_disposable__`.
 - **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
-  comandi: `node test/live/agent/make-docx.mjs` (crea il docx con i `<zcite>`, senza shell generica) e
-  `node skills/zotero-skill-mcp-integrations/scripts/inject.js`. WebFetch/WebSearch negati; `--max-turns 80`,
-  `--max-budget-usd 5`, `MCP_TOOL_TIMEOUT` 120 s, step 25 min; prima dell'agente prende lo stesso lock della suite
-(`node test/live/lock.mjs acquire <runId>`, fino a 25 min) e lo rilascia sempre alla fine; job di 75 min. La chiave Zotero sta solo nel file di config MCP in
-  `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente.
+  comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
+  docx con i `<zcite>`) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
+  negati; `--max-turns 80`, `--max-budget-usd 5`, `MCP_TOOL_TIMEOUT` 120 s, step 25 min. La chiave Zotero sta solo nel file
+  di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente; l'output grezzo passa al job
+  successivo solo se non contiene né la chiave né l'email.
 - **Sulle PR** claude-code-action ripristina `.claude/` e `CLAUDE.md` dal branch di base (configurazione dell'agente
   scritta nella PR = non fidata): gira la skill del branch di base. Se lì la skill non c'è ancora (la PR che la
   introduce), il job lo segnala e salta; il primo collaudo vero è l'avvio manuale da `main` dopo il merge.
@@ -597,7 +604,9 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
   poi gli scenari T-… per i file toccati (tabella nella skill), la valutazione d'uso e `agent-out/claims.json`.
 - **verify-claims** (exit 0/1/2, `verdict.json` e riepilogo nello step summary): scenari fissi presenti e non falliti
   (F1 può essere `skipped` con motivo); ogni oggetto dichiarato esiste con i marcatori della run e lo stato dichiarato
-  (titolo, DOI, collezione, genitore, link_mode, PDF); ogni cancellazione dichiarata risponde 404; ogni docx sta in
+  (titolo, DOI, collezione, genitore, link_mode, PDF); ogni cancellazione dichiarata ha una chiave nel formato Zotero,
+  compare in un risultato di un tool Zotero della trascrizione dell'agente (`--transcript`, file di esecuzione
+  dell'action: cioè l'ha creata la run) e risponde 404; ogni docx sta in
   `agent-out/`, passa `validateDocx` (le differenze di testo contano negli stili autore-anno) e cita solo voci create
   dalla run; i documenti con lo stesso `compare_group` hanno lo stesso JSON; in locale non restano voci con il tag.
 

@@ -6,7 +6,12 @@ name: Agent smoke test
 # Environment `zotero-live`: the live-test Zotero secrets, plus the Anthropic Workload Identity
 # Federation VARIABLES (no API key): ANTHROPIC_FEDERATION_RULE_ID, ANTHROPIC_ORGANIZATION_ID,
 # ANTHROPIC_SERVICE_ACCOUNT_ID, ANTHROPIC_WORKSPACE_ID. The federation rule is bound to
-# repo:<owner>/<repo>:environment:zotero-live, so the agent step must run in this environment.
+# repo:<owner>/<repo>:environment:zotero-live, so the agent job must run in this environment.
+#
+# Three jobs keep credentials apart: `prepare` (no id-token) installs with --ignore-scripts, builds,
+# checks the test account and takes the lock; `agent-smoke-run` is the only job with id-token (for the
+# federation exchange) and runs no npm; `agent-smoke` (no id-token) verifies the claims, cleans up,
+# releases the lock and decides the check.
 on:
   pull_request:
   push:
@@ -47,26 +52,29 @@ jobs:
           fi
           changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
           printf '%s\n' "$changed"
-          if printf '%s\n' "$changed" | grep -Eq '^(src/|skills/zotero-skill-mcp-integrations/|\.claude/skills/test-mcp-zotero/|test/live/agent/|test/live/verify-claims\.mjs|test/helpers/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|\.github/workflows/claude-agent-smoke\.yml)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|skills/zotero-skill-mcp-integrations/|\.claude/skills/test-mcp-zotero/|test/live/agent/|test/live/verify-claims\.mjs|test/live/lock\.mjs|test/helpers/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|\.github/workflows/claude-agent-smoke\.yml)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
           fi
 
-  agent-smoke:
+  prepare:
+    name: agent-smoke-prepare
     needs: changes
+    # same-repo PRs, main, manual runs; Dependabot gets no secrets; only the owner's or a bot's changes
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.actor != 'dependabot[bot]' &&
+      (github.actor == github.repository_owner || endsWith(github.actor, '[bot]')) &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: zotero-live
-    timeout-minutes: 75
+    timeout-minutes: 40
     permissions:
       contents: read
-      # GitHub OIDC token for the Anthropic federation exchange, done by the action itself; the action
-      # removes ACTIONS_ID_TOKEN_REQUEST_* from the agent's environment, so the agent cannot mint tokens.
-      id-token: write
+    outputs:
+      available: ${{ steps.skill.outputs.available }}
+      run_id: ${{ steps.prepare.outputs.run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 3
@@ -90,8 +98,7 @@ jobs:
         run: |
           path=.claude/skills/test-mcp-zotero/SKILL.md
           if [ "$EVENT" = "pull_request" ]; then
-            ref="origin/$BASE_REF"
-            git cat-file -e "$ref:$path" 2>/dev/null && found=true || found=false
+            git cat-file -e "origin/$BASE_REF:$path" 2>/dev/null && found=true || found=false
           else
             [ -f "$path" ] && found=true || found=false
           fi
@@ -105,27 +112,32 @@ jobs:
         timeout-minutes: 1
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
           FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
           ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
         run: |
-          if [ -z "$ZOTERO_TEST_API_KEY" ] || [ -z "$FEDERATION_RULE_ID" ] || [ -z "$ORGANIZATION_ID" ]; then
-            echo "::error::zotero-live environment incomplete (secret ZOTERO_TEST_API_KEY, variables ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID)"
+          if [ -z "$ZOTERO_TEST_API_KEY" ] || [ -z "$ZOTERO_TEST_USERNAME" ] || [ -z "$FEDERATION_RULE_ID" ] || [ -z "$ORGANIZATION_ID" ]; then
+            echo "::error::zotero-live environment incomplete (secrets ZOTERO_TEST_API_KEY, ZOTERO_TEST_USERNAME; variables ANTHROPIC_FEDERATION_RULE_ID, ANTHROPIC_ORGANIZATION_ID)"
             exit 1
           fi
       - if: steps.skill.outputs.available == 'true'
-        run: npm ci
+        run: npm ci --ignore-scripts
         timeout-minutes: 5
       - if: steps.skill.outputs.available == 'true'
         run: npm run build
         timeout-minutes: 3
 
-      - name: Prepare agent-out (run id, diff)
+      # Writes agent-out/context.json and diff.txt; in CI mode it refuses to continue unless the key
+      # belongs to ZOTERO_TEST_USERNAME and the library has the __mzt_disposable__ sentinel.
+      - name: Prepare agent-out (test account, run id, diff)
         id: prepare
         if: steps.skill.outputs.available == 'true'
-        timeout-minutes: 2
+        timeout-minutes: 3
         env:
           EVENT: ${{ github.event_name }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
           AGENT_UNSAFE_OPERATIONS: all
         run: |
@@ -138,8 +150,8 @@ jobs:
           echo "run_id=$(node -p 'require("./agent-out/context.json").run_id')" >> "$GITHUB_OUTPUT"
 
       # Same lock as the live suite: one run at a time on the Zotero test account (waits up to 25 min).
+      # Released by the agent-smoke job, always.
       - name: Lock the test account
-        id: lock
         if: steps.skill.outputs.available == 'true'
         timeout-minutes: 27
         env:
@@ -147,9 +159,52 @@ jobs:
           RUN_ID: ${{ steps.prepare.outputs.run_id }}
         run: node test/live/lock.mjs acquire "$RUN_ID"
 
+      - name: Pack the workspace for the agent job
+        if: steps.skill.outputs.available == 'true'
+        timeout-minutes: 3
+        run: tar -czf "$RUNNER_TEMP/workspace.tgz" build node_modules agent-out
+      - if: steps.skill.outputs.available == 'true'
+        timeout-minutes: 5
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: agent-workspace
+          path: ${{ runner.temp }}/workspace.tgz
+          retention-days: 1
+          if-no-files-found: error
+
+  agent-run:
+    name: agent-smoke-run
+    needs: prepare
+    if: needs.prepare.outputs.available == 'true'
+    runs-on: ubuntu-latest
+    environment: zotero-live
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      # Only job with an OIDC token: the Anthropic federation exchange, done by the action itself. The
+      # action removes ACTIONS_ID_TOKEN_REQUEST_* from the agent's environment; no npm runs here.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 3
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        timeout-minutes: 5
+        with:
+          name: agent-workspace
+          path: ${{ runner.temp }}
+      - name: Unpack the workspace
+        timeout-minutes: 3
+        run: tar -xzf "$RUNNER_TEMP/workspace.tgz"
+
       # The Zotero key goes only into this file; the agent's environment never contains it.
       - name: MCP config for the agent
-        if: steps.skill.outputs.available == 'true'
         timeout-minutes: 1
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
@@ -167,9 +222,9 @@ jobs:
 
       # Tool rules: Edit(...) also governs Write; reads inside the checkout are allowed by Claude Code
       # anyway, while the MCP config in $RUNNER_TEMP is outside it. Any other command is denied (-p mode).
+      # The two commands are wrappers that keep every path inside agent-out/.
       - name: Claude Code agent (skill test-mcp-zotero)
         id: claude
-        if: steps.skill.outputs.available == 'true'
         timeout-minutes: 25
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         env:
@@ -189,7 +244,7 @@ jobs:
             --max-budget-usd 5
             --mcp-config ${{ runner.temp }}/mcp-zotero.json
             --strict-mcp-config
-            --allowedTools "Skill,mcp__zotero__*,Read(./agent-out/**),Edit(./agent-out/**),Bash(node test/live/agent/make-docx.mjs *),Bash(node skills/zotero-skill-mcp-integrations/scripts/inject.js *)"
+            --allowedTools "Skill,mcp__zotero__*,Read(./agent-out/**),Edit(./agent-out/**),Bash(node test/live/agent/make-docx.mjs *),Bash(node test/live/agent/inject.mjs *)"
             --disallowedTools "WebFetch,WebSearch"
             --json-schema '{"type":"object","properties":{"summary":{"type":"string"},"scenarios":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["passed","failed","skipped"]},"notes":{"type":"string"}},"required":["id","status"]}},"friction":{"type":"array","items":{"type":"object","properties":{"tool":{"type":"string"},"note":{"type":"string"}},"required":["tool","note"]}}},"required":["summary","scenarios"]}'
 
@@ -200,38 +255,119 @@ jobs:
           MCP_CONFIG: ${{ runner.temp }}/mcp-zotero.json
         run: rm -f "$MCP_CONFIG"
 
+      - name: Collect the agent output
+        if: always()
+        timeout-minutes: 2
+        env:
+          AGENT_REPORT: ${{ steps.claude.outputs.structured_output }}
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          mkdir -p agent-out
+          if [ -n "$AGENT_REPORT" ]; then printf '%s' "$AGENT_REPORT" > agent-out/agent-report.json; else echo '{}' > agent-out/agent-report.json; fi
+          if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" agent-out/execution.json; fi
+      # The raw output (needed by the verifier: docx, claims, transcript) is uploaded only if neither the
+      # Zotero key nor the Unpaywall email is in it; the 7-day artifact is scrubbed by the next job.
+      - name: Check the agent output for secrets
+        if: always()
+        timeout-minutes: 1
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
+        run: |
+          for secret in "$ZOTERO_TEST_API_KEY" "$UNPAYWALL_EMAIL"; do
+            if [ -n "$secret" ] && grep -rqF -- "$secret" agent-out; then
+              echo "::error::a secret appears in the agent output: not uploading it"
+              rm -rf agent-out
+              exit 1
+            fi
+          done
+      - if: always()
+        timeout-minutes: 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: agent-output
+          path: agent-out/
+          retention-days: 1
+          if-no-files-found: warn
+
+  # The required check: the deterministic verdict, cleanup and lock release. No id-token here.
+  verify:
+    name: agent-smoke
+    needs: [changes, prepare, agent-run]
+    if: always() && needs.prepare.result != 'skipped'
+    runs-on: ubuntu-latest
+    environment: zotero-live
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Outcome of the previous jobs
+        timeout-minutes: 1
+        env:
+          PREPARE: ${{ needs.prepare.result }}
+          AVAILABLE: ${{ needs.prepare.outputs.available }}
+        run: |
+          if [ "$PREPARE" = "success" ] && [ "$AVAILABLE" != "true" ]; then
+            echo "::notice::skill not on the base branch yet: nothing to verify"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.prepare.outputs.run_id != ''
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.prepare.outputs.run_id != ''
+        timeout-minutes: 3
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.prepare.outputs.run_id != ''
+        timeout-minutes: 5
+        with:
+          name: agent-workspace
+          path: ${{ runner.temp }}
+      - name: Unpack the workspace
+        if: needs.prepare.outputs.run_id != ''
+        timeout-minutes: 3
+        run: tar -xzf "$RUNNER_TEMP/workspace.tgz"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.prepare.outputs.run_id != '' && needs.agent-run.result != 'skipped'
+        continue-on-error: true # no output if the agent job failed early: verify-claims reports it
+        timeout-minutes: 5
+        with:
+          name: agent-output
+          path: agent-out
+
       # Deterministic verdict: this step, not the agent, decides the check.
       - name: Verify the agent's claims
-        if: always() && steps.prepare.outcome == 'success' && steps.lock.outcome == 'success'
+        id: verify
+        if: needs.prepare.outputs.run_id != ''
         timeout-minutes: 5
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
-          AGENT_REPORT: ${{ steps.claude.outputs.structured_output }}
-        run: |
-          printf '%s' "${AGENT_REPORT:-{}}" > agent-out/agent-report.json
-          node test/live/verify-claims.mjs agent-out
+        run: node test/live/verify-claims.mjs agent-out --transcript agent-out/execution.json
 
       - name: Clean up the agent's run
-        if: always() && steps.prepare.outcome == 'success'
+        if: always() && needs.prepare.outputs.run_id != ''
         timeout-minutes: 5
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
           ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
           ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
-          RUN_ID: ${{ steps.prepare.outputs.run_id }}
+          RUN_ID: ${{ needs.prepare.outputs.run_id }}
         run: npm run test:live:cleanup -- "$RUN_ID"
 
       - name: Release the test-account lock
-        if: always() && steps.prepare.outcome == 'success'
+        if: always() && needs.prepare.outputs.run_id != ''
         timeout-minutes: 3
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
-          RUN_ID: ${{ steps.prepare.outputs.run_id }}
+          RUN_ID: ${{ needs.prepare.outputs.run_id }}
         run: node test/live/lock.mjs release "$RUN_ID"
 
       - name: Scrub agent output
-        if: always() && steps.prepare.outcome == 'success'
+        if: always() && needs.prepare.outputs.run_id != ''
         timeout-minutes: 2
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
@@ -239,10 +375,9 @@ jobs:
           ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
           UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
-          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
-        run: node test/live/scrub-report.mjs live-artifacts agent-out ${EXECUTION_FILE:+"$EXECUTION_FILE"}
+        run: node test/live/scrub-report.mjs live-artifacts agent-out
       - name: Upload scrubbed agent output
-        if: always() && steps.prepare.outcome == 'success'
+        if: always() && needs.prepare.outputs.run_id != ''
         timeout-minutes: 3
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -250,3 +385,13 @@ jobs:
           path: live-artifacts/
           retention-days: 7
           if-no-files-found: warn
+
+      - name: Fail if a previous job failed
+        if: always()
+        timeout-minutes: 1
+        env:
+          PREPARE: ${{ needs.prepare.result }}
+          AGENT: ${{ needs.agent-run.result }}
+        run: |
+          if [ "$PREPARE" != "success" ]; then echo "::error::agent-smoke-prepare: $PREPARE"; exit 1; fi
+          if [ "$AGENT" = "failure" ] || [ "$AGENT" = "cancelled" ]; then echo "::error::agent-smoke-run: $AGENT"; exit 1; fi

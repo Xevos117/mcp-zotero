@@ -66,12 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: zotero-live
     timeout-minutes: 60
-    env:
-      ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
-      ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
-      ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
-      ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
-      UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
+    # Secrets only at step level, in the steps that talk to Zotero (never during npm ci or the build).
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 3
@@ -84,13 +79,16 @@ jobs:
           cache: npm
       - name: Require the test account
         timeout-minutes: 1
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
         run: |
           # without the key the suite would be skipped and the check would pass vacuously
           if [ -z "$ZOTERO_TEST_API_KEY" ] || [ -z "$ZOTERO_TEST_USERNAME" ]; then
             echo "::error::zotero-live environment secrets missing (ZOTERO_TEST_API_KEY, ZOTERO_TEST_USERNAME)"
             exit 1
           fi
-      - run: npm ci
+      - run: npm ci --ignore-scripts
         timeout-minutes: 5
       - run: npm run build
         timeout-minutes: 3
@@ -99,16 +97,33 @@ jobs:
       - name: Live suite
         timeout-minutes: 45
         env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+          UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
           # more than 2 cases skipped because an external service was down → the run fails
           ZOTERO_LIVE_MAX_SOFT_SKIPS: "2"
         run: npx vitest run --config vitest.live.config.ts
       - name: Clean up interrupted runs
         if: always()
         timeout-minutes: 5
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+          UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
         run: npm run test:live:cleanup
       - name: Scrub report
         if: always()
         timeout-minutes: 2
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+          UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
         run: node test/live/scrub-report.mjs live-artifacts .vitest/live-report.json .vitest/live-summary.json
       - name: Upload scrubbed report
         if: always()

@@ -25,7 +25,7 @@ every object you create, with the state you expect it to have. Your prose report
   one scenario failed (except the preconditions in step 1).
 - Files you may write: only under `agent-out/`, with the Write tool (never through the shell). The
   only commands you may run are `node test/live/agent/make-docx.mjs …` and
-  `node skills/zotero-skill-mcp-integrations/scripts/inject.js …`, from the repository root, **exactly
+  `node test/live/agent/inject.mjs …` (a wrapper around the product skill's `inject.js` that keeps every path inside `agent-out/`), from the repository root, **exactly
   in that form, one command per call**: no `timeout` prefix, no variables, no `&&`, `;`, pipes or
   redirections. The harness bounds every command and rejects anything else.
 
@@ -55,7 +55,7 @@ Use these exact scenario IDs. Keep the keys returned by each tool; you will need
 | F3 | Attachments and full text: a linked URL attachment (`https://example.org/<prefix>.pdf`, `content_type: application/pdf`) on the book; `get_item_fulltext` on the book (expect a clear "linked URL" message, not "open the PDF in Zotero desktop"); if F1 attached a PDF, `get_item_fulltext` on the F1 item (expect text) | `add_linked_url_attachment`, `get_item_fulltext` | messages and text as described |
 | F4 | Find it again: `search_library` with `query = prefix` (finds the F2 items: their titles carry the prefix; DOI items keep the publisher's title); `get_collection_items` on the run collection with `excludeAttachments: false`; `get_items_details` on all created regular items | `search_library`, `get_collection_items`, `get_items_details` | F2 items found by search; every created regular item listed in the collection; details carry `creators` |
 | F5 | `inject_citations`: create `agent-out/<prefix>-paper.docx` with `make-docx.mjs` (paragraphs: single citation of the article, multi-key citation article+book, citation of the F1 item with `locator: "p. 3"` and `prefix: "see "`), then inject with `style: "apa"` | `inject_citations` | `citations_found` = `citations_injected` = 3; output `agent-out/<prefix>-paper_cited.docx` |
-| F6 | Same document through the product skill: write the `get_items_details` JSON to `agent-out/metadata.json` (Write tool), run `node skills/zotero-skill-mcp-integrations/scripts/inject.js agent-out/<prefix>-paper.docx agent-out/<prefix>-paper_skill.docx agent-out/metadata.json <library_path> apa` | `get_items_details`, inject.js | exit 0, no WARNING; both documents claimed with the same `compare_group` |
+| F6 | Same document through the product skill: write the `get_items_details` JSON to `agent-out/metadata.json` (Write tool), run `node test/live/agent/inject.mjs agent-out/<prefix>-paper.docx agent-out/<prefix>-paper_skill.docx agent-out/metadata.json <library_path> apa` | `get_items_details`, inject.js | exit 0, no WARNING; both documents claimed with the same `compare_group` |
 | F7 | Only if `group_id` is set: `get_user_id` with `library_type: "group"`, `library_id: group_id`; `add_items` one book into the group (tags as usual); `inject_citations` with the same per-call library args on a one-citation docx | the above, per call | URIs are `http://zotero.org/groups/<id>/items/<key>`. Without `group_id` report `skipped` |
 | F8 | Deletion: `add_items` one throwaway book (`<prefix> to delete`), then `delete_items` it | `add_items`, `delete_items` | `deleted_count: 1`; claim it under `deleted`, not `created` |
 
