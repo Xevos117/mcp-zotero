@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.0.1] - Unreleased
+## [2.0.1] - 2026-10-11
 
 Security and data-loss fixes. Affected: every release with these tools, including 1.0.9 and 2.0.0.
 
