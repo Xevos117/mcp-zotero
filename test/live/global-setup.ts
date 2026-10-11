@@ -355,6 +355,13 @@ export default async function setup(project: TestProject) {
     throw e;
   }
 
+  // le chiavi dei casi negativi (FAKE_KEY in helpers/live.ts) non devono esistere in questa libreria
+  for (const fake of ["ZZZZZZZZ", "YYYYYYYY"]) {
+    if ((await z.get(`items/${fake}`)).status !== 404 || (await z.get(`collections/${fake}`)).status !== 404) {
+      await unlock();
+      throw new Error(`la chiave di test ${fake} esiste in questa libreria: i casi negativi non sarebbero sicuri`);
+    }
+  }
   const before = await withBound("conteggi iniziali", counts(z));
   const groupId = await verifiedGroup(z);
 

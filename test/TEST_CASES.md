@@ -484,8 +484,9 @@ esterno riconosciuto (`ExternalServiceError`: verifica diretta del servizio prim
 con timeout, errori di rete, 429/5xx di doi.org, "Download failed for all…"): un secondo tentativo, poi skip con il
 motivo. Qualsiasi altro errore, asserzioni comprese, fa fallire il test. Gli skip soft sono contati: oltre
 `ZOTERO_LIVE_MAX_SOFT_SKIPS` il teardown fallisce. Le asserzioni sono relative a ciò che la run crea, mai a conteggi
-assoluti della libreria; le chiavi inesistenti usate nei casi negativi (`ZZZZZZZ0`, `YYYYYYY1`) contengono 0/1, che le
-chiavi Zotero non usano, quindi non possono mai coincidere con una voce vera.
+assoluti della libreria; le chiavi inesistenti dei casi negativi (`ZZZZZZZZ`, `YYYYYYYY`) hanno la forma valida e il setup verifica che non
+esistano: chiavi malformate (con 0/1/O o minuscole) farebbero ignorare all'API il filtro itemKey, che restituirebbe
+la libreria intera.
 
 **Run concorrenti** (`test/live/lock.mjs`, usato dalla suite e, in CI, dall'agente smoke): all'avvio la run crea la
 collezione `mzt-lock <runId>`; se ne trova una più vecchia e non scaduta di un'altra run (di un'altra PR, dell'agente,

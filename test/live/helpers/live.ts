@@ -130,9 +130,13 @@ export function title(label: string): string {
   return `${live.prefix} ${label}`;
 }
 
-/** Chiavi che non possono esistere: le chiavi Zotero non usano 0, 1 e O. */
-export const FAKE_KEY = "ZZZZZZZ0";
-export const FAKE_KEY_2 = "YYYYYYY1";
+/**
+ * Chiavi inesistenti per i casi negativi. Hanno la forma valida di proposito: con chiavi malformate (con
+ * 0/1/O o minuscole) la Web API ignora il filtro itemKey e restituisce la libreria intera, quindi un caso
+ * "chiave sconosciuta" toccherebbe voci vere. Il global setup verifica che non esistano.
+ */
+export const FAKE_KEY = "ZZZZZZZZ";
+export const FAKE_KEY_2 = "YYYYYYYY";
 
 /** Guasto di un servizio esterno (doi.org, Crossref, Unpaywall, editori, rete): l'unico motivo di skip in soft(). */
 export class ExternalServiceError extends Error {
