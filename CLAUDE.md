@@ -64,8 +64,8 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging on Node 22/24/26 |
-| `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; nightly failures open/update one issue |
-| `claude-agent-smoke.yml` | same-repo PRs by the owner or a bot, `main`, manual | three jobs: prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → `agent-smoke` (verdict by `test/live/verify-claims.mjs`, cleanup, lock release) |
+| `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `live-tests-run`: `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; `live-tests` (required check) decides from it; nightly failures open/update one issue |
+| `claude-agent-smoke.yml` | same-repo PRs by the owner or a bot, `main`, manual | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
 | `deps-update.yml` | 1st of the month, manual | three jobs: agent (read-only token, no install scripts, leaves a patch) → open-pr (no npm, no id-token: pushes `deps/<date>` and opens the PR with `GITHUB_TOKEN`, then starts test/live-tests/agent-smoke on the branch with `workflow_dispatch`) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for those checks on the exact SHA, `--match-head-commit`) |
 | `release.yml` | GitHub release published, manual | tests, npm publish, skill zips (owner only) |
 
@@ -91,8 +91,11 @@ so stacked PRs never cancel each other's required checks.
 Every workflow installs with `npm ci --ignore-scripts`; Zotero secrets are set only on the steps that
 need them, never at job level.
 
-Path filters are job-level `if` conditions (a skipped job satisfies a required check; a workflow
-filtered by `on.paths` would leave the check pending). Actions in the new workflows are pinned by
+Path filters are a `changes` job, not `on.paths` (a workflow filtered by `on.paths` would leave a
+required check pending). The required-name jobs (`live-tests`, `agent-smoke`) are never skipped, since
+a skipped required check counts as passed: they run with `!cancelled()`, fail when `changes` or the
+real jobs failed or timed out, and pass without testing only when nothing relevant changed (or for
+fork PRs and Dependabot, which get no secrets). A superseded run is cancelled, not red. Actions in the new workflows are pinned by
 SHA; Dependabot updates them. On pull requests claude-code-action restores `.claude/` and
 `CLAUDE.md` from the base branch, so a PR cannot change the instructions its own agent run follows.
 
