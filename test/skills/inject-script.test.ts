@@ -111,10 +111,10 @@ describe("skill inject.js (processo reale)", () => {
   });
 
   it("SK-05 chiave assente da metadata.json → WARNING che la nomina, exit 0", async () => {
-    const missing = await dir.file("missing.docx", await makeDocx(para(zcite({ keys: "GHOST001" }))));
+    const missing = await dir.file("missing.docx", await makeDocx(para(zcite({ keys: "GHPSTQQR" }))));
     const r = await run([missing, join(dir.path, "missing-out.docx"), meta, "424242"]);
     expect(r.code).toBe(0);
-    expect(r.stderr).toMatch(/WARNING: 1 cited key\(s\) not found in metadata\.json: GHOST001/);
+    expect(r.stderr).toMatch(/WARNING: 1 cited key\(s\) not found in metadata\.json: GHPSTQQR/);
   });
 
   it.each([
@@ -134,14 +134,14 @@ describe("skill inject.js (processo reale)", () => {
 
   it("SK-08 metadata da get_items_details → itemData e testo identici a inject_citations (cognomi multiparola, nome istituzionale, nessun autore)", async () => {
     const items = [
-      article("KROON001", { title: "Insects", date: "2017-10-18", volume: "12", creators: [
+      article("KRPPNQQR", { title: "Insects", date: "2017-10-18", volume: "12", creators: [
         { creatorType: "author", firstName: "Caspar A.", lastName: "Hallmann" },
         { creatorType: "author", firstName: "Hans", lastName: "de Kroon" },
       ] }),
-      { key: "SILVA001", itemType: "book", title: "Handbook", date: "2020", publisher: "Press",
+      { key: "SILVAQQR", itemType: "book", title: "Handbook", date: "2020", publisher: "Press",
         creators: [{ creatorType: "author", firstName: "Paulo", lastName: "Caetano da Silva" }, { creatorType: "editor", firstName: "Ed", lastName: "Itor" }] },
-      { key: "CONSORT1", itemType: "report", title: "Consortium report", date: "2021", creators: [{ creatorType: "author", name: "Test Consortium" }] },
-      { key: "NOAUTH01", itemType: "document", title: "Anonymous memo", date: "2019", creators: [] },
+      { key: "CPNSPRTR", itemType: "report", title: "Consortium report", date: "2021", creators: [{ creatorType: "author", name: "Test Consortium" }] },
+      { key: "NPAUTHQR", itemType: "document", title: "Anonymous memo", date: "2019", creators: [] },
     ];
     const h = await startHarness();
     try {
@@ -150,7 +150,7 @@ describe("skill inject.js (processo reale)", () => {
       const keys = items.map((i) => i.key);
       const details = await h.call("get_items_details", { item_keys: keys });
       const metaPath = await dir.file("meta-live.json", JSON.stringify(details.json));
-      const body = para(zcite({ keys: "KROON001" })) + para(zcite({ keys: "SILVA001,CONSORT1" })) + para(zcite({ keys: "NOAUTH01" }));
+      const body = para(zcite({ keys: "KRPPNQQR" })) + para(zcite({ keys: "SILVAQQR,CPNSPRTR" })) + para(zcite({ keys: "NPAUTHQR" }));
       const forTool = await dir.file("eq-tool.docx", await makeDocx(body));
       const forScript = await dir.file("eq-script.docx", await makeDocx(body));
 

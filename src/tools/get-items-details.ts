@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse, formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
-import { fetchItemsByKeys } from "../utils/pagination.js";
+import { fetchItemsByKeys, INVALID_KEYS_MESSAGE } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
@@ -47,10 +47,14 @@ export async function handleGetItemsDetails(
     return formatErrorResponse("At least one item key is required");
   }
 
-  const { items } = await fetchItemsByKeys(
+  const { items, invalidKeys } = await fetchItemsByKeys(
     (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
     item_keys
   );
+
+  if (invalidKeys.length === item_keys.length) {
+    return formatErrorResponse(INVALID_KEYS_MESSAGE, { invalid_keys: invalidKeys });
+  }
 
   if (items.length === 0) {
     return formatEmptyResult("No items found for the given keys", {

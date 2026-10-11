@@ -167,6 +167,17 @@ export function collection(key: string, name: string, extra: Record<string, unkn
   return { key, name, parentCollection: false, relations: {}, ...extra };
 }
 
+const KEY_ALPHABET = "23456789ABCDEFGHIJKLMNPQRSTUVWXYZ";
+
+/** n articoli con chiavi valide e distinte: prefisso + indice in base 33 sull'alfabeto delle chiavi Zotero. */
 export function manyArticles(n: number, prefix = "K"): ZItem[] {
-  return Array.from({ length: n }, (_, i) => article(`${prefix}${String(i).padStart(7, "0")}`));
+  const encode = (i: number) => {
+    let out = "";
+    do {
+      out = KEY_ALPHABET[i % KEY_ALPHABET.length] + out;
+      i = Math.floor(i / KEY_ALPHABET.length);
+    } while (i > 0);
+    return out.padStart(8 - prefix.length, KEY_ALPHABET[0]);
+  };
+  return Array.from({ length: n }, (_, i) => article(`${prefix}${encode(i)}`));
 }

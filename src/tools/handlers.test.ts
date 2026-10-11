@@ -133,7 +133,7 @@ describe("get_collection_items", () => {
     expect(parsed.items[0].title).toBe("Deep Learning for Natural Language Processing");
     expect(parsed.items[0].authors).toBe("John Smith, Jane Doe");
     expect(parsed.items[0].date).toBe("2024-01-15");
-    expect(parsed.items[0].key).toBe("ABC12345");
+    expect(parsed.items[0].key).toBe("ABCR2345");
     expect(parsed.items[0].doi).toBe("10.1234/example.2024.001");
     expect(parsed.items[0].tags).toEqual(["deep-learning", "NLP"]);
   });
@@ -184,7 +184,7 @@ describe("get_collection_items", () => {
     expect(parsed.total_items).toBe(3);
     expect(parsed.returned_items).toBe(1);
     expect(parsed.items).toHaveLength(1);
-    expect(parsed.items[0].key).toBe("ABC12345");
+    expect(parsed.items[0].key).toBe("ABCR2345");
   });
 
   it("includes attachments and notes when excludeAttachments is false", async () => {
@@ -229,65 +229,65 @@ describe("get_items_details", () => {
     const { mock } = createZoteroApiMock([fullItemFixture, minimalItemFixture]);
     const result = await handleToolCall(
       "get_items_details",
-      { item_keys: ["ABC12345", "MIN00001"] },
+      { item_keys: ["ABCR2345", "MINQQQQR"] },
       mock,
       TEST_USER_ID
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed["ABC12345"].title).toBe("Deep Learning for Natural Language Processing");
-    expect(parsed["ABC12345"].authors).toBe("John Smith, Jane Doe");
-    expect(parsed["ABC12345"].DOI).toBe("10.1234/example.2024.001");
-    expect(parsed["ABC12345"].itemType).toBe("journalArticle");
-    expect(parsed["ABC12345"].publicationTitle).toBe("Journal of Machine Learning");
-    expect(parsed["ABC12345"].url).toBe("https://example.com/paper");
-    expect(parsed["MIN00001"].title).toBe("Untitled");
-    expect(parsed["MIN00001"].authors).toBe("No authors listed");
-    expect(parsed["MIN00001"]).not.toHaveProperty("DOI");
+    expect(parsed["ABCR2345"].title).toBe("Deep Learning for Natural Language Processing");
+    expect(parsed["ABCR2345"].authors).toBe("John Smith, Jane Doe");
+    expect(parsed["ABCR2345"].DOI).toBe("10.1234/example.2024.001");
+    expect(parsed["ABCR2345"].itemType).toBe("journalArticle");
+    expect(parsed["ABCR2345"].publicationTitle).toBe("Journal of Machine Learning");
+    expect(parsed["ABCR2345"].url).toBe("https://example.com/paper");
+    expect(parsed["MINQQQQR"].title).toBe("Untitled");
+    expect(parsed["MINQQQQR"].authors).toBe("No authors listed");
+    expect(parsed["MINQQQQR"]).not.toHaveProperty("DOI");
   });
 
   it("passes itemKey query param to API", async () => {
     const { mock, getStub } = createZoteroApiMock([fullItemFixture]);
     await handleToolCall(
       "get_items_details",
-      { item_keys: ["ABC12345", "DEF67890"] },
+      { item_keys: ["ABCR2345", "DEF6789Q"] },
       mock,
       TEST_USER_ID
     );
 
-    expect(getStub).toHaveBeenCalledWith({ itemKey: "ABC12345,DEF67890", limit: 2 });
+    expect(getStub).toHaveBeenCalledWith({ itemKey: "ABCR2345,DEF6789Q", limit: 2 });
   });
 
   it("excludes abstract from response by default", async () => {
     const { mock } = createZoteroApiMock([fullItemFixture]);
     const result = await handleToolCall(
       "get_items_details",
-      { item_keys: ["ABC12345"] },
+      { item_keys: ["ABCR2345"] },
       mock,
       TEST_USER_ID
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed["ABC12345"]).not.toHaveProperty("abstract");
-    expect(parsed["ABC12345"]).not.toHaveProperty("abstractNote");
+    expect(parsed["ABCR2345"]).not.toHaveProperty("abstract");
+    expect(parsed["ABCR2345"]).not.toHaveProperty("abstractNote");
   });
 
   it("includes abstract when include_abstract is true", async () => {
     const { mock } = createZoteroApiMock([fullItemFixture]);
     const result = await handleToolCall(
       "get_items_details",
-      { item_keys: ["ABC12345"], include_abstract: true },
+      { item_keys: ["ABCR2345"], include_abstract: true },
       mock,
       TEST_USER_ID
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed["ABC12345"].abstractNote).toBe(fullItemFixture.abstractNote);
+    expect(parsed["ABCR2345"].abstractNote).toBe(fullItemFixture.abstractNote);
   });
 
   it("includes type-specific fields from Zotero response", async () => {
     const bookSectionFixture = {
-      key: "BS00001",
+      key: "BSQQQQRZ",
       itemType: "bookSection",
       title: "A Chapter",
       bookTitle: "The Book",
@@ -298,35 +298,35 @@ describe("get_items_details", () => {
     const { mock } = createZoteroApiMock([bookSectionFixture]);
     const result = await handleToolCall(
       "get_items_details",
-      { item_keys: ["BS00001"] },
+      { item_keys: ["BSQQQQRZ"] },
       mock,
       TEST_USER_ID
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed["BS00001"].bookTitle).toBe("The Book");
-    expect(parsed["BS00001"].pages).toBe("10-20");
-    expect(parsed["BS00001"].publisher).toBe("Publisher");
+    expect(parsed["BSQQQQRZ"].bookTitle).toBe("The Book");
+    expect(parsed["BSQQQQRZ"].pages).toBe("10-20");
+    expect(parsed["BSQQQQRZ"].publisher).toBe("Publisher");
   });
 
   it("excludes structural fields (key, version, collections, tags) and keeps structured creators", async () => {
     const { mock } = createZoteroApiMock([fullItemFixture]);
     const result = await handleToolCall(
       "get_items_details",
-      { item_keys: ["ABC12345"] },
+      { item_keys: ["ABCR2345"] },
       mock,
       TEST_USER_ID
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed["ABC12345"]).not.toHaveProperty("key");
-    expect(parsed["ABC12345"]).not.toHaveProperty("version");
-    expect(parsed["ABC12345"]).not.toHaveProperty("collections");
-    expect(parsed["ABC12345"]).not.toHaveProperty("tags");
-    expect(parsed["ABC12345"].creators).toEqual(fullItemFixture.creators);
-    expect(parsed["ABC12345"]).not.toHaveProperty("dateAdded");
+    expect(parsed["ABCR2345"]).not.toHaveProperty("key");
+    expect(parsed["ABCR2345"]).not.toHaveProperty("version");
+    expect(parsed["ABCR2345"]).not.toHaveProperty("collections");
+    expect(parsed["ABCR2345"]).not.toHaveProperty("tags");
+    expect(parsed["ABCR2345"].creators).toEqual(fullItemFixture.creators);
+    expect(parsed["ABCR2345"]).not.toHaveProperty("dateAdded");
     // authors is the formatted version of creators
-    expect(parsed["ABC12345"].authors).toBe("John Smith, Jane Doe");
+    expect(parsed["ABCR2345"].authors).toBe("John Smith, Jane Doe");
   });
 
   it("returns error for empty item_keys array", async () => {
@@ -346,7 +346,7 @@ describe("get_items_details", () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall(
       "get_items_details",
-      { item_keys: ["NONEXIST"] },
+      { item_keys: ["NPNEXIST"] },
       mock,
       TEST_USER_ID
     );
@@ -372,7 +372,7 @@ describe("search_library", () => {
     expect(parsed).toHaveLength(1);
     expect(parsed[0].title).toBe("Deep Learning for Natural Language Processing");
     expect(parsed[0].authors).toBe("John Smith, Jane Doe");
-    expect(parsed[0].key).toBe("ABC12345");
+    expect(parsed[0].key).toBe("ABCR2345");
   });
 
   it("passes query and default sort params to API", async () => {
@@ -1099,13 +1099,13 @@ describe("get_item_fulltext", () => {
 
     const result = await handleToolCall(
       "get_item_fulltext",
-      { item_key: "ABC12345" },
+      { item_key: "ABCR2345" },
       mock,
       TEST_USER_ID
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.item_key).toBe("ABC12345");
+    expect(parsed.item_key).toBe("ABCR2345");
     expect(parsed.attachment_key).toBe("ATTACH01");
     expect(parsed.text).toBe("This is the full text of the paper.");
     expect(parsed.truncated).toBe(false);
@@ -1131,7 +1131,7 @@ describe("get_item_fulltext", () => {
 
     const result = await handleToolCall(
       "get_item_fulltext",
-      { item_key: "ABC12345" },
+      { item_key: "ABCR2345" },
       mock,
       TEST_USER_ID
     );
@@ -1150,7 +1150,7 @@ describe("get_item_fulltext", () => {
 
     const result = await handleToolCall(
       "get_item_fulltext",
-      { item_key: "ABC12345" },
+      { item_key: "ABCR2345" },
       mock,
       TEST_USER_ID
     );
@@ -1172,7 +1172,7 @@ describe("get_item_fulltext", () => {
 
     const result = await handleToolCall(
       "get_item_fulltext",
-      { item_key: "ABC12345" },
+      { item_key: "ABCR2345" },
       mock,
       TEST_USER_ID
     );
@@ -1262,7 +1262,7 @@ describe("get_item_fulltext", () => {
 
     const result = await handleToolCall(
       "get_item_fulltext",
-      { item_key: "ABC12345", max_characters: 100 },
+      { item_key: "ABCR2345", max_characters: 100 },
       mock,
       TEST_USER_ID
     );
@@ -1281,7 +1281,7 @@ describe("get_item_fulltext", () => {
 
     const result = await handleToolCall(
       "get_item_fulltext",
-      { item_key: "NONEXIST" },
+      { item_key: "NPNEXIST" },
       mock,
       TEST_USER_ID
     );
@@ -2151,7 +2151,7 @@ describe("delete_items", () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall(
       "delete_items",
-      { item_keys: ["KEY1"] },
+      { item_keys: ["KEYRZZZZ"] },
       mock,
       TEST_USER_ID,
       "none"
@@ -2168,7 +2168,7 @@ describe("delete_items", () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall(
       "delete_items",
-      { item_keys: ["KEY1"] },
+      { item_keys: ["KEYRZZZZ"] },
       mock,
       TEST_USER_ID
     );
@@ -2179,13 +2179,13 @@ describe("delete_items", () => {
 
   it("deletes items successfully with 'items' mode", async () => {
     const itemsData = [
-      { key: "KEY1", version: 5, title: "Item 1" },
-      { key: "KEY2", version: 3, title: "Item 2" },
+      { key: "KEYRZZZZ", version: 5, title: "Item 1" },
+      { key: "KEY2ZZZZ", version: 3, title: "Item 2" },
     ];
     const { mock, deleteStub } = createZoteroApiMock(itemsData);
     const result = await handleToolCall(
       "delete_items",
-      { item_keys: ["KEY1", "KEY2"] },
+      { item_keys: ["KEYRZZZZ", "KEY2ZZZZ"] },
       mock,
       TEST_USER_ID,
       "items"
@@ -2193,17 +2193,17 @@ describe("delete_items", () => {
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.deleted_count).toBe(2);
-    expect(parsed.deleted_keys).toEqual(expect.arrayContaining(["KEY1", "KEY2"]));
+    expect(parsed.deleted_keys).toEqual(expect.arrayContaining(["KEYRZZZZ", "KEY2ZZZZ"]));
     expect(parsed.not_found).toBeUndefined();
     expect(deleteStub).toHaveBeenCalled();
   });
 
   it("deletes items successfully with 'all' mode", async () => {
-    const itemsData = [{ key: "KEY1", version: 2, title: "Item 1" }];
+    const itemsData = [{ key: "KEYRZZZZ", version: 2, title: "Item 1" }];
     const { mock } = createZoteroApiMock(itemsData);
     const result = await handleToolCall(
       "delete_items",
-      { item_keys: ["KEY1"] },
+      { item_keys: ["KEYRZZZZ"] },
       mock,
       TEST_USER_ID,
       "all"
@@ -2211,15 +2211,15 @@ describe("delete_items", () => {
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.deleted_count).toBe(1);
-    expect(parsed.deleted_keys).toEqual(["KEY1"]);
+    expect(parsed.deleted_keys).toEqual(["KEYRZZZZ"]);
   });
 
   it("reports not_found keys in partial deletion", async () => {
-    const itemsData = [{ key: "KEY1", version: 4, title: "Item 1" }];
+    const itemsData = [{ key: "KEYRZZZZ", version: 4, title: "Item 1" }];
     const { mock } = createZoteroApiMock(itemsData);
     const result = await handleToolCall(
       "delete_items",
-      { item_keys: ["KEY1", "MISSING1"] },
+      { item_keys: ["KEYRZZZZ", "MISSINGR"] },
       mock,
       TEST_USER_ID,
       "items"
@@ -2227,15 +2227,15 @@ describe("delete_items", () => {
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.deleted_count).toBe(1);
-    expect(parsed.deleted_keys).toEqual(["KEY1"]);
-    expect(parsed.not_found).toEqual(["MISSING1"]);
+    expect(parsed.deleted_keys).toEqual(["KEYRZZZZ"]);
+    expect(parsed.not_found).toEqual(["MISSINGR"]);
   });
 
   it("returns error when all keys not found", async () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall(
       "delete_items",
-      { item_keys: ["MISS1", "MISS2"] },
+      { item_keys: ["MISSRZZZ", "MISS2ZZZ"] },
       mock,
       TEST_USER_ID,
       "items"
@@ -2247,7 +2247,7 @@ describe("delete_items", () => {
   });
 
   it("returns error on version conflict (412)", async () => {
-    const itemsData = [{ key: "KEY1", version: 5, title: "Item 1" }];
+    const itemsData = [{ key: "KEYRZZZZ", version: 5, title: "Item 1" }];
     const { mock, getStub, deleteStub } = createZoteroApiMock(itemsData);
     const error412 = new Error("Precondition failed") as Error & { response?: { status: number } };
     error412.response = { status: 412 };
@@ -2256,7 +2256,7 @@ describe("delete_items", () => {
 
     const result = await handleToolCall(
       "delete_items",
-      { item_keys: ["KEY1"] },
+      { item_keys: ["KEYRZZZZ"] },
       mock,
       TEST_USER_ID,
       "items"
@@ -2269,20 +2269,20 @@ describe("delete_items", () => {
 
   it("passes correct keys to delete API call", async () => {
     const itemsData = [
-      { key: "KEY1", version: 10, title: "Item 1" },
-      { key: "KEY2", version: 8, title: "Item 2" },
+      { key: "KEYRZZZZ", version: 10, title: "Item 1" },
+      { key: "KEY2ZZZZ", version: 8, title: "Item 2" },
     ];
     const { mock, deleteStub } = createZoteroApiMock(itemsData);
     await handleToolCall(
       "delete_items",
-      { item_keys: ["KEY1", "KEY2"] },
+      { item_keys: ["KEYRZZZZ", "KEY2ZZZZ"] },
       mock,
       TEST_USER_ID,
       "items"
     );
 
     expect(deleteStub).toHaveBeenCalledWith(
-      expect.arrayContaining(["KEY1", "KEY2"])
+      expect.arrayContaining(["KEYRZZZZ", "KEY2ZZZZ"])
     );
   });
 });

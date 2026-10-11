@@ -2,7 +2,7 @@ import { vi } from "vitest";
 
 // Fixture: full item with all fields
 export const fullItemFixture = {
-  key: "ABC12345",
+  key: "ABCR2345",
   itemType: "journalArticle",
   title: "Deep Learning for Natural Language Processing",
   creators: [
@@ -21,7 +21,7 @@ export const fullItemFixture = {
 
 // Fixture: minimal item (tests fallback values)
 export const minimalItemFixture = {
-  key: "MIN00001",
+  key: "MINQQQQR",
   itemType: "book",
 };
 

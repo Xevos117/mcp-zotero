@@ -66,22 +66,22 @@ describe("e2e: libreria di gruppo (ZOTERO_LIBRARY_TYPE=group, ZOTERO_LIBRARY_ID=
   });
 
   it("E2E-G02 lettura: search_library, get_collections, get_collection_items, get_items_details", async () => {
-    fake.net.on("GET", GITEMS, zLibraryQuery([article("AAAA1111"), article("BBBB2222")]));
+    fake.net.on("GET", GITEMS, zLibraryQuery([article("AAAARRRR"), article("BBBB2222")]));
     fake.net.on("GET", `${GBASE}/collections`, zList([collection("COL00001", "Team")]));
-    fake.net.on("GET", `${GBASE}/collections/COL00001/items`, zList([article("AAAA1111")]));
+    fake.net.on("GET", `${GBASE}/collections/COL00001/items`, zList([article("AAAARRRR")]));
 
     const search = await call(s, "search_library", { query: "x" });
-    expect(search.json.map((i: { key: string }) => i.key)).toEqual(["AAAA1111", "BBBB2222"]);
+    expect(search.json.map((i: { key: string }) => i.key)).toEqual(["AAAARRRR", "BBBB2222"]);
     expect((await call(s, "get_collections", {})).json.map((c: { key: string }) => c.key)).toEqual(["COL00001"]);
     expect((await call(s, "get_collection_items", { collectionKey: "COL00001" })).json).toMatchObject({ total_items: 1 });
     expect((await call(s, "get_items_details", { item_keys: ["BBBB2222"] })).json.BBBB2222).toMatchObject({ title: "Article BBBB2222" });
   });
 
   it("E2E-G03 get_item_fulltext legge /groups/777/items/{att}/fulltext", async () => {
-    fake.net.on("GET", `${GITEMS}/AAAA1111`, zSingle(article("AAAA1111")));
-    fake.net.on("GET", `${GITEMS}/AAAA1111/children`, zList([pdfAttachment("ATT00001", "AAAA1111")]));
+    fake.net.on("GET", `${GITEMS}/AAAARRRR`, zSingle(article("AAAARRRR")));
+    fake.net.on("GET", `${GITEMS}/AAAARRRR/children`, zList([pdfAttachment("ATT00001", "AAAARRRR")]));
     fake.net.on("GET", `${GITEMS}/ATT00001/fulltext`, jsonResponse({ content: "Testo di gruppo", indexedPages: 1, totalPages: 1 }));
-    const out = await call(s, "get_item_fulltext", { item_key: "AAAA1111" });
+    const out = await call(s, "get_item_fulltext", { item_key: "AAAARRRR" });
     expect(out.json).toMatchObject({ attachment_key: "ATT00001", text: "Testo di gruppo" });
   });
 
@@ -127,30 +127,30 @@ describe("e2e: libreria di gruppo (ZOTERO_LIBRARY_TYPE=group, ZOTERO_LIBRARY_ID=
   });
 
   it("E2E-G07 delete_items e delete_collection su /groups/777/", async () => {
-    fake.net.on("GET", GITEMS, zLibraryQuery([article("AAAA1111")], 40));
+    fake.net.on("GET", GITEMS, zLibraryQuery([article("AAAARRRR")], 40));
     fake.net.on("DELETE", GITEMS, zDeleted());
-    expect((await call(s, "delete_items", { item_keys: ["AAAA1111"] })).json).toMatchObject({ deleted_count: 1 });
+    expect((await call(s, "delete_items", { item_keys: ["AAAARRRR"] })).json).toMatchObject({ deleted_count: 1 });
     fake.net.on("GET", `${GBASE}/collections/COL00001`, zSingle(collection("COL00001", "Team"), 9));
     fake.net.on("DELETE", `${GBASE}/collections/COL00001`, zDeleted());
     expect((await call(s, "delete_collection", { collection_key: "COL00001" })).json).toMatchObject({ deleted: true });
   });
 
   it("E2E-G08 inject_citations: URI http://zotero.org/groups/777/items/{key} nel field code", async () => {
-    fake.net.on("GET", `${GITEMS}/AAAA1111`, zSingle(article("AAAA1111")));
+    fake.net.on("GET", `${GITEMS}/AAAARRRR`, zSingle(article("AAAARRRR")));
     const input = join(cwd, "group.docx");
-    await writeFile(input, await makeDocx(para("See ", zcite({ keys: "AAAA1111" }))));
+    await writeFile(input, await makeDocx(para("See ", zcite({ keys: "AAAARRRR" }))));
     const out = await call(s, "inject_citations", { file_path: input });
     expect(out.json).toMatchObject({ citations_injected: 1 });
     const xml = await readDocumentXml(await readFile(join(cwd, "group_cited.docx")));
-    expect(xml).toContain("http://zotero.org/groups/777/items/AAAA1111");
+    expect(xml).toContain("http://zotero.org/groups/777/items/AAAARRRR");
     expect(xml).not.toContain("zotero.org/users/");
   });
 
   it("E2E-G09 find_and_attach_pdfs (dry_run) legge item e children dal gruppo", async () => {
-    fake.net.on("GET", GITEMS, zLibraryQuery([article("AAAA1111")]));
-    fake.net.on("GET", `${GITEMS}/AAAA1111/children`, zList([]));
-    installUnpaywall(fake.net, { "10.1000/aaaa1111": oaGold("https://oa.example.org/a.pdf") });
-    const out = await call(s, "find_and_attach_pdfs", { item_keys: ["AAAA1111"], dry_run: true });
+    fake.net.on("GET", GITEMS, zLibraryQuery([article("AAAARRRR")]));
+    fake.net.on("GET", `${GITEMS}/AAAARRRR/children`, zList([]));
+    installUnpaywall(fake.net, { "10.1000/aaaarrrr": oaGold("https://oa.example.org/a.pdf") });
+    const out = await call(s, "find_and_attach_pdfs", { item_keys: ["AAAARRRR"], dry_run: true });
     expect(out.json.results[0]).toMatchObject({ status: "available" });
   });
 
@@ -175,9 +175,9 @@ describe("e2e: libreria di gruppo (ZOTERO_LIBRARY_TYPE=group, ZOTERO_LIBRARY_ID=
     const cases: Array<[string, Record<string, unknown>]> = [
       ["get_collections", { library_id: "abc" }],
       ["search_library", { library_type: "group", library_id: "777/../../users/1" }],
-      ["get_item_fulltext", { item_key: "AAAA1111", library_id: "12a" }],
+      ["get_item_fulltext", { item_key: "AAAARRRR", library_id: "12a" }],
       ["create_collection", { name: "X", library_id: "" }],
-      ["delete_items", { item_keys: ["AAAA1111"], library_id: "-1" }],
+      ["delete_items", { item_keys: ["AAAARRRR"], library_id: "-1" }],
       ["get_collections", { library_type: "team" }],
     ];
     for (const [tool, args] of cases) {

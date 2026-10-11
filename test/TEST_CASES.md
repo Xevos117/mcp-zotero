@@ -112,6 +112,7 @@ test normali. Non restano `it.fails` nella suite.
 | GID-12 | item_keys mancante/stringa/numeri, include_abstract non booleano | isError |
 | GID-13/14 | HTTP 4xx/5xx, rete | isError |
 | GID-15 | creators strutturati (cognomi multiparola, editor istituzionale) | `creators` come in Zotero accanto ad `authors`; assente se vuoto |
+| GID-16 | chiavi malformate / risposta con voci non richieste | errore `invalid_keys` senza richieste / solo le voci richieste |
 
 ## get_item_fulltext (`get-item-fulltext.test.ts`)
 | ID | Scenario | Atteso |
@@ -240,6 +241,8 @@ test normali. Non restano `it.fails` nella suite.
 | DI-10/11/12 | 4xx/5xx su GET o DELETE, rete | isError |
 | DI-13/14 | mancante, `[]`, stringa, 51 chiavi / esattamente 50 | isError / accettato |
 | DI-15 | validazione prima del guard | isError |
+| DI-16 | chiave minuscola, con `0`, con virgola o spazio | errore `invalid_keys` ("Invalid item key(s)…"), **nessuna richiesta** (prima della 2.0.1 l'API ignorava il filtro e delete_items cancellava voci estranee) |
+| DI-17 | chiave valida + malformata, API che restituisce la libreria intera | cancellata solo la chiave valida richiesta, `invalid_keys` per l'altra |
 
 ## import_pdf_to_zotero (`import-pdf-to-zotero.test.ts`)
 | ID | Scenario | Atteso |
@@ -288,6 +291,7 @@ test normali. Non restano `it.fails` nella suite.
 | FA-27 | URL senza .pdf con Content-Disposition | filename dall'header |
 | FA-28 | solo landing page dell'editore | landing_page_only, il motivo nomina l'editore |
 | FA-29 | stesso scenario della pipeline condivisa | campi per PDF identici a `attachOpenAccessPdf` chiamata direttamente |
+| FA-30 | chiave malformata | `Invalid item key`, nessuna richiesta |
 
 ## Pipeline PDF open access condivisa (`test/utils/oa-pdf.test.ts`)
 `attachOpenAccessPdf` (src/utils/oa-pdf.ts) è l'unico percorso usato da add_items_by_doi e find_and_attach_pdfs.
@@ -389,6 +393,8 @@ Server avviato con `ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID=777` (e `ZOTE
 | E2E-G14 | `ZOTERO_LIBRARY_ID` non numerico / `ZOTERO_LIBRARY_TYPE` sconosciuto | exit code 1 con messaggio dedicato |
 
 ## Lacune note
+- Le fixture usano chiavi nel formato reale di Zotero (8 caratteri da `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`): chiavi con 0/1/O o
+  più corte vengono rifiutate prima di qualsiasi richiesta.
 - Il fake segue il comportamento osservato nel test dal vivo del 2026-10-10 (itemKey, 404 delle collezioni,
   versioni, DELETE definitiva). Il 413 oltre 50 oggetti in scrittura resta emulato secondo la documentazione v3.
 - `src/server.ts` non esporta la classe `ZoteroServer`; costruttore e lettura dell'env sono coperti solo dagli e2e.

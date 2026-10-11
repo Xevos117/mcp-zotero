@@ -36,17 +36,17 @@ const USER_ID = "12345";
 const GROUP_ID = "777";
 const ENV_KEYS = ["ZOTERO_LIBRARY_TYPE", "ZOTERO_LIBRARY_ID", "ZOTERO_USER_ID", "ZOTERO_API_KEY"];
 
-const item = { key: "ITEM0001", version: 3, itemType: "journalArticle", title: "T" };
+const item = { key: "ITEMQQQR", version: 3, itemType: "journalArticle", title: "T" };
 
 const toolCases: Array<{ tool: string; args: Record<string, unknown> }> = [
   { tool: "get_collections", args: {} },
   { tool: "get_collection_items", args: { collectionKey: "COLL0001" } },
-  { tool: "get_items_details", args: { item_keys: ["ITEM0001"] } },
+  { tool: "get_items_details", args: { item_keys: ["ITEMQQQR"] } },
   { tool: "search_library", args: { query: "x" } },
   { tool: "create_collection", args: { name: "New" } },
   { tool: "add_items", args: { items: [{ itemType: "book", title: "B" }] } },
   { tool: "add_linked_url_attachment", args: { url: "https://example.com/a.pdf" } },
-  { tool: "delete_items", args: { item_keys: ["ITEM0001"] } },
+  { tool: "delete_items", args: { item_keys: ["ITEMQQQR"] } },
   { tool: "delete_collection", args: { collection_key: "COLL0001" } },
 ];
 

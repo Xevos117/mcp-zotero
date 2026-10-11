@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.1] - Unreleased
+
+### Correzioni
+
+- **Data loss in `delete_items` with malformed item keys** (every release with `delete_items`, 1.x and 2.0.0). When none of the keys in an `itemKey` filter is well-formed (e.g. lowercase `zzzzzzzz`, or a typo containing `0`, `1` or `O`, which Zotero keys never contain), the Zotero Web API ignores the filter and returns the whole library. `delete_items` (with `UNSAFE_OPERATIONS=items` or `all`) took those items for the requested ones and **permanently deleted** up to 50 unrelated items; `get_items_details` returned unrelated items and `find_and_attach_pdfs` could attach PDFs to them.
+  - Item keys are now validated against Zotero's key format (8 characters from `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`); malformed keys are never sent to the API and are reported as `invalid_keys` ("Invalid item key(s)…"), with no request at all when no key is valid.
+  - Defense in depth: only items whose key was requested are used; `delete_items` deletes only requested keys.
+
 ## [2.0.0] - 2026-10-10
 
 Toolchain and dependency upgrade, plus group library support. Tool names are unchanged; the only `tools/list` differences from 1.0.9 are the optional `library_type` / `library_id` arguments and the updated `get_user_id` and `delete_items` descriptions.

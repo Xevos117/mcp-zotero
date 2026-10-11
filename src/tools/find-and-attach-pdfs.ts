@@ -76,7 +76,7 @@ export async function handleFindAndAttachPdfs(
     }
 
     // 2. Batch-fetch item metadata to get DOIs
-    const { items: metaItems } = await fetchItemsByKeys(
+    const { items: metaItems, invalidKeys } = await fetchItemsByKeys(
       (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
       keys
     );
@@ -93,7 +93,8 @@ export async function handleFindAndAttachPdfs(
     const targets: OaPdfTarget[] = [];
     for (const key of keys) {
       const item = itemMap.get(key);
-      if (!item) preResults.set(key, { item_key: key, doi: null, status: "error", reason: "Item not found" });
+      if (invalidKeys.includes(key)) preResults.set(key, { item_key: key, doi: null, status: "error", reason: "Invalid item key" });
+      else if (!item) preResults.set(key, { item_key: key, doi: null, status: "error", reason: "Item not found" });
       else if (!item.DOI) preResults.set(key, { item_key: key, doi: null, status: "error", reason: "No DOI" });
       else targets.push({ itemKey: key, doi: item.DOI });
     }

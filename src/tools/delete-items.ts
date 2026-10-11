@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
-import { fetchItemsByKeys } from "../utils/pagination.js";
+import { fetchItemsByKeys, INVALID_KEYS_MESSAGE } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
@@ -44,13 +44,17 @@ export async function handleDeleteItems(
   }
 
   try {
-    const { items, version: libraryVersion } = await fetchItemsByKeys(
+    const { items, version: libraryVersion, invalidKeys } = await fetchItemsByKeys(
       (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
       item_keys
     );
 
+    if (invalidKeys.length === item_keys.length) {
+      return formatErrorResponse(INVALID_KEYS_MESSAGE, { invalid_keys: invalidKeys, status: "invalid_keys" });
+    }
+
     const foundKeys = new Set(items.map((item) => item.key).filter(Boolean));
-    const notFoundKeys = item_keys.filter((k) => !foundKeys.has(k));
+    const notFoundKeys = item_keys.filter((k) => !foundKeys.has(k) && !invalidKeys.includes(k));
 
     if (foundKeys.size === 0) {
       return formatErrorResponse("No items found for the given keys", {
@@ -67,7 +71,8 @@ export async function handleDeleteItems(
       });
     }
 
-    const keysToDelete = [...foundKeys] as string[];
+    // only keys the caller asked for, whatever the API returned
+    const keysToDelete = item_keys.filter((k) => foundKeys.has(k));
 
     await zoteroApi
       .library(libraryType, libraryId)
@@ -82,6 +87,9 @@ export async function handleDeleteItems(
 
     if (notFoundKeys.length > 0) {
       result.not_found = notFoundKeys;
+    }
+    if (invalidKeys.length > 0) {
+      result.invalid_keys = invalidKeys;
     }
 
     return formatJsonResult(result);
