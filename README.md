@@ -226,9 +226,46 @@ claude mcp add-json "zotero" '{"command":"npx","args":["tsx","src/server.ts"],"e
 ```bash
 npm install
 npm run build          # Compile TypeScript
-npm test               # Run tests (vitest, 404 tests)
+npm test               # Unit and per-tool tests (vitest, fetch faked, ~1000 tests)
+npm run test:e2e       # Built server over stdio against a local fake Zotero API
+npm run smoke          # Quick stdio smoke test of the built server (user + group library)
 npx tsx src/server.ts  # Run directly without building
 ```
+
+### Testing
+
+| Layer | Command | Runs on | What it covers |
+|---|---|---|---|
+| Unit / per tool | `npm test` | every PR (Node 22, 24, 26) | every tool through a real MCP client, Zotero faked at the `fetch` level; produced `.docx` files are validated against the official CSL schemas and rendered with citeproc-js ([test/helpers/docx-validate.ts](test/helpers/docx-validate.ts)) |
+| E2E + smoke | `npm run test:e2e`, `npm run smoke` | every PR | the compiled server over stdio, user and group libraries |
+| Live | `npm run test:live` | PRs from this repository, `main`, nightly | the real Zotero Web API on a dedicated test account ([test/live](test/live)); skipped unless `ZOTERO_TEST_API_KEY` is set |
+| Agent smoke | [workflow](.github/workflows/claude-agent-smoke.yml) | PRs from this repository, `main` | a Claude Code agent uses the server like a user, following the versioned skill [`.claude/skills/test-mcp-zotero`](.claude/skills/test-mcp-zotero/SKILL.md); the verdict comes from [test/live/verify-claims.mjs](test/live/verify-claims.mjs), not from the agent |
+| Word | manual | every release | [test/WORD_CHECKLIST.md](test/WORD_CHECKLIST.md): open an injected document in Word with the Zotero plugin |
+
+Every test case is listed in [test/TEST_CASES.md](test/TEST_CASES.md).
+
+**Live tests locally** use only `ZOTERO_TEST_*` variables, never your `ZOTERO_API_KEY`:
+
+```bash
+ZOTERO_TEST_API_KEY=... ZOTERO_TEST_USER_ID=... UNPAYWALL_EMAIL=you@example.org npm run test:live
+```
+
+Against a personal library add `ZOTERO_LIVE_SAFE_MODE=1`: the suite only creates items and collections
+named `mzt-<runId>…` and tagged `mzt-run:<runId>`, deletes only those, and skips collection deletion and
+group writes. A dedicated test account is marked by a collection named `__mzt_disposable__`.
+
+**Dependencies** are updated monthly by a Claude Code agent ([workflow](.github/workflows/deps-update.yml),
+skill [`.claude/skills/deps-update`](.claude/skills/deps-update/SKILL.md)); patch-only PRs are auto-merged after
+all required checks pass, anything else waits for review. GitHub Actions versions are updated by Dependabot.
+
+### Releasing
+
+1. Update `CHANGELOG.md` (move `Unreleased` to the new version) and `version` in `package.json`.
+2. Make sure CI, live tests and the agent smoke test are green on `main`.
+3. Run the manual [Word checklist](test/WORD_CHECKLIST.md) on a document injected by the release candidate
+   and record the results in its log.
+4. Publish the GitHub release: the [release workflow](.github/workflows/release.yml) runs the tests, publishes
+   to npm and attaches the skill zips.
 
 ### Debug with MCP Inspector
 

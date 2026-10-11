@@ -59,6 +59,21 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 `.claude/agent-smoke/settings.json` (Bash allowlist, delete policy, audit log used as evidence by
 `test/live/verify-claims.mjs`). Local runs use the same pieces: `test/live/agent/README.md`.
 
+## CI workflows and agents
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging on Node 22/24/26 |
+| `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `npm run test:live` in environment `zotero-live`; always cleans up (`ZOTERO_LIVE_CLEANUP_ONLY=1`), uploads a scrubbed report; nightly failures open/update one issue |
+| `claude-agent-smoke.yml` | same-repo PRs, `main`, manual | a Claude Code agent follows `.claude/skills/test-mcp-zotero`; `test/live/verify-claims.mjs` decides the result |
+| `deps-update.yml` | 1st of the month, manual | a Claude Code agent follows `.claude/skills/deps-update`; `scripts/deps-merge-gate.mjs` enables auto-merge only for patch-only PRs |
+| `release.yml` | GitHub release published, manual | tests, npm publish, skill zips (owner only) |
+
+Path filters are job-level `if` conditions (a skipped job satisfies a required check; a workflow
+filtered by `on.paths` would leave the check pending). Actions in the new workflows are pinned by
+SHA; Dependabot updates them. On pull requests claude-code-action restores `.claude/` and
+`CLAUDE.md` from the base branch, so a PR cannot change the instructions its own agent run follows.
+
 ## Scheduled workflows
 
 GitHub disables `schedule:` triggers after 60 days without repository activity on public repos.

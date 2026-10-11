@@ -4,9 +4,12 @@ Suite aggiunta in `test/` (i test storici restano in `src/**/*.test.ts`).
 
 | Comando | Cosa esegue | Durata indicativa |
 |---|---|---|
-| `npx vitest run` (= `npm test`) | unit: `src/**` + `test/tools/**` + `test/utils/**` + `test/skills/**` | ~10 s |
+| `npx vitest run` (= `npm test`) | unit: `src/**` + `test/tools/**` + `test/utils/**` + `test/skills/**` (~1000 casi) | ~10 s |
 | `npm run test:e2e` | `npm run build`, poi `test/e2e/**` con `vitest.e2e.config.ts` | ~4 s + build |
+| `npm run smoke` | server compilato su stdio, libreria utente e di gruppo, fetch simulata; controllo strutturale del docx | ~2 s |
 | `npm run test:live` | `npm run build`, poi `test/live/**/*.live.test.ts` con `vitest.live.config.ts` contro un account Zotero reale (solo con `ZOTERO_TEST_API_KEY`, vedi sezione LIVE) | ~2-3 min |
+| agente smoke | workflow `claude-agent-smoke.yml` o `/test-mcp-zotero` in locale (sezione "Agente smoke") | ~1-5 min |
+| checklist Word | a mano a ogni release (`test/WORD_CHECKLIST.md`) | ~15 min |
 
 Timeout: unit `testTimeout`/`hookTimeout` 10 s (`vitest.config.ts`); e2e 60 s, ogni chiamata MCP 15 s,
 processo server ucciso con SIGKILL se ancora vivo 5 s dopo la chiusura.
