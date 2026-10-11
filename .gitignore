@@ -57,7 +57,19 @@ local/
 *e.md
 !LICENSE
 !skills/**/*.md
-.claude/
+!CLAUDE.md
+!**/SKILL.md
+# Local Claude Code state stays private; versioned project skills are tracked
+.claude/*
+!.claude/skills/
+!.claude/skills/**/*.md
+!.claude/agent-smoke/
+!.claude/agent-smoke/**
 
 # Vitest 5 output (attachments, reports)
 .vitest/
+
+# Live/agent test outputs (scrubbed copies are uploaded as CI artifacts)
+agent-out/
+agent-audit/
+live-artifacts/

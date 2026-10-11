@@ -29,7 +29,7 @@ Supported attributes (any order):
   - suffix: text after citation — ", emphasis added"
 
 OUTPUT:
-A new .docx file (original filename with _cited suffix) with Zotero field codes and a ZOTERO_BIBL bibliography at the end.
+A new .docx file (original filename with _cited suffix) with Zotero field codes and a ZOTERO_BIBL bibliography at the end. A cited key that is not in the library, or that is not letters and digits only, is an error and no file is written.
 
 NOTE: If the inject-citations skill is available, prefer the skill workflow (runs in sandbox, no filesystem dependency). This tool serves as the primary path when the skill is not available.`,
   inputSchema: {

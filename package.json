@@ -28,7 +28,9 @@
     "smoke": "node scripts/smoke-stdio.mjs",
     "start": "node build/server.js",
     "prepublishOnly": "npm test && npm run build",
-    "test:e2e": "npm run build && vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "npm run build && vitest run --config vitest.e2e.config.ts",
+    "test:live": "npm run build && vitest run --config vitest.live.config.ts",
+    "test:live:cleanup": "node test/live/cleanup.mjs"
   },
   "keywords": [
     "mcp",
@@ -54,6 +56,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
+    "ajv": "^8.20.0",
+    "citeproc": "^2.4.63",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   }

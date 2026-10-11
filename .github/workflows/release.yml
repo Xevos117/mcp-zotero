@@ -10,20 +10,22 @@ on:
         required: true
 
 permissions:
-  contents: write   # needed to upload release assets
+  contents: read
 
 jobs:
   # ── 1. Run tests before publishing anything ──────────────────
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        timeout-minutes: 3
       - uses: actions/setup-node@v7
+        timeout-minutes: 3
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
         timeout-minutes: 5
       - run: npm run build
         timeout-minutes: 3
@@ -31,40 +33,60 @@ jobs:
         timeout-minutes: 5
       - run: npm run smoke
         timeout-minutes: 2
+      - name: E2E tests (built server over stdio, fake Zotero API)
+        run: npx vitest run --config vitest.e2e.config.ts
+        timeout-minutes: 5
 
   # ── 2. Publish to npm ───────────────────────────────────────
+  # Ready for npm Trusted Publishing (OIDC + provenance). Until the owner configures the trusted
+  # publisher for this repository/workflow/environment on npmjs.com, NODE_AUTH_TOKEN (NPM_TOKEN) is the
+  # fallback; once trusted publishing works, delete the NPM_TOKEN secret and the env line below.
+  # Tests run only in the `test` job: publish uses --ignore-scripts, so prepublishOnly never runs
+  # with publishing credentials in the environment.
   npm-publish:
     needs: test
     runs-on: ubuntu-latest
     environment: release
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # npm Trusted Publishing and provenance
     steps:
       - uses: actions/checkout@v7
+        timeout-minutes: 3
 
       - uses: actions/setup-node@v7
+        timeout-minutes: 3
         with:
           node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - run: npm ci
+      # Trusted Publishing needs npm >= 11.5.1; exact version, bumped deliberately (Dependabot does not track it)
+      - run: npm install -g npm@11.21.0 --ignore-scripts
+        timeout-minutes: 3
+      - run: npm ci --ignore-scripts
         timeout-minutes: 5
       - run: npm run build
         timeout-minutes: 3
-      - run: npm publish --access public
+      - run: npm publish --access public --provenance --ignore-scripts
         timeout-minutes: 5
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # fallback until Trusted Publishing is configured
 
   # ── 3. Generate skill zips and attach to the release ────────
   skill-zips:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to create the release and upload its assets
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        timeout-minutes: 3
 
       - name: Create skill zip archives
+        timeout-minutes: 3
         run: |
           mkdir -p dist-skills
           for skill_dir in skills/*/; do
@@ -75,10 +97,12 @@ jobs:
 
       - name: Resolve or create release
         id: tag
+        timeout-minutes: 3
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed through env, never interpolated into the script (workflow_dispatch input).
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
           # Create the release if it doesn't exist yet
           if ! gh release view "$TAG" > /dev/null 2>&1; then
             gh release create "$TAG" --title "$TAG" --generate-notes
@@ -86,9 +110,11 @@ jobs:
           echo "name=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Upload zips to GitHub Release
+        timeout-minutes: 3
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
         run: |
           for zip_file in dist-skills/*.zip; do
-            gh release upload "${{ steps.tag.outputs.name }}" "$zip_file" --clobber
+            gh release upload "$TAG" "$zip_file" --clobber
           done

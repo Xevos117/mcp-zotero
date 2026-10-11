@@ -1,7 +1,13 @@
+import { fetchWithTimeout, TIMEOUTS } from "./timeouts.js";
+
 export interface FetchRetryOptions {
   maxRetries?: number;
   baseDelayMs?: number;
   retryableStatuses?: number[];
+  /** Bound for each attempt (default TIMEOUTS.metadataMs); a timeout is not retried. */
+  timeoutMs?: number;
+  /** Operation name used in the timeout error (e.g. "DOI resolution"). */
+  label?: string;
 }
 
 const DEFAULT_MAX_RETRIES = 3;
@@ -34,7 +40,7 @@ export async function fetchWithRetry(
   let lastResponse: Response | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const response = await fetch(url, init);
+    const response = await fetchWithTimeout(url, init ?? {}, options?.timeoutMs ?? TIMEOUTS.metadataMs, options?.label ?? "Request");
     lastResponse = response;
 
     if (!retryableStatuses.includes(response.status) || attempt === maxRetries) {

@@ -19,6 +19,8 @@ export interface FakeRequest {
   text(): string;
   json<T = unknown>(): T;
   form(): URLSearchParams;
+  /** Signal passed by the caller (AbortSignal.timeout of the product code), if any. */
+  signal?: AbortSignal;
 }
 
 export type FakeHandler = (req: FakeRequest, hit: number) => Response | Promise<Response>;
@@ -96,6 +98,7 @@ export class FakeNet {
       text: () => (body ? body.toString("utf-8") : ""),
       json: <T>() => JSON.parse(body ? body.toString("utf-8") : "null") as T,
       form: () => new URLSearchParams(body ? body.toString("utf-8") : ""),
+      signal: init?.signal ?? undefined,
     };
     this.calls.push(req);
 
@@ -137,6 +140,30 @@ export function binaryResponse(
   status = 200
 ): Response {
   return new Response(new Uint8Array(data), { status, headers: { "Content-Type": contentType } });
+}
+
+/**
+ * Server che accetta la connessione e non risponde mai: la promessa si chiude solo quando il chiamante
+ * abortisce (come fa fetch reale). Senza signal resta appesa, e il test scade sul suo timeout.
+ */
+export function hang(): FakeHandler {
+  return (req) =>
+    new Promise<Response>((_, reject) => {
+      req.signal?.addEventListener("abort", () => reject(req.signal!.reason), { once: true });
+    });
+}
+
+/** Risponde subito con gli header, poi il corpo si blocca dopo i primi byte finché il chiamante non abortisce. */
+export function stalledBody(contentType = "application/pdf", firstChunk = "%PDF-1.4\n"): FakeHandler {
+  return (req) => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(firstChunk));
+        req.signal?.addEventListener("abort", () => controller.error(req.signal!.reason), { once: true });
+      },
+    });
+    return new Response(stream, { status: 200, headers: { "Content-Type": contentType } });
+  };
 }
 
 /** Handler che simula un errore di rete (DNS, connessione rifiutata, ...). */

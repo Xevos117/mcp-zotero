@@ -22,31 +22,40 @@ export interface Spawned {
   client: Client;
   transport: StdioClientTransport;
   stderr: () => string;
+  /** Bound applied by call() when no explicit timeout is given. */
+  callTimeoutMs: number;
   close(): Promise<void>;
 }
 
-export async function spawnServer(fake: FakeNetServer, cwd: string, extraEnv: Record<string, string>): Promise<Spawned> {
+export interface SpawnOptions {
+  /** Working directory: an empty temp dir, so dotenv in src/server.ts finds no .env. */
+  cwd: string;
+  /** Complete child environment (PATH is added); nothing else is inherited from this process. */
+  env: Record<string, string>;
+  /** Module loaded with `node --import` before the server (e.g. the fetch redirect of the e2e). */
+  preload?: string;
+  connectTimeoutMs?: number;
+  callTimeoutMs?: number;
+}
+
+/** Starts build/server.js on stdio with an explicit env; every wait is bounded. */
+export async function startServerProcess(opts: SpawnOptions): Promise<Spawned> {
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: ["--import", PRELOAD, SERVER],
-    cwd, // cartella vuota: nessun .env raccolto da dotenv
-    env: {
-      PATH: process.env.PATH ?? "",
-      ZOTERO_API_KEY: "e2e-fake-key",
-      ZOTERO_USER_ID: USER_ID,
-      FAKE_NET_PORT: String(fake.port),
-      ...extraEnv,
-    },
+    args: [...(opts.preload ? ["--import", opts.preload] : []), SERVER],
+    cwd: opts.cwd,
+    env: { PATH: process.env.PATH ?? "", ...opts.env },
     stderr: "pipe",
   });
   let err = "";
   transport.stderr?.on("data", (d: Buffer) => (err += d.toString()));
   const client = new Client({ name: "e2e-client", version: "0.0.0" });
-  await client.connect(transport, { timeout: CALL_TIMEOUT_MS });
+  await client.connect(transport, { timeout: opts.connectTimeoutMs ?? CALL_TIMEOUT_MS });
   return {
     client,
     transport,
     stderr: () => err,
+    callTimeoutMs: opts.callTimeoutMs ?? CALL_TIMEOUT_MS,
     async close() {
       const pid = transport.pid;
       await Promise.race([client.close(), new Promise((r) => setTimeout(r, KILL_AFTER_MS))]);
@@ -62,9 +71,23 @@ export async function spawnServer(fake: FakeNetServer, cwd: string, extraEnv: Re
   };
 }
 
-export async function call(s: Spawned, name: string, args: Record<string, unknown>) {
+export async function spawnServer(fake: FakeNetServer, cwd: string, extraEnv: Record<string, string>): Promise<Spawned> {
+  return startServerProcess({
+    cwd, // cartella vuota: nessun .env raccolto da dotenv
+    preload: PRELOAD,
+    env: {
+      ZOTERO_API_KEY: "e2e-fake-key",
+      ZOTERO_USER_ID: USER_ID,
+      FAKE_NET_PORT: String(fake.port),
+      ...extraEnv,
+    },
+  });
+}
+
+export async function call(s: Spawned, name: string, args: Record<string, unknown> | undefined, timeoutMs = s.callTimeoutMs) {
   try {
-    const r = (await s.client.callTool({ name, arguments: args }, undefined, { timeout: CALL_TIMEOUT_MS })) as {
+    const params = args === undefined ? { name } : { name, arguments: args };
+    const r = (await s.client.callTool(params, undefined, { timeout: timeoutMs })) as {
       content: Array<{ type: string; text: string }>;
       isError?: boolean;
     };

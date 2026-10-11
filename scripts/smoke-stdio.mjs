@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
+import { XMLValidator } from "fast-xml-parser";
 
 const EXPECTED_TOOLS = 15;
 const TIMEOUT_MS = 20_000;
@@ -31,6 +32,17 @@ const SCENARIOS = [
 async function makeDocx(dir) {
   const zip = new JSZip();
   zip.file(
+    "[Content_Types].xml",
+    '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'
+  );
+  zip.file(
+    "_rels/.rels",
+    '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'
+  );
+  zip.file(
     "word/document.xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
@@ -40,6 +52,51 @@ async function makeDocx(dir) {
   const path = join(dir, "smoke.docx");
   await writeFile(path, await zip.generateAsync({ type: "nodebuffer" }));
   return path;
+}
+
+const decodeXml = (s) =>
+  s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+
+// Structural check of the injected docx, dependency-light (the full validator with CSL schemas and
+// citeproc is test/helpers/docx-validate.ts): package parts, well-formed XML, balanced fields,
+// parseable CSL JSON, Zotero URIs, visible text = formattedCitation, one bibliography field.
+async function checkDocx(buffer, expectedUri) {
+  const zip = await JSZip.loadAsync(buffer);
+  for (const part of ["[Content_Types].xml", "_rels/.rels", "word/document.xml"]) {
+    if (!zip.file(part)) throw new Error(`docx part missing: ${part}`);
+  }
+  const xml = await zip.file("word/document.xml").async("string");
+  if (XMLValidator.validate(xml) !== true) throw new Error("word/document.xml is not well-formed");
+  if (/&lt;zcite\b/.test(xml)) throw new Error("<zcite> placeholder left in the document");
+  const tokens = xml.matchAll(/w:fldCharType="(begin|separate|end)"|<w:instrText\b[^>]*>([\s\S]*?)<\/w:instrText>|<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g);
+  const fields = [];
+  let open = null;
+  for (const [, kind, instr, text] of tokens) {
+    if (kind === "begin") {
+      if (open) throw new Error("nested or unterminated field");
+      open = { instr: "", result: "", state: "instr" };
+    } else if (kind === "separate") {
+      if (open?.state !== "instr") throw new Error("fldChar separate out of order");
+      open.state = "result";
+    } else if (kind === "end") {
+      if (open?.state !== "result") throw new Error("fldChar end out of order");
+      fields.push(open);
+      open = null;
+    } else if (instr !== undefined && open?.state === "instr") open.instr += decodeXml(instr);
+    else if (text !== undefined && open?.state === "result") open.result += decodeXml(text);
+  }
+  if (open) throw new Error("unterminated field");
+  const cites = fields.filter((f) => f.instr.trim().startsWith("ADDIN ZOTERO_ITEM CSL_CITATION "));
+  const bibs = fields.filter((f) => f.instr.trim().startsWith("ADDIN ZOTERO_BIBL "));
+  if (cites.length !== 1 || bibs.length !== 1) throw new Error(`expected 1 citation + 1 bibliography field, got ${cites.length} + ${bibs.length}`);
+  const json = JSON.parse(cites[0].instr.trim().slice("ADDIN ZOTERO_ITEM CSL_CITATION ".length));
+  const uris = json.citationItems?.flatMap((ci) => ci.uris ?? []) ?? [];
+  if (uris.length !== 1 || uris[0] !== expectedUri) throw new Error(`citation uris ${JSON.stringify(uris)} != [${expectedUri}]`);
+  if (!/^http:\/\/zotero\.org\/(users|groups)\/\d+\/items\/[A-Z0-9]{8}$/.test(uris[0])) throw new Error(`malformed URI ${uris[0]}`);
+  if (!json.citationItems[0].itemData?.type) throw new Error("citation without itemData.type");
+  if (json.properties?.formattedCitation !== cites[0].result) {
+    throw new Error(`formattedCitation ${JSON.stringify(json.properties?.formattedCitation)} != visible ${JSON.stringify(cites[0].result)}`);
+  }
 }
 
 function runScenario({ name, env, prefix }, docxPath) {
@@ -122,10 +179,7 @@ function runScenario({ name, env, prefix }, docxPath) {
       const injectedText = injected.content?.[0]?.text ?? "";
       if (injected.isError) throw new Error(`inject_citations failed: ${injectedText.slice(0, 300)}`);
       const { output_path } = JSON.parse(injectedText);
-      const outZip = await JSZip.loadAsync(await readFile(output_path));
-      const documentXml = await outZip.file("word/document.xml").async("string");
-      const expectedUri = `http://zotero.org${prefix}/items/SMOKEITM`;
-      if (!documentXml.includes(expectedUri)) throw new Error(`citation field code does not contain ${expectedUri}`);
+      await checkDocx(await readFile(output_path), `http://zotero.org${prefix}/items/SMOKEITM`);
 
       return { init, tools };
     })().then(

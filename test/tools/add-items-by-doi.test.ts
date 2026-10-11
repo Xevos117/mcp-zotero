@@ -173,6 +173,35 @@ describe("add_items_by_doi (MCP)", () => {
       expect(h.net.calls).toHaveLength(0);
     });
 
+    it.each(["", "   ", "\t"])('AID-28 DOI vuoto o di soli spazi (%j) → errore di validazione, nessuna rete', async (doi) => {
+      expectValidationError(await h.call("add_items_by_doi", { dois: ["10.1/a", doi] }), "DOI must not be empty");
+      expect(h.net.calls).toHaveLength(0);
+    });
+
+    it("AID-29 DOI con spazi attorno → ripulito prima della risoluzione", async () => {
+      h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a") }));
+      h.net.on("POST", ITEMS, itemsAndAttachments());
+      const out = await h.call("add_items_by_doi", { dois: ["  10.1/a "], auto_attach_pdf: false });
+      expect(out.json.success).toEqual([expect.objectContaining({ doi: "10.1/a", item_key: "PAPER000" })]);
+    });
+
+    it.each<[string, number, string, string]>([
+      ["pagina HTML con 200", 200, "<!DOCTYPE html><html>DOI home</html>", "DOI not found or not resolvable: 10.1/html (response is not a JSON object (HTTP 200, text/html))"],
+      ["corpo vuoto con 200", 200, "", "DOI not found or not resolvable: 10.1/html (response is not a JSON object (HTTP 200, text/html))"],
+      ["JSON non oggetto (null)", 200, "null", "DOI not found or not resolvable: 10.1/html (response is not a JSON object (HTTP 200, text/html))"],
+      ["pagina HTML con 404", 404, "<!DOCTYPE html><html>Not found</html>", "DOI resolution failed for 10.1/html: 404"],
+    ])("AID-30 doi.org risponde con %s → errore leggibile per quel DOI, mai l'errore grezzo di JSON.parse", async (_label, status, body, message) => {
+      h.net.on("GET", DOI_ROUTE, (req) => {
+        const doi = decodeURIComponent(req.url.pathname.slice(1));
+        return doi === "10.1/a" ? jsonResponse(csl("10.1/a")) : statusResponse(status, body, { "Content-Type": "text/html; charset=utf-8" });
+      });
+      h.net.on("POST", ITEMS, itemsAndAttachments());
+      const out = await h.call("add_items_by_doi", { dois: ["10.1/a", "10.1/html"], auto_attach_pdf: false });
+      expect(out.json.success).toEqual([expect.objectContaining({ doi: "10.1/a" })]);
+      expect(out.json.failed).toEqual([{ doi: "10.1/html", error: expect.stringContaining(message) }]);
+      expect(out.text).not.toMatch(/Unexpected token|is not valid JSON|JSON\.parse/);
+    });
+
     it("AID-11 scrittura Zotero rifiutata → errore strutturato 'Zotero API write failed' con indice", async () => {
       h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a") }));
       h.net.on("POST", ITEMS, itemsAndAttachments({ 0: { code: 400, message: "Invalid field" } }));
@@ -260,6 +289,17 @@ describe("add_items_by_doi (MCP)", () => {
       // allegato creato come figlio dell'item
       const attach = h.net.requests("POST", ITEMS)[1].json<Array<Record<string, unknown>>>()[0];
       expect(attach).toMatchObject({ itemType: "attachment", parentItem: "PAPER000", linkMode: "imported_url" });
+    });
+
+    it("AID-31 Unpaywall risponde con una pagina HTML (200) → item creato, PDF non allegato, nessun errore grezzo", async () => {
+      h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a") }));
+      h.net.on("POST", ITEMS, itemsAndAttachments());
+      h.net.on("GET", new RegExp(`^${UNPAYWALL_HOST.replace(/\./g, "\\.")}/`), statusResponse(200, "<html>maintenance</html>", { "Content-Type": "text/html" }));
+      const out = await h.call("add_items_by_doi", { dois: ["10.1/a"] });
+      expect(out.isError).toBe(false);
+      expect(out.json.success).toEqual([expect.objectContaining({ item_key: "PAPER000" })]);
+      expect(out.json.pdf_results).toEqual([expect.objectContaining({ item_key: "PAPER000", pdf_attached: false })]);
+      expect(out.text).not.toMatch(/Unexpected token|is not valid JSON|JSON\.parse/);
     });
 
     it("AID-18 nessun OA (closed) → pdf_attached=false 'No open access PDF found'", async () => {

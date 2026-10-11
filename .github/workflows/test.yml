@@ -3,8 +3,21 @@ name: Tests
 on:
   push:
     branches: [main]
+  # No base-branch filter: stacked PRs target the branch below them, not main.
   pull_request:
-    branches: [main]
+  # Started on the dependency branch by deps-update.yml (a GITHUB_TOKEN push triggers no other event);
+  # the check runs attach to the branch head, i.e. the PR head.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per workflow and PR/ref. On pull requests a newer run cancels the older one (duplicate
+# pull_request events for the same head used to run the matrix twice): the cancelled run's checks are
+# "cancelled", not failed, and GitHub shows the newest check run of each name for the head commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -21,13 +34,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        timeout-minutes: 3
 
       - uses: actions/setup-node@v7
+        timeout-minutes: 3
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
-      - run: npm ci
+      # No dependency install scripts: the native binaries come as optionalDependencies
+      - run: npm ci --ignore-scripts
         timeout-minutes: 5
 
       - run: npm run build
@@ -73,10 +89,10 @@ jobs:
           fi
 
           # 4. npm pack + install in sandbox: verify the command is resolvable
-          TARBALL=$(npm pack --pack-destination /tmp 2>/dev/null)
+          # stderr stays visible (npm notices, errors); the file name is the last line on stdout
+          TARBALL=$(npm pack --pack-destination /tmp | tail -n 1)
           SANDBOX=$(mktemp -d)
           npm install --prefix "$SANDBOX" "/tmp/$TARBALL" --ignore-scripts
-          PKG_NAME=$(node -e "console.log(require('./package.json').name)")
           BIN_NAME=$(node -e "
             const bin = require('./package.json').bin;
             console.log(typeof bin === 'string' ? require('./package.json').name.split('/').pop() : Object.keys(bin)[0]);

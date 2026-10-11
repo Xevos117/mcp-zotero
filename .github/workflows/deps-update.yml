@@ -1,0 +1,326 @@
+name: Monthly dependency update
+
+# Three jobs, least privilege each:
+#   1. agent      — a Claude Code agent follows .claude/skills/deps-update (minor/patch updates,
+#                   build/test/e2e/smoke, CHANGELOG). Read-only GitHub token, no install scripts, no git
+#                   push: it only leaves a patch of package.json, package-lock.json and CHANGELOG.md.
+#   2. open-pr    — no npm: applies the patch, rejects symlinks/type changes, runs main's copy of the gate on
+#                   the local commit, pushes deps/<date> and opens the PR with GITHUB_TOKEN. Events caused by
+#                   GITHUB_TOKEN start no pull_request/push workflows, so it starts the required workflows on
+#                   the branch with workflow_dispatch; their check runs attach to the PR head. live-tests and
+#                   agent-smoke (secrets, id-token) are started ONLY if the gate passed: otherwise only
+#                   test.yml runs, the PR stays for the owner with a comment, and there is no merge-gate.
+#   3. merge-gate — no npm, fresh checkout of main: runs main's copy of scripts/deps-merge-gate.mjs on the
+#                   PR head, waits for every check (test, live-tests, agent-smoke) to succeed on that exact SHA,
+#                   then enables auto-merge pinned to it. Anything else stays for the owner.
+# Anthropic auth: Workload Identity Federation (environment `claude-deps` VARIABLES ANTHROPIC_FEDERATION_RULE_ID,
+# ANTHROPIC_ORGANIZATION_ID, ANTHROPIC_SERVICE_ACCOUNT_ID, ANTHROPIC_WORKSPACE_ID); no API key.
+on:
+  schedule:
+    - cron: "41 5 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deps-update
+  cancel-in-progress: false
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    environment: claude-deps
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write # Anthropic federation exchange inside claude-code-action (stripped from the agent's env)
+    env:
+      NPM_CONFIG_IGNORE_SCRIPTS: "true" # also for every npm command the agent runs
+    outputs:
+      has_patch: ${{ steps.patch.outputs.has_patch }}
+    steps:
+      - name: Skip if a deps/* PR is already open
+        id: open
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          open=$(gh pr list --repo "$REPO" --state open --json headRefName --jq '[.[] | select(.headRefName | startswith("deps/"))] | length')
+          echo "count=$open" >> "$GITHUB_OUTPUT"
+          if [ "$open" != "0" ]; then echo "::notice::a deps/* PR is already open: nothing to do"; fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.open.outputs.count == '0'
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.open.outputs.count == '0'
+        timeout-minutes: 3
+        with:
+          node-version: 24
+          cache: npm
+      # native binaries of TypeScript 7 and rolldown/vitest come as optionalDependencies: no install scripts needed
+      - if: steps.open.outputs.count == '0'
+        run: npm ci --ignore-scripts
+        timeout-minutes: 5
+
+      - name: Claude Code agent (skill deps-update)
+        id: claude
+        if: steps.open.outputs.count == '0'
+        timeout-minutes: 45
+        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
+        with:
+          anthropic_federation_rule_id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          anthropic_service_account_id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          anthropic_workspace_id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+          # read-only token: the agent cannot push, open PRs or merge
+          github_token: ${{ github.token }}
+          prompt: "Carica la skill deps-update e seguila."
+          # --tools: only the built-in tools the skill uses (Write creates agent-out/deps-pr.md; its permission
+          # rule is Edit(...)); dontAsk denies whatever the allow rules do not cover, without prompting
+          claude_args: >-
+            --model claude-opus-5-5
+            --tools "Skill,Read,Glob,Grep,Edit,Write,Bash"
+            --permission-mode dontAsk
+            --max-turns 120
+            --max-budget-usd 15
+            --allowedTools "Skill,Read,Glob,Grep,Edit(./package.json),Edit(./package-lock.json),Edit(./CHANGELOG.md),Edit(./agent-out/**),Bash(npm outdated *),Bash(npm view *),Bash(npm update *),Bash(npm install *),Bash(npm ci *),Bash(npm run *),Bash(git status *),Bash(git diff *),Bash(git log *)"
+            --disallowedTools "WebFetch,WebSearch,Bash(git push *),Bash(git commit *),Bash(gh *),Bash(npm publish *)"
+
+      - name: Patch of the dependency files
+        id: patch
+        if: steps.open.outputs.count == '0' && steps.claude.outcome == 'success'
+        timeout-minutes: 2
+        run: |
+          mkdir -p "$RUNNER_TEMP/deps"
+          other=$(git status --porcelain --untracked-files=all | awk '{print $2}' | grep -Ev '^(package\.json|package-lock\.json|CHANGELOG\.md|agent-out/.*)$' || true)
+          if [ -n "$other" ]; then
+            echo "::error::the agent changed files outside package.json, package-lock.json and CHANGELOG.md: no PR"
+            printf '%s\n' "$other"
+            exit 1
+          fi
+          git diff -- package.json package-lock.json CHANGELOG.md > "$RUNNER_TEMP/deps/deps.patch"
+          if [ ! -s "$RUNNER_TEMP/deps/deps.patch" ]; then
+            echo "::notice::nothing to update"
+            echo "has_patch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ ! -s agent-out/deps-pr.md ]; then
+            echo "::error::the agent did not write agent-out/deps-pr.md (PR title and description)"
+            exit 1
+          fi
+          cp agent-out/deps-pr.md "$RUNNER_TEMP/deps/deps-pr.md"
+          echo "has_patch=true" >> "$GITHUB_OUTPUT"
+      - if: steps.patch.outputs.has_patch == 'true'
+        timeout-minutes: 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deps-patch
+          path: ${{ runner.temp }}/deps/
+          retention-days: 7
+          if-no-files-found: error
+
+  open-pr:
+    needs: agent
+    if: needs.agent.outputs.has_patch == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # push deps/<date>
+      pull-requests: write
+      actions: write # workflow_dispatch of the required workflows
+    outputs:
+      number: ${{ steps.pr.outputs.number }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      author: ${{ steps.pr.outputs.author }}
+      gate: ${{ steps.gate.outputs.passed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        timeout-minutes: 3
+        with:
+          name: deps-patch
+          path: ${{ runner.temp }}/deps
+      - name: Apply the patch (dependency files only)
+        timeout-minutes: 2
+        run: |
+          git apply --check "$RUNNER_TEMP/deps/deps.patch"
+          git apply "$RUNNER_TEMP/deps/deps.patch"
+          changed=$(git status --porcelain | awk '{print $2}')
+          [ -n "$changed" ] || { echo "::error::empty patch"; exit 1; }
+          for f in $changed; do
+            case "$f" in package.json|package-lock.json|CHANGELOG.md) ;; *) echo "::error::patch touches $f"; exit 1 ;; esac
+          done
+          git add package.json package-lock.json CHANGELOG.md
+          # regular files only: no symlinks, no type or mode changes
+          if git diff --cached --summary | grep -Eq 'mode change|120000'; then echo "::error::patch changes a file mode or creates a symlink"; exit 1; fi
+          if git diff --cached --name-status | grep -Eq '^T'; then echo "::error::patch changes a file type"; exit 1; fi
+          title=$(head -n 1 "$RUNNER_TEMP/deps/deps-pr.md")
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "$title"
+
+      # Before anything runs with secrets on this branch: main's copy of the gate on the local commit.
+      - name: Gate (main's copy) on the local commit
+        id: gate
+        timeout-minutes: 3
+        run: |
+          git show origin/main:scripts/deps-merge-gate.mjs > "$RUNNER_TEMP/gate.mjs"
+          if node "$RUNNER_TEMP/gate.mjs" origin/main HEAD > "$RUNNER_TEMP/gate.json"; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            code=$?
+            cat "$RUNNER_TEMP/gate.json"
+            [ "$code" -eq 1 ] || exit "$code"
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push deps/<date> and open the PR
+        id: pr
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          branch="deps/$(date -u +%Y-%m-%d)"
+          title=$(head -n 1 "$RUNNER_TEMP/deps/deps-pr.md")
+          tail -n +2 "$RUNNER_TEMP/deps/deps-pr.md" > "$RUNNER_TEMP/deps/body.md"
+          git switch -c "$branch"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/$branch"
+          url=$(gh pr create --repo "$REPO" --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/deps/body.md")
+          number=$(gh pr view "$url" --repo "$REPO" --json number --jq .number)
+          {
+            echo "number=$number"
+            echo "branch=$branch"
+            echo "head_sha=$(git rev-parse HEAD)"
+            echo "author=$(gh pr view "$number" --repo "$REPO" --json author --jq .author.login)"
+          } >> "$GITHUB_OUTPUT"
+
+      # The required checks run on the branch head (= PR head): test (node 22/24/26), live-tests, agent-smoke.
+      # Workflows with secrets or id-token only after the gate passed.
+      - name: Start the required workflows on the branch
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          GATE: ${{ steps.gate.outputs.passed }}
+        run: |
+          gh workflow run test.yml --repo "$REPO" --ref "$BRANCH"
+          if [ "$GATE" = "true" ]; then
+            gh workflow run live-tests.yml --repo "$REPO" --ref "$BRANCH"
+            gh workflow run claude-agent-smoke.yml --repo "$REPO" --ref "$BRANCH"
+          else
+            {
+              echo "Merge automatico disattivato: il gate delle dipendenze non è passato, quindi test dal vivo e agente smoke (che usano i secret) non sono stati avviati su questo branch. Da rivedere a mano."
+              echo
+              echo '```json'
+              cat "$RUNNER_TEMP/gate.json"
+              echo '```'
+            } > "$RUNNER_TEMP/comment.md"
+            gh pr comment "$NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md"
+          fi
+
+  merge-gate:
+    needs: open-pr
+    if: needs.open-pr.outputs.gate == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 195
+    permissions:
+      contents: write # enable auto-merge
+      pull-requests: write
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Gate on the PR head (main's copy of the gate)
+        id: gate
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ needs.open-pr.outputs.number }}
+          HEAD_SHA: ${{ needs.open-pr.outputs.head_sha }}
+          AUTHOR: ${{ needs.open-pr.outputs.author }}
+        run: |
+          git show origin/main:scripts/deps-merge-gate.mjs > "$RUNNER_TEMP/gate.mjs"
+          info=$(gh pr view "$NUMBER" --repo "$REPO" --json baseRefName,headRefOid,author,isCrossRepository)
+          [ "$(printf '%s' "$info" | jq -r .baseRefName)" = "main" ] || { echo "::error::PR base is not main"; exit 1; }
+          [ "$(printf '%s' "$info" | jq -r .headRefOid)" = "$HEAD_SHA" ] || { echo "::error::PR head moved since it was opened"; exit 1; }
+          [ "$(printf '%s' "$info" | jq -r .isCrossRepository)" = "false" ] || { echo "::error::cross-repository PR"; exit 1; }
+          login=$(printf '%s' "$info" | jq -r .author.login)
+          case "$login" in github-actions|app/github-actions|github-actions\[bot\]) ;; *) echo "::error::PR author $login is not github-actions[bot]"; exit 1 ;; esac
+          [ "$login" = "$AUTHOR" ] || { echo "::error::PR author changed since open-pr"; exit 1; }
+          git fetch -q --no-tags origin "$HEAD_SHA"
+          if node "$RUNNER_TEMP/gate.mjs" origin/main "$HEAD_SHA" > "$RUNNER_TEMP/gate.json"; then
+            echo "mergeable=true" >> "$GITHUB_OUTPUT"
+          else
+            code=$?
+            cat "$RUNNER_TEMP/gate.json"
+            [ "$code" -eq 1 ] || exit "$code"
+            echo "::notice::PR #$NUMBER left for the owner (not patch-only, see the gate output above)"
+            echo "mergeable=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The ruleset may not require live/agent checks yet: the gate waits for all of them itself.
+      - name: Wait for every check on the PR head
+        id: checks
+        if: steps.gate.outputs.mergeable == 'true'
+        timeout-minutes: 185
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ needs.open-pr.outputs.head_sha }}
+        run: |
+          # the ruleset's required checks, plus the live ones (until the ruleset requires them too)
+          required="test (node 22)|test (node 24)|test (node 26)|live-tests|agent-smoke"
+          # up to 180 min: live-tests and agent-smoke share the test-account lock, so they run one after the
+          # other; each may first wait up to 70 min for another run's lock, the agent run then holds it up to
+          # ~80 min (agent 55 + verify 20), the live suite ~10 min. Pending after that: left for the owner.
+          deadline=$(( $(date +%s) + 180 * 60 ))
+          while :; do
+            runs=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" --jq '[.check_runs[] | {name, status, conclusion, started_at, app: .app.id}]')
+            # shellcheck disable=SC2016 # JavaScript in single quotes
+            verdict=$(printf '%s' "$runs" | REQUIRED="$required" node -e '
+              const runs = JSON.parse(require("fs").readFileSync(0, "utf8"));
+              const req = process.env.REQUIRED.split("|");
+              // only GitHub Actions check runs (app id 15368), newest run per name
+              const state = req.map((n) => {
+                const r = runs.filter((x) => x.name === n && x.app === 15368).sort((a, b) => String(a.started_at).localeCompare(String(b.started_at))).pop();
+                return !r ? "missing" : r.status !== "completed" ? "pending" : r.conclusion === "success" ? "ok" : `failed:${r.conclusion}`;
+              });
+              console.log(state.some((s) => s.startsWith("failed")) ? "failed " + req.filter((_, i) => state[i].startsWith("failed")).join(",") : state.every((s) => s === "ok") ? "ok" : "wait");
+            ')
+            case "$verdict" in
+              ok) echo "all checks green on $HEAD_SHA"; echo "green=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              failed*) echo "::notice::checks not green ($verdict): PR left for the owner"; echo "green=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            esac
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::notice::checks still pending after 180 min: PR left for the owner"
+              echo "green=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 60
+          done
+
+      - name: Enable auto-merge pinned to the evaluated head
+        if: steps.checks.outputs.green == 'true'
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ needs.open-pr.outputs.number }}
+          HEAD_SHA: ${{ needs.open-pr.outputs.head_sha }}
+        run: gh pr merge "$NUMBER" --repo "$REPO" --auto --squash --match-head-commit "$HEAD_SHA"

@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Bash", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/bash-guard.mjs\"", "timeout": 10 }] },
+      { "matcher": "mcp__zotero__delete_items|mcp__zotero__delete_collection", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/delete-guard.mjs\"", "timeout": 10 }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "mcp__zotero__.*|Bash", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/audit.mjs\"", "timeout": 10 }] }
+    ],
+    "PostToolUseFailure": [
+      { "matcher": "mcp__zotero__.*|Bash", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/audit.mjs\"", "timeout": 10 }] }
+    ]
+  }
+}

@@ -301,7 +301,7 @@ The script outputs JSON to stdout:
 { "output": "output.docx", "found": 3, "injected": 3 }
 ```
 
-Warnings go to stderr: numbered styles without `num`, and cited keys missing from `metadata.json` (those citations would read "Unknown, n.d." until Zotero refreshes them). Invalid arguments exit with code 1.
+Warnings go to stderr: numbered styles without `num`. Invalid arguments exit with code 1 and write nothing, and so do a `<zcite>` key that is not letters and digits only and a cited key missing from `metadata.json` (same rules as `inject_citations`): include every cited key in the `get_items_details` call.
 
 ### Step 6 — Present result
 

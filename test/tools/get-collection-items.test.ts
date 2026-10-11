@@ -76,6 +76,12 @@ describe("get_collection_items (MCP)", () => {
     expect(out.json.items.map((i: { key: string }) => i.key)).toEqual(["AAAA1111"]);
   });
 
+  it("GCI-15 autore istituzionale (solo name) → nella stringa autori", async () => {
+    h.net.on("GET", COLL_ITEMS, zList([article("INSTQQQR", { creators: [{ creatorType: "author", name: "Test Consortium" }] })]));
+    const out = await h.call("get_collection_items", { collectionKey: "CPLQQQQR" });
+    expect(out.json.items[0].authors).toBe("Test Consortium");
+  });
+
   it("GCI-03 excludeAttachments=false include allegati e note", async () => {
     h.net.on("GET", COLL_ITEMS, zList([article("AAAA1111"), pdfAttachment("ATTQQQQR", "AAAA1111")]));
     const out = await h.call("get_collection_items", { collectionKey: "CPLQQQQR", excludeAttachments: false });

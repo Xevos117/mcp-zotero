@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **Every network call is bounded** (`src/utils/timeouts.ts`): Zotero Web API requests made through `zotero-api-client` (each request gets its own `AbortSignal.timeout`), fulltext GET/PUT, upload authorization and registration: 30 s; doi.org and Unpaywall: 30 s per attempt; PDF download (body included) and upload to Zotero storage: 180 s. Before, a server that accepted the connection and never answered blocked the tool until the MCP client gave up. A timeout is reported with the operation, bound and host (e.g. `PDF download timed out after 180 s (example.org)`); `import_pdf_to_zotero` now includes the network detail for authorization, upload and registration failures.
+- **`get_item_fulltext` and linked URL attachments**: a `linked_url` attachment with content type `application/pdf` was taken for a stored PDF, so the tool answered "Full text not indexed… Open the PDF in Zotero desktop", which cannot work for a web link. Stored PDFs are now preferred over links; an item (or attachment key) with only a linked PDF gets a dedicated message with the link URL.
+- **Skill `inject.js`**: reads `place` (the field name returned by `get_items_details`) for `publisher-place`, so skill citations match `inject_citations` for books and reports with a place of publication. `publisherPlace` is still accepted.
+- **Institutional authors in `authors`**: `search_library`, `get_collection_items` and `get_items_details` showed "No authors listed" for creators stored with a single `name` field (institutions, consortia); the name is now included.
+- **`inject_citations` and the skill's `inject.js` fail the same way on bad `<zcite>` keys.** Behaviour change: `inject.js` used to print a warning for a cited key missing from `metadata.json` and still write the document, with an "Unknown, n.d." citation pointing to a nonexistent item, while `inject_citations` failed on the first unknown key with a raw `404`. A placeholder citation silently left in a thesis or paper is worse than a clear failure, so both now fail and write nothing: `inject_citations` with "N cited key(s) not found in the library: KEY1, KEY2" (every unknown key listed, no raw 404), `inject.js` with "N cited key(s) not found in the metadata: …" (exit 1). Other Zotero errors still fail as before. `inject.js` also rejects keys that are not letters and digits only (exit 1, same message as `inject_citations`) instead of writing them into the Zotero URIs.
+- **No raw JSON parse errors from network responses.** `add_items_by_doi` reported an empty DOI as `Unexpected token '<', "<!DOCTYPE "... is not valid JSON`, because doi.org answers it with an HTML page (found by the agent smoke test). Empty or whitespace-only DOIs are now a validation error ("DOI must not be empty") and DOIs are trimmed; a doi.org, Unpaywall, Zotero fulltext or upload-authorization response that is not a JSON object (HTML page, empty body) gives a readable error with the HTTP status and content type, e.g. "DOI not found or not resolvable: 10.1/x (response is not a JSON object (HTTP 200, text/html))". An Unpaywall response of that kind is treated like an unavailable service: the item is created without a PDF.
+- **`import_pdf_to_zotero`**: the `content_type` description now says that only PDFs are imported (the file must start with `%PDF-`) and that the value is the MIME type recorded on the attachment.
+
 ## [2.0.1] - 2026-10-11
 
 Security and data-loss fixes. Affected: every release with these tools, including 1.0.9 and 2.0.0.
@@ -32,7 +44,7 @@ Toolchain and dependency upgrade, plus group library support. Tool names are unc
   - A per-call `library_type: "group"` without `library_id` is rejected instead of reusing the user ID; `library_type: "user"` on a group server falls back to `ZOTERO_USER_ID`.
   - `get_user_id` now also returns `library_type`, `library_id` and `library_path`; the skill script `inject.js` accepts `groups/<id>` / `users/<id>` (a bare numeric ID still means a user library), so skill-generated citations point at the right library.
 
-### Correzioni
+### Fixed
 
 - **Tool errors now set `isError: true`** (MCP convention). Every structured error (`{ "error": ... }`) was previously returned as a normal result. Partial successes (`add_items`, `add_items_by_doi`, `find_and_attach_pdfs`, `delete_items` with `not_found`) are still normal results.
 - **Empty results are no longer errors**: "No results found" / "No items found" (`search_library`), "No collections found" (`get_collections`), "Collection is empty" / "No valid items found in collection" (`get_collection_items`), "No items found for the given keys" (`get_items_details`) and "No items to process" (`find_and_attach_pdfs`) are normal results without `isError`, shaped `{ "message": ..., ...details }` (the text moved from `error` to `message`; details such as `suggestion`, `status`, `query` are unchanged).

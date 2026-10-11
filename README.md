@@ -226,9 +226,96 @@ claude mcp add-json "zotero" '{"command":"npx","args":["tsx","src/server.ts"],"e
 ```bash
 npm install
 npm run build          # Compile TypeScript
-npm test               # Run tests (vitest, 404 tests)
+npm test               # Unit and per-tool tests (vitest, fetch faked, ~1000 tests)
+npm run test:e2e       # Built server over stdio against a local fake Zotero API
+npm run smoke          # Quick stdio smoke test of the built server (user + group library)
 npx tsx src/server.ts  # Run directly without building
 ```
+
+### Testing
+
+| Layer | Command | Runs on | What it covers |
+|---|---|---|---|
+| Unit / per tool | `npm test` | every PR (Node 22, 24, 26) | every tool through a real MCP client, Zotero faked at the `fetch` level; produced `.docx` files are validated against the official CSL schemas and rendered with citeproc-js ([test/helpers/docx-validate.ts](test/helpers/docx-validate.ts)) |
+| E2E + smoke | `npm run test:e2e`, `npm run smoke` | every PR | the compiled server over stdio, user and group libraries |
+| Live | `npm run test:live` | PRs from this repository, `main`, nightly | the real Zotero Web API on a dedicated test account ([test/live](test/live)); skipped unless `ZOTERO_TEST_API_KEY` is set |
+| Agent smoke | [workflow](.github/workflows/claude-agent-smoke.yml) | PRs from this repository, `main` | a Claude Code agent uses the server like a user, following the versioned skill [`.claude/skills/test-mcp-zotero`](.claude/skills/test-mcp-zotero/SKILL.md): `inject_citations` ⇄ `inject.js` parity in every style, fixed edge cases and up to 5 exploratory scenarios on what the PR changes. The workflow sets up the MCP server, the tool set and guard hooks (Bash allowlist, delete policy, audit log); local runs use the same pieces ([test/live/agent/README.md](test/live/agent/README.md)). The verdict comes from [test/live/verify-claims.mjs](test/live/verify-claims.mjs), not from the agent |
+| Word | manual | every release | [test/WORD_CHECKLIST.md](test/WORD_CHECKLIST.md): open an injected document in Word with the Zotero plugin |
+
+Every test case is listed in [test/TEST_CASES.md](test/TEST_CASES.md).
+
+**Live tests locally** use only `ZOTERO_TEST_*` variables, never your `ZOTERO_API_KEY`:
+
+```bash
+ZOTERO_TEST_API_KEY=... ZOTERO_TEST_USER_ID=... UNPAYWALL_EMAIL=you@example.org npm run test:live
+```
+
+Against a personal library add `ZOTERO_LIVE_SAFE_MODE=1`: the suite only creates items and collections
+named `mzt-<runId>…` and tagged `mzt-run:<runId>`, deletes only those, and skips collection deletion and
+group writes. A dedicated test account is marked by a collection named `__mzt_disposable__`.
+
+**Dependencies** are updated monthly by a Claude Code agent ([workflow](.github/workflows/deps-update.yml),
+skill [`.claude/skills/deps-update`](.claude/skills/deps-update/SKILL.md)); patch-only PRs are auto-merged after
+all required checks pass, anything else waits for review. GitHub Actions versions are updated by Dependabot.
+
+### CI setup (repository owner)
+
+| Environment | Secrets | Variables |
+|---|---|---|
+| `zotero-live` (live tests, agent smoke) | `ZOTERO_TEST_API_KEY`, `ZOTERO_TEST_USER_ID`, `ZOTERO_TEST_USERNAME`, `ZOTERO_TEST_GROUP_ID` (optional), `UNPAYWALL_EMAIL` | `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_WORKSPACE_ID` |
+| `claude-deps` (dependency agent) | — | the same four `ANTHROPIC_*` variables (the federation rule may differ) |
+
+The agents authenticate to the Claude API with Anthropic Workload Identity Federation (GitHub OIDC, no
+API key). Recommended: one federation rule per environment, as narrow as possible:
+
+| Rule for | subject (exact, no `*`) | claims (exact string pairs) | condition (CEL) |
+|---|---|---|---|
+| `zotero-live` | `repo:Xevos117/mcp-zotero:environment:zotero-live` | `repository_id: 1152178663`, `repository_owner_id: 86290818` | `claims.job_workflow_ref.startsWith("Xevos117/mcp-zotero/.github/workflows/claude-agent-smoke.yml@")` (PR runs use the PR ref) |
+| `claude-deps` | `repo:Xevos117/mcp-zotero:environment:claude-deps` | `repository_id: 1152178663`, `repository_owner_id: 86290818`, `job_workflow_ref: Xevos117/mcp-zotero/.github/workflows/deps-update.yml@refs/heads/main` | — |
+
+Claims are exact-match string pairs (only `subject_prefix` supports a trailing `*`), so a prefix such as
+"this workflow on any ref" must be written as a CEL `condition`, as above; an exact `job_workflow_ref`
+(claude-deps, main only) can be a plain claim.
+
+Audience `https://api.anthropic.com`. The subject is an exact match unless it ends with `*`; jobs that use
+an environment get the OIDC subject `repo:Xevos117/mcp-zotero:environment:<environment>`, so a rule
+written for a branch or PR subject never matches. Numeric ids (not names) keep a renamed or re-created
+repository/account from matching.
+
+Trade-off for `zotero-live`: the "any ref" condition is needed for the agent smoke test to run on pull
+requests, but it also accepts a modified copy of that workflow file pushed to any branch of this repository
+(only people with write access can push). Pinning it to the exact claim
+`job_workflow_ref: Xevos117/mcp-zotero/.github/workflows/claude-agent-smoke.yml@refs/heads/main` closes that
+gap but disables the agent smoke test on PRs (it would then run only on `main` and manual runs from `main`).
+
+Other owner settings:
+
+- The Zotero test account needs a collection named `__mzt_disposable__`.
+- Repository settings: "Allow auto-merge", and "Allow GitHub Actions to create and approve pull requests"
+  (the dependency workflow opens its PR with `GITHUB_TOKEN`). Keep the ruleset at **0 required approvals**:
+  auto-merge of the dependency PR relies on it, and it is also what makes the second setting acceptable. That
+  setting is a conscious trade-off: it lets workflows open PRs (needed) and approve them (not used by any
+  workflow here); if approvals are ever required, it would let a workflow approve its own PR, so revisit it
+  together with any approval requirement.
+- No GitHub App is used by any workflow (the agents authenticate to Anthropic with Workload Identity
+  Federation and use only `GITHUB_TOKEN` on GitHub, read-only for the agents). If the Claude GitHub App is
+  installed on this repository, uninstall it.
+- Set a monthly spend limit on the Anthropic workspace used by the federation rules: it is the real cap on
+  agent costs.
+- Residual risk: the agent smoke job that holds the OIDC token also runs the MCP server built from the PR's
+  code (that is what it tests). It runs only for same-repository PRs by the owner or a bot, the token is
+  bound to the `zotero-live` environment and the workspace spend limit caps any misuse.
+- Required checks after the stack merges: `test (node 22)`, `test (node 24)`, `test (node 26)`,
+  `live-tests`, `agent-smoke`.
+
+### Releasing
+
+1. Update `CHANGELOG.md` (move `Unreleased` to the new version) and `version` in `package.json`.
+2. Make sure CI, live tests and the agent smoke test are green on `main`.
+3. Run the manual [Word checklist](test/WORD_CHECKLIST.md) on a document injected by the release candidate
+   and record the results in its log.
+4. Publish the GitHub release: the [release workflow](.github/workflows/release.yml) runs the tests, publishes
+   to npm and attaches the skill zips.
 
 ### Debug with MCP Inspector
 
