@@ -258,6 +258,18 @@ group writes. A dedicated test account is marked by a collection named `__mzt_di
 skill [`.claude/skills/deps-update`](.claude/skills/deps-update/SKILL.md)); patch-only PRs are auto-merged after
 all required checks pass, anything else waits for review. GitHub Actions versions are updated by Dependabot.
 
+### CI setup (repository owner)
+
+| Environment | Secrets | Variables |
+|---|---|---|
+| `zotero-live` (live tests, agent smoke) | `ZOTERO_TEST_API_KEY`, `ZOTERO_TEST_USER_ID`, `ZOTERO_TEST_USERNAME`, `ZOTERO_TEST_GROUP_ID` (optional), `UNPAYWALL_EMAIL` | `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_WORKSPACE_ID` |
+| `claude-deps` (dependency agent) | — | the same four `ANTHROPIC_*` variables (the federation rule may differ) |
+
+The agents authenticate to the Claude API with Anthropic Workload Identity Federation (GitHub OIDC, no
+API key); each federation rule is bound to `repo:Xevos117/mcp-zotero:environment:<environment>`. The
+Zotero test account needs a collection named `__mzt_disposable__`; the dependency agent needs the Claude
+GitHub App installed and "Allow auto-merge" enabled in the repository settings.
+
 ### Releasing
 
 1. Update `CHANGELOG.md` (move `Unreleased` to the new version) and `version` in `package.json`.

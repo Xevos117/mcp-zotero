@@ -69,6 +69,11 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 | `deps-update.yml` | 1st of the month, manual | a Claude Code agent follows `.claude/skills/deps-update`; `scripts/deps-merge-gate.mjs` enables auto-merge only for patch-only PRs |
 | `release.yml` | GitHub release published, manual | tests, npm publish, skill zips (owner only) |
 
+The agents authenticate to the Claude API with Anthropic Workload Identity Federation (environment
+variables `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`,
+`ANTHROPIC_WORKSPACE_ID` in `zotero-live` / `claude-deps`, job permission `id-token: write`); there is no
+Anthropic API key secret. Zotero secrets stay in `zotero-live`.
+
 Path filters are job-level `if` conditions (a skipped job satisfies a required check; a workflow
 filtered by `on.paths` would leave the check pending). Actions in the new workflows are pinned by
 SHA; Dependabot updates them. On pull requests claude-code-action restores `.claude/` and
