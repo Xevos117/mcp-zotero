@@ -653,7 +653,7 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
   erano attivi) e il server zotero dev'essere connesso all'avvio.
   **Robustezza** su tutti i risultati Zotero dell'audit: server connesso all'avvio, ogni chiamata con un
   risultato, nessuna connessione chiusa/timeout/crash, risultati riusciti in JSON MCP, nessun risultato con `error` senza
-  isError, nessun `[object Object]`, `undefined`, `NaN`, stack trace o errore JavaScript nel testo (esclusi i campi di
+  isError, nessun `[object Object]`, `undefined`, `NaN`, stack trace, errore JavaScript o errore grezzo di JSON.parse nel testo (esclusi i campi di
   contenuto della libreria e i token che l'agente stesso ha inviato in quella chiamata; `undefined`/`NaN` ammessi negli
   errori di validazione), nessun crash di inject.js. **Sicurezza** delle scritture: ogni chiave passata a un tool di
   scrittura è ben formata e creata prima dalla run (o finta), niente scritture sul gruppo in safe mode, mai
@@ -664,7 +664,7 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
 | VC-01 | trascrizione con create_collection, add_items, add_items_by_doi (con PDF), add_linked_url_attachment, delete_items, delete_collection | chiavi create e cancellate lette dai risultati dei tool |
 | VC-02 | chiave ripetuta solo in `not_found`, in un risultato d'errore o in un tool non Zotero (Write) | non attribuita né come creata né come cancellata |
 | VC-03a | trascrizione pulita: "undefined"/"TypeError"/"NaN" solo in titoli e testo pieno, errore con isError, errore di validazione "received undefined", rifiuto di inject.js | nessun problema di robustezza |
-| VC-03b | connessione chiusa, timeout, tool non più disponibile, `error` senza isError, risultato non JSON, `[object Object]`, `undefined`, `NaN`, stack trace, TypeError, crash di inject.js | un problema per caso |
+| VC-03b | connessione chiusa, timeout, tool non più disponibile, `error` senza isError, risultato non JSON, `[object Object]`, `undefined`, `NaN`, stack trace, TypeError, errore grezzo di JSON.parse ("Unexpected token", "is not valid JSON", "Unexpected end of JSON input"), crash di inject.js | un problema per caso |
 | VC-03c | `NaN` nel titolo inviato dall'agente e restituito | nessun problema |
 | VC-03d | server zotero `failed` all'avvio, chiamata senza risultato | due problemi |
 | VC-04a | scritture su chiavi create prima, chiave finta, find_and_attach_pdfs in dry_run su chiave estranea | nessun problema |
@@ -705,7 +705,8 @@ configurazione della CI: template MCP, `--tools`, `dontAsk`, hook): 78 turni, 0,
 produttori; 4 esplorativi (1 ok, 3 unclear, nessun bug). Hook: 69 chiamate nell'audit, esattamente 2 negazioni, le
 due sonde F0 (`… && ls` e `delete_items` di `XXXXXXXX`), nessuna sul percorso normale. verify-claims con `--audit` e
 `--transcript`: 43 controlli, 0 problemi, 3 avvisi (gli unclear). Dopo la pulizia nessun `mzt-*` e 551/551 chiavi
-della libreria come prima.
+della libreria come prima. X1 (DOI vuoto → errore grezzo "Unexpected token '<' … is not valid JSON") è stato corretto nel
+livello 3b (AID-28..31) e da allora la scansione di robustezza tratta quel testo come violazione (VC-03b).
 
 ### Le 5 righe segnate OK a mano nel collaudo 2.0.0 (LIVE-STALE)
 
@@ -720,10 +721,6 @@ Indagate una per una su `main` @ 5a0f772.
 | LIVE-STALE-5 | import_pdf_to_zotero con `content_type: text/html`, atteso successo senza fulltext | rifiutato con not_pdf: il tool controlla sempre i byte `%PDF-`; `content_type` è solo il MIME salvato sull'allegato | **assertion** sbagliata (il tool è solo PDF); ora LIVE-IP-05. La descrizione di `content_type` ("MIME type of the file") lascia intendere altri formati: da chiarire nella descrizione |
 
 ## Lacune note
-- Trovato dall'agente smoke (X1, unclear, 2026-10-11): `add_items_by_doi` con DOI vuoto o di soli spazi riporta per quel DOI
-  l'errore grezzo di parsing `Unexpected token '<', "<!DOCTYPE "... is not valid JSON` (doi.org risponde con una pagina
-  HTML) invece di "DOI non valido"; il risultato complessivo è comunque un errore con isError. Da correggere con una
-  validazione dell'input (correzione del prodotto in una PR separata).
 - Le fixture usano chiavi nel formato reale di Zotero (8 caratteri da `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`): chiavi con 0/1/O o
   più corte vengono rifiutate prima di qualsiasi richiesta.
 - Attriti segnalati dall'agente smoke, lasciati come sono (comportamento attuale, non bug): `get_collection_items`

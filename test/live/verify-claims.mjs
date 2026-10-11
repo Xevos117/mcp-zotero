@@ -239,7 +239,7 @@ export function attributableKeys(messages) {
 
 const CRASH = /Connection closed|MCP error -3200[01]\b|not connected|No such tool available|MCP server "?zotero"? (?:failed|crashed|exited|disconnected)/i;
 const STACK = /^\s+at\s+\S.*(?::\d+:\d+\)?|\(native\)|\(<anonymous>\))\s*$/m;
-const JS_ERROR = /\b(?:TypeError|ReferenceError|SyntaxError|RangeError):|Cannot read propert(?:y|ies) of|\bis not a function\b/;
+const JS_ERROR = /\b(?:TypeError|ReferenceError|SyntaxError|RangeError):|Cannot read propert(?:y|ies) of|\bis not a function\b|\bis not valid JSON\b|Unexpected token\b|Unexpected end of JSON input|\bJSON\.parse\b/;
 const LEAKS = [
   ["[object Object]", /\[object Object\]/],
   ["undefined", /\bundefined\b/],

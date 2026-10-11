@@ -108,6 +108,8 @@ describe("verify-claims: robustezza di ogni risultato Zotero (VC-03)", () => {
     ["NaN", ["get_item_fulltext", { item_key: "ITEM2222", max_characters: 5 }, { item_key: "ITEM2222", characters: "NaN", text: "" }], /"NaN" leaked/],
     ["stack trace", ["get_collections", {}, { error: "boom\n    at handle (/app/build/tools/x.js:10:5)" }, true], /stack trace/],
     ["TypeError", ["get_items_details", { item_keys: ["ITEM2222"] }, { error: "Cannot read properties of undefined (reading 'title')" }, true], /JavaScript error/],
+    ["errore grezzo di JSON.parse in un elemento (X1)", ["add_items_by_doi", { dois: ["10.1/x"] }, { error: "All DOI resolutions failed", failed: [{ doi: "10.1/x", error: "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON" }] }, true], /JavaScript error/],
+    ["fine inattesa del JSON", ["get_item_fulltext", { item_key: "ITEM2222" }, { error: "Unexpected end of JSON input" }, true], /JavaScript error/],
     ["crash di inject.js", ["Bash", { command: "node test/live/agent/inject.mjs agent-out/a.docx agent-out/b.docx agent-out/m.json users/1" }, "TypeError: Cannot read properties of null\n    at main (/r/inject.js:5:3)", true], /stack trace/],
   ])("VC-03b %s → problema", (_label, call, re) => {
     expect(robustnessProblems(transcriptOf([call])).join("\n")).toMatch(re);
