@@ -77,8 +77,8 @@ describe("get_collection_items (MCP)", () => {
   });
 
   it("GCI-15 autore istituzionale (solo name) → nella stringa autori", async () => {
-    h.net.on("GET", COLL_ITEMS, zList([article("INST0001", { creators: [{ creatorType: "author", name: "Test Consortium" }] })]));
-    const out = await h.call("get_collection_items", { collectionKey: "COL00001" });
+    h.net.on("GET", COLL_ITEMS, zList([article("INSTQQQR", { creators: [{ creatorType: "author", name: "Test Consortium" }] })]));
+    const out = await h.call("get_collection_items", { collectionKey: "CPLQQQQR" });
     expect(out.json.items[0].authors).toBe("Test Consortium");
   });
 

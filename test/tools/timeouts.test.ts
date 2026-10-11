@@ -83,10 +83,10 @@ describe("timeout delle chiamate di rete (MCP)", () => {
   });
 
   it("TO-06 GET del fulltext fermo → isError che nomina la richiesta", async () => {
-    h.net.on("GET", `${ZBASE}/items/PAR00001`, zSingle(article("PAR00001")));
-    h.net.on("GET", `${ZBASE}/items/PAR00001/children`, zList([pdfAttachment("ATT00001", "PAR00001")]));
-    h.net.on("GET", `${ZBASE}/items/ATT00001/fulltext`, hang());
-    const out = await h.call("get_item_fulltext", { item_key: "PAR00001" });
+    h.net.on("GET", `${ZBASE}/items/PARQQQQR`, zSingle(article("PARQQQQR")));
+    h.net.on("GET", `${ZBASE}/items/PARQQQQR/children`, zList([pdfAttachment("ATTQQQQR", "PARQQQQR")]));
+    h.net.on("GET", `${ZBASE}/items/ATTQQQQR/fulltext`, hang());
+    const out = await h.call("get_item_fulltext", { item_key: "PARQQQQR" });
     expect(out.isError).toBe(true);
     expect(out.text).toContain(`Zotero fulltext request ${BOUND} (api.zotero.org)`);
   });

@@ -68,11 +68,11 @@ describe.skipIf(!live.enabled)("delete_items (live)", () => {
   // Regressione del bug di perdita dati (corretto nella 2.0.1): con sole chiavi malformate la Web API ignora il
   // filtro itemKey e restituisce la libreria intera. Solo sull'account dedicato: se il bug tornasse, in una
   // libreria personale cancellerebbe voci vere.
-  it.skipIf(live.safeMode)("LIVE-DI-08 chiavi malformate (minuscole, con 0) → invalid_keys, nessuna cancellazione", async () => {
+  it.skipIf(live.safeMode)("LIVE-DI-08 chiavi malformate (minuscole, con 0, traversal) → errore di validazione, nessuna cancellazione", async () => {
     const before = await web().totalResults("items");
-    const r = await items.call("delete_items", { item_keys: ["zzzzzzzz", "ZZZZZZZ0"] });
+    const r = await items.call("delete_items", { item_keys: ["zzzzzzzz", "ZZZZZZZ0", "../tags?tag=x&"] });
     expect(r.isError).toBe(true);
-    expect(r.json).toMatchObject({ status: "invalid_keys", invalid_keys: ["zzzzzzzz", "ZZZZZZZ0"] });
+    expect(r.text).toMatch(/item_keys/);
     expect(await web().totalResults("items")).toBe(before);
   });
 
