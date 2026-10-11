@@ -207,8 +207,11 @@ async function verifiedRunItems(z: ZoteroWeb, runId: string, runTag: string, run
 /** Collezioni della run: solo quelle con il nome `mzt-<runId>…` (anche le registrate devono averlo). */
 async function runCollectionsOf(z: ZoteroWeb, prefix: string, runId: string): Promise<Array<{ key: string; name: string; parent: string | false }>> {
   const all = await z.getAll<any>("collections");
-  const unnamed = readRegistry(runId).collections.filter((k) => !all.some((c) => c.key === k && String(c.data.name).startsWith(prefix)));
-  if (unnamed.length) log(`teardown: ${unnamed.length} collezioni registrate senza il prefisso della run NON cancellate`);
+  // Only registered collections that still exist in THIS library without the run prefix are a problem. Keys
+  // missing from it were already deleted by a test (delete_collection) or belong to the other library
+  // (the registry is shared by the user and group teardowns).
+  const unnamed = readRegistry(runId).collections.filter((k) => all.some((c) => c.key === k && !String(c.data.name).startsWith(prefix)));
+  if (unnamed.length) log(`teardown: ${unnamed.length} collezioni registrate ancora presenti senza il prefisso della run: NON cancellate`);
   return all
     .filter((c) => String(c.data.name).startsWith(prefix))
     .map((c) => ({ key: c.key, name: c.data.name, parent: c.data.parentCollection }));

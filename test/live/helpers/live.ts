@@ -79,6 +79,7 @@ export interface LiveServer {
 export async function startLive(opts: { unsafe?: "none" | "items" | "all"; env?: Record<string, string> } = {}): Promise<LiveServer> {
   const unsafe = opts.unsafe ?? "none";
   if (live.safeMode && unsafe === "all") throw new Error("safe mode: UNSAFE_OPERATIONS=all non ammesso");
+  // Key, user and deletion guard are fixed; ZOTERO_LIBRARY_TYPE/ZOTERO_LIBRARY_ID may be set (env group mode)
   const reserved = Object.keys(opts.env ?? {}).filter((k) => ["ZOTERO_API_KEY", "ZOTERO_USER_ID", "UNSAFE_OPERATIONS"].includes(k));
   if (reserved.length) throw new Error(`startLive: env non può sovrascrivere ${reserved.join(", ")}`);
   const cwd = mkdtempSync(join(tmpdir(), "mzt-live-"));
