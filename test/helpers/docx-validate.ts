@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { posix } from "node:path";
 import JSZip from "jszip";
 import { XMLValidator } from "fast-xml-parser";
 import AjvModule from "ajv";
@@ -67,6 +68,8 @@ export interface ZoteroParity {
   hasDocumentPrefs: boolean;
   /** Ogni citazione ha properties.plainCitation (ipotesi H-W2). */
   allHavePlainCitation: boolean;
+  /** Ogni citazione ha properties.noteIndex, che Zotero scrive (0 nei documenti senza note) (ipotesi H-W2). */
+  allHaveNoteIndex: boolean;
   /** Ogni itemData ha un id e lo stesso URI ha sempre lo stesso id, URI diversi id diversi (ipotesi H-W3). */
   consistentItemIds: boolean;
   /** Ogni citationItem con locator ha anche label (ipotesi H-W4). */
@@ -100,7 +103,6 @@ export interface ValidateOptions {
 
 const Ajv = ((AjvModule as any).default ?? AjvModule) as new (opts: Record<string, unknown>) => any;
 let citationValidator: ((data: unknown) => boolean) & { errors?: Array<{ instancePath: string; message?: string }> | null };
-const styleCache = new Map<string, string>();
 let localeXml: string | undefined;
 
 function readFixture(name: string): string {
@@ -201,6 +203,25 @@ async function checkPackage(zip: JSZip, errors: string[]): Promise<void> {
       errors.push(`content type di /word/document.xml non è quello di WordprocessingML: ${main ?? "assente"}`);
     }
   }
+  // ogni Override deve puntare a una parte esistente
+  if (ctEntry) {
+    const ct = await ctEntry.async("string");
+    for (const [, partName] of ct.matchAll(/<Override\b[^>]*PartName="([^"]+)"/g)) {
+      if (!zip.file(partName.replace(/^\//, ""))) errors.push(`content type per una parte inesistente: ${partName}`);
+    }
+  }
+  // ogni relazione interna (anche word/_rels/*.rels) deve risolvere a una parte del pacchetto
+  for (const part of parts.filter((p) => /(^|\/)_rels\/[^/]*\.rels$/.test(p.name))) {
+    const sourceDir = part.name.replace(/_rels\/[^/]*\.rels$/, ""); // "word/_rels/document.xml.rels" → "word/"
+    const xml = await part.async("string");
+    for (const [rel] of xml.matchAll(/<Relationship\b[^>]*>/g)) {
+      if (/TargetMode="External"/.test(rel)) continue;
+      const target = /Target="([^"]+)"/.exec(rel)?.[1];
+      if (!target) continue;
+      const resolved = posix.normalize(target.startsWith("/") ? target.slice(1) : posix.join(sourceDir, target));
+      if (!zip.file(resolved)) errors.push(`${part.name}: relazione verso una parte inesistente ${target}`);
+    }
+  }
   const relsEntry = zip.file("_rels/.rels");
   if (relsEntry) {
     const rels = await relsEntry.async("string");
@@ -235,15 +256,32 @@ export function citationNumbers(text: string): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
-function makeEngine(style: CitationStyle, items: Map<string, Record<string, any>>) {
-  const file = STYLE_FILES[style];
-  if (!styleCache.has(file)) styleCache.set(file, readFixture(file));
-  localeXml ??= readFixture("locales-en-US.xml");
-  const sys = { retrieveLocale: () => localeXml, retrieveItem: (id: string) => items.get(id) };
-  const engine = new (CSL as any).Engine(sys, styleCache.get(file), "en-US");
-  engine.setOutputFormat("text");
-  engine.updateItems([...items.keys()]);
-  return engine;
+interface CachedEngine {
+  engine: any;
+  sys: { items: Map<string, Record<string, any>>; retrieveLocale(): string | undefined; retrieveItem(id: string): Record<string, any> | undefined };
+}
+const engineCache = new Map<CitationStyle, CachedEngine>();
+let validationSeq = 0;
+
+/**
+ * One citeproc engine per style, built once (building it costs ~1-2 s for apa/chicago) and reset for
+ * each use: processor state cleared, item set replaced. Item ids are unique per validation, so data
+ * cached by the engine for a previous document can never leak into this one.
+ */
+function engineFor(style: CitationStyle, items: Map<string, Record<string, any>>) {
+  let cached = engineCache.get(style);
+  if (!cached) {
+    localeXml ??= readFixture("locales-en-US.xml");
+    const sys: CachedEngine["sys"] = { items: new Map(), retrieveLocale: () => localeXml, retrieveItem: (id) => sys.items.get(id) };
+    const engine = new (CSL as any).Engine(sys, readFixture(STYLE_FILES[style]), "en-US");
+    engine.setOutputFormat("text");
+    cached = { engine, sys };
+    engineCache.set(style, cached);
+  }
+  cached.sys.items = items;
+  cached.engine.restoreProcessorState([]);
+  cached.engine.updateItems([...items.keys()]);
+  return cached.engine;
 }
 
 /** Processa i cluster in ordine (noteIndex 0, come in un documento senza note) e restituisce il testo di ciascuno. */
@@ -260,8 +298,11 @@ function renderClusters(engine: any, clusters: Array<Array<Record<string, unknow
 }
 
 function renderWithCiteproc(report: DocxReport, style: CitationStyle): void {
-  // id sintetici = URI della voce: stabili tra citazioni e indipendenti da citationItems[].id
+  // id sintetici = URI della voce (+ numero di validazione): stabili tra citazioni, indipendenti da citationItems[].id
+  const run = ++validationSeq;
+  const idOf = (uri: string) => `${uri}#v${run}`;
   const items = new Map<string, Record<string, any>>();
+  const seen = new Set<string>();
   const clusters: Array<Array<Record<string, unknown>>> = [];
   const keyClusters: Array<Array<Record<string, unknown>>> = [];
   for (const c of report.citations) {
@@ -269,8 +310,11 @@ function renderWithCiteproc(report: DocxReport, style: CitationStyle): void {
     for (const ci of c.json.citationItems ?? []) {
       const uri = ci.uris?.[0];
       if (!uri || !ci.itemData) continue;
-      if (!items.has(uri)) items.set(uri, { ...ci.itemData, id: uri });
-      const entry: Record<string, unknown> = { id: uri };
+      if (!seen.has(uri)) {
+        seen.add(uri);
+        items.set(idOf(uri), { ...ci.itemData, id: idOf(uri) });
+      }
+      const entry: Record<string, unknown> = { id: idOf(uri) };
       for (const k of ["locator", "label", "prefix", "suffix"]) if (ci[k] !== undefined) entry[k] = ci[k];
       full.push(entry);
     }
@@ -279,8 +323,11 @@ function renderWithCiteproc(report: DocxReport, style: CitationStyle): void {
   }
   if (items.size === 0) return;
   try {
-    const rendered = renderClusters(makeEngine(style, items), clusters);
-    const engine = makeEngine(style, items);
+    // stesso motore per i due passaggi: testo completo, poi solo le voci (confronto delle parti chiave)
+    const engine = engineFor(style, items);
+    const rendered = renderClusters(engine, clusters);
+    engine.restoreProcessorState([]);
+    engine.updateItems([...items.keys()]);
     const keyTexts = renderClusters(engine, keyClusters);
     const bib = engine.makeBibliography();
     const entries: string[] = bib ? (bib[1] as string[]).map((e) => e.trim()) : [];
@@ -356,6 +403,7 @@ function computeParity(zipHasPrefs: boolean, cites: CitationField[]): ZoteroPari
   return {
     hasDocumentPrefs: zipHasPrefs,
     allHavePlainCitation: cites.every((c) => typeof c.json.properties?.plainCitation === "string"),
+    allHaveNoteIndex: cites.every((c) => typeof c.json.properties?.noteIndex === "number"),
     consistentItemIds: consistent,
     locatorsHaveLabel: all.every((ci) => ci.locator === undefined || typeof ci.label === "string"),
   };
@@ -373,7 +421,7 @@ export async function validateDocx(docx: Buffer | Uint8Array, opts: ValidateOpti
     rendered: null,
     errors,
     mismatches: [],
-    parity: { hasDocumentPrefs: false, allHavePlainCitation: true, consistentItemIds: true, locatorsHaveLabel: true },
+    parity: { hasDocumentPrefs: false, allHavePlainCitation: true, allHaveNoteIndex: true, consistentItemIds: true, locatorsHaveLabel: true },
   };
   let zip: JSZip;
   try {

@@ -379,6 +379,9 @@ describe("inject_citations (MCP)", () => {
       it.fails("IC-V-H2 properties.plainCitation presente in ogni citazione (H-W2)", async () => {
         expect((await productReport()).parity.allHavePlainCitation).toBe(true);
       });
+      it.fails("IC-V-H2b properties.noteIndex presente in ogni citazione (H-W2)", async () => {
+        expect((await productReport()).parity.allHaveNoteIndex).toBe(true);
+      });
       it.fails("IC-V-H3 itemData.id presente e citationItems[].id coerenti per URI in tutto il documento (H-W3)", async () => {
         expect((await productReport()).parity.consistentItemIds).toBe(true);
       });

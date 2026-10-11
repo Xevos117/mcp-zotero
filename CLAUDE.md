@@ -42,7 +42,9 @@ Run `npm run build`, `npm test`, `npm run test:e2e` and `npm run smoke` (each un
 before declaring a change done. Test cases are documented per tool in `test/TEST_CASES.md`; add
 rows there when you add cases. Every test that produces a .docx (inject_citations, `inject.js`)
 should pass it through `expectValidDocx` from `test/helpers/docx-validate.ts` (structure, CSL schemas,
-URIs, citeproc rendering with the vendored styles in `test/fixtures/csl/`). A manual Word + Zotero
+URIs, citeproc rendering with the vendored styles in `test/fixtures/csl/`). `scripts/smoke-stdio.mjs`
+has its own lightweight structural docx check (plain .mjs, no citeproc): keep it in sync with the
+validator when the field format changes. A manual Word + Zotero
 plugin checklist for releases is in `test/WORD_CHECKLIST.md`.
 
 ## Scheduled workflows

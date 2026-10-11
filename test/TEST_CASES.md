@@ -336,6 +336,7 @@ Gli output di IC-01/02/03/04/07/19/23 passano anche dal validatore docx (`expect
 | IC-04 (validato) | ieee senza `num` | struttura valida; il validatore segnala `[?]` come differenza dal numero che scriverà Zotero |
 | IC-V-H1 (`it.fails`) | ipotesi H-W1 | `docProps/custom.xml` con `ZOTERO_PREF_*` — oggi assente |
 | IC-V-H2 (`it.fails`) | ipotesi H-W2 | `properties.plainCitation` in ogni citazione — oggi assente |
+| IC-V-H2b (`it.fails`) | ipotesi H-W2 | `properties.noteIndex` in ogni citazione — oggi assente (caso separato: correggerne uno solo lascia rosso l'altro) |
 | IC-V-H3 (`it.fails`) | ipotesi H-W3 | `itemData.id` presente e `citationItems[].id` coerente per URI — oggi `id` = indice nella citazione, nessun `itemData.id` |
 | IC-V-H4 (`it.fails`) | ipotesi H-W4 | `label` accanto a `locator` — oggi assente |
 | IC-V-H5 (`it.todo`) | ipotesi H-W5 (gruppo non sincronizzato) | verificabile solo in Word |
@@ -369,7 +370,7 @@ Deroghe allo schema ufficiale (`RELAXATIONS`): URL `schema` di Zotero, `uri` leg
 |---|---|---|
 | DV-01/01b | field code generati da `generateZoteroFieldCode` + bibliografia, 5 stili | nessun errore, 2 citazioni e 2 voci renderizzate |
 | DV-02 | non zip | errore |
-| DV-03 | `[Content_Types].xml` o `_rels/.rels` assenti, parte senza content type, Override di document.xml assente, rels senza officeDocument, XML malformato | errore specifico |
+| DV-03 | `[Content_Types].xml` o `_rels/.rels` assenti, parte senza content type, Override di document.xml assente, rels senza officeDocument, XML malformato, Override verso una parte rimossa, relazione interna di `word/_rels/document.xml.rels` verso una parte rimossa (le esterne sono ignorate) | errore specifico |
 | DV-04 | end mancante, separate o end senza begin, campo senza separate | errore specifico |
 | DV-05 | JSON CSL_CITATION non valido | errore |
 | DV-06 | campo sconosciuto in citationItem, label fuori enum, itemData senza type, URL schema sconosciuto, citationItems vuoto | errore di schema |
@@ -381,10 +382,13 @@ Deroghe allo schema ufficiale (`RELAXATIONS`): URL `schema` di Zotero, `uri` leg
 | DV-12 | ZOTERO_BIBL assente o duplicato | errore |
 | DV-13 | `citationNumbers` | range espansi, `[?]` vuoto |
 | DV-14 | instrText su più run, campo annidato nel risultato | testo visibile ricostruito |
-| DV-15 | parità con Zotero | rileva ZOTERO_PREF, plainCitation, id coerenti, label; l'output del prodotto non li ha |
+| DV-15 | parità con Zotero | rileva ZOTERO_PREF, plainCitation, noteIndex, id coerenti, label; l'output del prodotto non li ha |
 
 Lo smoke (`scripts/smoke-stdio.mjs`) fa un controllo strutturale leggero dello stesso tipo (parti, XML, campi
 bilanciati, JSON, URI, testo visibile = formattedCitation, una bibliografia) senza schemi né citeproc.
+
+Il validatore costruisce un solo motore citeproc per stile (costruirlo costa 1-2 s per apa/chicago) e lo azzera a ogni
+validazione: id delle voci unici per validazione, stato del processore ripulito.
 
 ## Validazione delle chiavi (`key-validation.test.ts`)
 Le chiavi finiscono nei path dell'API senza codifica (e l'URL risolve `..`) o nei filtri itemKey (ignorati dall'API se

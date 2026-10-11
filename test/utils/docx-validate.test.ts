@@ -93,6 +93,18 @@ describe("validatore docx (test/helpers/docx-validate.ts)", () => {
     ],
     ["rels senza officeDocument", "_rels/.rels", '<?xml version="1.0"?><Relationships xmlns="x"/>', /officeDocument/],
     ["XML malformato in document.xml", "word/document.xml", "<w:document><w:body></w:document>", /XML non valido in word\/document\.xml/],
+    [
+      "Override verso una parte rimossa",
+      "[Content_Types].xml",
+      '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>',
+      /content type per una parte inesistente: \/word\/styles\.xml/,
+    ],
+    [
+      "relazione di document.xml verso una parte rimossa",
+      "word/_rels/document.xml.rels",
+      '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.org" TargetMode="External"/></Relationships>',
+      /word\/_rels\/document\.xml\.rels: relazione verso una parte inesistente styles\.xml/,
+    ],
   ])("DV-03 pacchetto: %s → errore", async (_label, name, content, message) => {
     const r = await validateDocx(await withPart(await makeDocx(goodBody()), name, content));
     expect(r.errors.join("\n")).toMatch(message);
@@ -203,9 +215,9 @@ describe("validatore docx (test/helpers/docx-validate.ts)", () => {
     let docx = await makeDocx(cslField(zoteroLike, "(Smith, 2023, p. 12)") + generateBibliographyFieldCode());
     docx = await withPart(docx, "docProps/custom.xml", '<?xml version="1.0"?><Properties><property name="ZOTERO_PREF_1"/></Properties>');
     const r = await expectValidDocx(docx);
-    expect(r.parity).toEqual({ hasDocumentPrefs: true, allHavePlainCitation: true, consistentItemIds: true, locatorsHaveLabel: true });
+    expect(r.parity).toEqual({ hasDocumentPrefs: true, allHavePlainCitation: true, allHaveNoteIndex: true, consistentItemIds: true, locatorsHaveLabel: true });
 
     const product = await validateDocx(await makeDocx(goodBody()));
-    expect(product.parity).toEqual({ hasDocumentPrefs: false, allHavePlainCitation: false, consistentItemIds: false, locatorsHaveLabel: true });
+    expect(product.parity).toEqual({ hasDocumentPrefs: false, allHavePlainCitation: false, allHaveNoteIndex: false, consistentItemIds: false, locatorsHaveLabel: true });
   });
 });
