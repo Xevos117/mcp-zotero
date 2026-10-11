@@ -600,8 +600,9 @@ dell'agente è riuscito in quella stessa run.
   (`always()`, anche dopo un annullamento) pulisce la run e rilascia il lock senza decidere l'esito; `agent-smoke` è il
   check obbligatorio (senza environment): gira sempre tranne quando l'intero workflow è annullato, non viene mai
   saltato, fallisce se `changes` non è riuscito o se prepare, agente o verifica sono falliti o scaduti, e passa senza
-  agente solo se `changes` non ha trovato file rilevanti, per fork e Dependabot o su una PR il cui branch di base non ha
-  ancora la skill. Fuori dalle PR una skill mancante è un errore, e sulle PR anche un branch di base non risolvibile.
+  agente solo se `changes` non ha trovato file rilevanti, se prepare è saltato (PR da fork, Dependabot, o attore umano
+  diverso dal proprietario: il riepilogo indica quale condizione) o su una PR il cui branch di base non ha ancora la
+  skill. Fuori dalle PR una skill mancante è un errore, e sulle PR anche un branch di base non risolvibile.
   Gira solo per modifiche del proprietario del repo o di un bot (escluso Dependabot).
 - **Preparazione** (`test/live/agent/prepare.mjs`, uguale in CI e in locale): `agent-out/context.json` (runId, tag,
   prefisso, modalità, safe mode, gruppo, chi pulisce) e `agent-out/diff.txt` (file cambiati e patch troncata). In CI

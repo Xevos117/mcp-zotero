@@ -99,7 +99,11 @@ Path filters are a `changes` job, not `on.paths` (a workflow filtered by `on.pat
 required check pending). The required-name jobs (`live-tests`, `agent-smoke`) are never skipped, since
 a skipped required check counts as passed: they run with `!cancelled()`, fail when `changes` or the
 real jobs failed or timed out, and pass without testing only when nothing relevant changed (or for
-fork PRs and Dependabot, which get no secrets). A superseded run is cancelled, not red. Actions in the new workflows are pinned by
+fork PRs and Dependabot, which get no secrets; the agent smoke test also skips runs started by a human
+other than the owner, and its notice names the condition). A superseded run is cancelled, not red.
+Verified with a scratch workflow: a job that hits `timeout-minutes` concludes `cancelled`, and a dependent
+job with `if: !cancelled()` still runs and sees `needs.<job>.result == 'cancelled'`, so a timeout turns
+the verdict red instead of skipping it. Actions in the new workflows are pinned by
 SHA; Dependabot updates them. On pull requests claude-code-action restores `.claude/` and
 `CLAUDE.md` from the base branch, so a PR cannot change the instructions its own agent run follows.
 
