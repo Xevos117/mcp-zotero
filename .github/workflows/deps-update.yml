@@ -5,7 +5,9 @@ name: Monthly dependency update
 # The PR is opened with the Claude GitHub App token (OIDC exchange, id-token: write), so it triggers CI.
 # Auto-merge is decided by scripts/deps-merge-gate.mjs, never by the agent: only patch bumps touching
 # package.json, package-lock.json and CHANGELOG.md get `gh pr merge --auto --squash`; GitHub then merges
-# only after every required check is green. Secrets (environment `claude-deps`): ANTHROPIC_API_KEY.
+# only after every required check is green. Anthropic auth: Workload Identity Federation, no API key —
+# environment `claude-deps` VARIABLES ANTHROPIC_FEDERATION_RULE_ID, ANTHROPIC_ORGANIZATION_ID,
+# ANTHROPIC_SERVICE_ACCOUNT_ID, ANTHROPIC_WORKSPACE_ID (rule bound to repo:<owner>/<repo>:environment:claude-deps).
 on:
   schedule:
     - cron: "41 5 1 * *"
@@ -26,7 +28,7 @@ jobs:
     permissions:
       contents: write # enable auto-merge on the PR (merge gate step)
       pull-requests: write
-      id-token: write # Claude App token exchange inside claude-code-action
+      id-token: write # OIDC: Anthropic federation and Claude App token exchange inside claude-code-action
     steps:
       - name: Skip if a deps/* PR is already open
         id: open
@@ -62,7 +64,11 @@ jobs:
         timeout-minutes: 45
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_federation_rule_id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          anthropic_service_account_id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          anthropic_workspace_id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+          # no github_token input: the action exchanges OIDC for the Claude App token, so the PR triggers CI
           prompt: "Carica la skill deps-update e seguila."
           claude_args: >-
             --model claude-opus-5-5

@@ -720,7 +720,8 @@ livello 3b (AID-28..31) e da allora la scansione di robustezza tratta quel testo
 
 ## Agente dipendenze (`.github/workflows/deps-update.yml`, skill `.claude/skills/deps-update`)
 
-Il primo del mese (e a mano), nell'environment `claude-deps` (solo la chiave Anthropic). Esce subito se c'è già una PR
+Il primo del mese (e a mano), nell'environment `claude-deps` (solo le variabili `ANTHROPIC_*` della Workload Identity
+Federation di Anthropic, nessun secret). Esce subito se c'è già una PR
 `deps/*` aperta. L'agente (claude-code-action, `claude-opus-5-5`, `--max-turns 120`, `--max-budget-usd 15`, step 45 min)
 segue la skill: `npm outdated`, solo minor e patch con `--ignore-scripts` (i binari nativi di TypeScript 7 e
 rolldown/vitest arrivano come optionalDependencies: nel lockfile hanno script d'installazione solo `core-js-pure` e
