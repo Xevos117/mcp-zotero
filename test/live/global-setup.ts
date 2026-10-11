@@ -21,6 +21,8 @@ import {
   STALE_AFTER_MS,
 } from "./helpers/env.js";
 import { ZoteroWeb } from "./helpers/zotero-web.js";
+// @ts-expect-error modulo .mjs senza dichiarazioni di tipo (usato anche da riga di comando)
+import { acquireLock, releaseLock, DEFAULT_LOCK_WAIT_MS } from "./lock.mjs";
 import { startFixtureServer, FixtureServer } from "./helpers/fixture-server.js";
 import type { LiveInfo } from "./helpers/live.js";
 
@@ -37,7 +39,8 @@ import type { LiveInfo } from "./helpers/live.js";
  * se esiste la collezione sentinella `__mzt_disposable__` e lo username della chiave è quello atteso.
  * Sull'account dedicato controlla che i conteggi tornino quelli iniziali; in safe mode avvisa se crescono.
  *
- * Run concorrenti sulla stessa libreria si serializzano con un lock (collezione `mzt-lock <runId>`).
+ * Run concorrenti sulla stessa libreria (anche di PR diverse o dell'agente smoke) si serializzano con il lock
+ * di test/live/lock.mjs (collezione `mzt-lock <runId>`, attesa fino a 25 min, poi "test account busy").
  *
  * Solo pulizia (ZOTERO_LIVE_CLEANUP_ONLY=1, oppure `npm run test:live:cleanup -- [runId…]`): nessuna fixture,
  * tutti i test saltati; pulisce le run indicate in ZOTERO_LIVE_CLEANUP_RUN_IDS e quelle di cui restano in
@@ -261,36 +264,8 @@ async function sweepStale(z: ZoteroWeb) {
   log(`pulizia avanzi: ${keys.size} voci, ${staleColls.length} collezioni più vecchie di 6 h`);
 }
 
-// ─── Lock tra run concorrenti sulla stessa libreria (anche da worktree o macchine diverse) ───
-const LOCK_PREFIX = "mzt-lock ";
-const LOCK_STALE_MS = 45 * 60 * 1000; // più del job CI (30 min): un lock più vecchio è di una run morta
-const LOCK_WAIT_MS = 10 * 60 * 1000;
-
-/**
- * Collezione `mzt-lock <runId>`: se esiste un lock più vecchio e non scaduto di un'altra run, si aspetta
- * (fino a 10 min) e poi si rinuncia con un errore chiaro. A parità di corsa vince il runId più vecchio.
- */
-async function acquireLock(z: ZoteroWeb, runId: string): Promise<string> {
-  const [lockKey] = await z.create("collections", [{ name: `${LOCK_PREFIX}${runId}` }]);
-  const deadline = Date.now() + LOCK_WAIT_MS;
-  for (;;) {
-    const others = (await z.getAll<any>("collections"))
-      .map((c) => ({ key: c.key as string, runId: String(c.data.name).startsWith(LOCK_PREFIX) ? String(c.data.name).slice(LOCK_PREFIX.length) : "" }))
-      .filter((l) => l.runId && l.key !== lockKey && Number.isFinite(runIdTime(l.runId)));
-    for (const l of others.filter((o) => Date.now() - runIdTime(o.runId) > LOCK_STALE_MS)) {
-      log(`lock scaduto della run ${l.runId} rimosso`);
-      await z.deleteKeys("collections", [l.key]);
-    }
-    const older = others.filter((o) => Date.now() - runIdTime(o.runId) <= LOCK_STALE_MS && o.runId < runId);
-    if (older.length === 0) return lockKey;
-    if (Date.now() > deadline) {
-      await z.deleteKeys("collections", [lockKey]);
-      throw new Error(`un'altra run dal vivo (${older.map((o) => o.runId).join(", ")}) usa questa libreria da oltre ${LOCK_WAIT_MS / 60000} min: riprovare più tardi`);
-    }
-    log(`in attesa della run ${older[0].runId} sulla stessa libreria…`);
-    await sleep(15_000);
-  }
-}
+// Lock tra run concorrenti sulla stessa libreria: test/live/lock.mjs (lo usa anche l'agente smoke in CI).
+const LOCK_WAIT_MS = Number(process.env.ZOTERO_LIVE_LOCK_WAIT_MIN ?? DEFAULT_LOCK_WAIT_MS / 60000) * 60000;
 
 const runMarker = (runId: string) => join(ROOT, ".vitest", `live-run-${runId}.json`);
 
@@ -327,8 +302,7 @@ async function cleanupOnly(z: ZoteroWeb, disposable: boolean): Promise<void> {
     const tag = `mzt-run:${runId}`;
     if (groupId) await withBound("pulizia gruppo", cleanupRun(z.withLibrary(`groups/${groupId}`), runId, tag, prefix));
     const removed = await withBound("pulizia", cleanupRun(z, runId, tag, prefix));
-    const locks = (await z.getAll<any>("collections")).filter((c) => c.data.name === `${LOCK_PREFIX}${runId}`);
-    if (locks.length) await z.deleteKeys("collections", locks.map((c) => c.key));
+    await releaseLock({ key: apiKey, lib: z.libraryPath, runId });
     const leftover = await z.totalResults(`items?tag=${encodeURIComponent(tag)}`);
     log(`pulizia run ${runId}: rimossi ${removed.items} voci e ${removed.collections} collezioni, avanzi ${leftover}`);
     if (leftover) throw new Error(`pulizia run ${runId}: restano ${leftover} voci`);
@@ -372,12 +346,12 @@ export default async function setup(project: TestProject) {
   mkdirSync(join(ROOT, ".vitest"), { recursive: true });
   writeFileSync(runMarker(runId), JSON.stringify({ runId, started: new Date(started).toISOString() }));
   log(`run ${runId}: ${safeMode ? "SAFE MODE" : "modalità completa"}, account dedicato: ${disposable ? "sì" : "no"}`);
-  const lockKey = await withBound("lock", acquireLock(z, runId), LOCK_WAIT_MS + 60_000);
-  const releaseLock = () => z.deleteKeys("collections", [lockKey]).catch((e) => log(`lock non rimosso: ${e}`));
+  await withBound("lock", acquireLock({ key: apiKey, lib: z.libraryPath, runId, waitMs: LOCK_WAIT_MS, log }), LOCK_WAIT_MS + 120_000);
+  const unlock = () => releaseLock({ key: apiKey, lib: z.libraryPath, runId }).catch((e: unknown) => log(`lock non rimosso: ${scrub(String(e))}`));
   try {
     if (disposable) await withBound("pulizia avanzi", sweepStale(z));
   } catch (e) {
-    await releaseLock();
+    await unlock();
     throw e;
   }
 
@@ -412,7 +386,7 @@ export default async function setup(project: TestProject) {
   } catch (e) {
     await fixtureServer?.close();
     await withBound("pulizia dopo setup fallito", cleanupRun(z, runId, runTag, prefix)).catch((err) => log(`pulizia fallita: ${err}`));
-    await releaseLock();
+    await unlock();
     throw new Error(scrub(e instanceof Error ? e.message : String(e)));
   }
 
@@ -420,7 +394,7 @@ export default async function setup(project: TestProject) {
     try {
       await teardown();
     } finally {
-      await releaseLock();
+      await unlock();
     }
   };
 
