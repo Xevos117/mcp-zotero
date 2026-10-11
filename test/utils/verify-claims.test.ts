@@ -356,8 +356,15 @@ describe("verify-claims: script completo senza rete (VC-09)", () => {
     await dir.file("context.json", JSON.stringify({ run_id: "r1", run_tag: "mzt-run:r1", prefix: "mzt-r1", cleanup: "agent", safe_mode: true, group_id: null }));
     await dir.file("claims.json", JSON.stringify({ schema_version: 2, run_id: "r1", library_path: "users/1", scenarios: [{ id: "P0", status: "passed" }], created: [], deleted: [], docx: [] }));
     await dir.file("execution.json", JSON.stringify(transcriptOf([["delete_items", { item_keys: ["EXST2222"] }, { deleted_keys: ["EXST2222"] }], ["get_collections", {}, []]])));
-    // audit with only the delete (the get_collections call of the transcript is missing from it)
-    await dir.file("audit.jsonl", JSON.stringify({ tool_use_id: "t0", tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["EXST2222"] }, is_error: false, text: '{"deleted_keys":["EXST2222"]}' }) + "\n");
+    // audit with only the delete (the get_collections call of the transcript is missing from it), plus an entry
+    // left over from another run
+    await dir.file(
+      "audit.jsonl",
+      [
+        { run_id: "r1", tool_use_id: "t0", tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["EXST2222"] }, is_error: false, text: '{"deleted_keys":["EXST2222"]}' },
+        { run_id: "old", tool_use_id: "x9", tool_name: "mcp__zotero__get_user_id", tool_input: {}, is_error: false, text: "{}" },
+      ].map((e) => JSON.stringify(e)).join("\n") + "\n"
+    );
   });
   afterAll(async () => {
     await dir?.cleanup();
@@ -381,6 +388,7 @@ describe("verify-claims: script completo senza rete (VC-09)", () => {
         "safety: call #1 delete_items: item_keys EXST2222 was not created by this run",
         "F10: add_items with items [] not called",
         "F0: the chained Bash probe was not denied by the Bash hook",
+        "audit: 1 entry without this run's id (r1): evidence from another run",
         "evidence: call #2 get_collections of the transcript has no audit entry (hooks not active, or no result)",
         expect.stringMatching(/^parity apa: no verified compare_group/),
         expect.stringMatching(/^F9: no verified compare_group on the edge document/),

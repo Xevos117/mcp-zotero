@@ -8,14 +8,14 @@ name: Agent smoke test
 # ANTHROPIC_SERVICE_ACCOUNT_ID, ANTHROPIC_WORKSPACE_ID. The federation rule is bound to
 # repo:<owner>/<repo>:environment:zotero-live, so the agent job must run in this environment.
 #
-# Three jobs keep credentials apart: `prepare` (no id-token) installs with --ignore-scripts, builds,
-# checks the test account and takes the lock; `agent-smoke-run` is the only job with id-token (for the
-# federation exchange) and runs no npm; `agent-smoke` (no id-token) verifies the claims, cleans up,
-# releases the lock and decides the check.
+# Jobs keep credentials apart: `prepare` (no id-token) installs with --ignore-scripts, builds, checks the
+# test account and takes the lock; `agent-smoke-run` is the only job with id-token (for the federation
+# exchange) and runs no npm; `agent-smoke-verify` (no id-token) verifies the claims; `agent-smoke` decides the
+# required check; `agent-smoke-cleanup` cleans up and releases the lock.
+# Triggers: pull requests (contextual to the change) and manual runs. No `push`: claude-code-action does not
+# support push events ("Unsupported event type: push"); main is covered by a manual run after a merge.
 on:
   pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -153,7 +153,6 @@ jobs:
         run: |
           case "$EVENT" in
             pull_request) base="origin/$BASE_REF" ;;
-            push) base="HEAD~1" ;;
             *) base="origin/main" ;;
           esac
           node test/live/agent/prepare.mjs --mode ci --base "$base"
@@ -391,10 +390,11 @@ jobs:
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
         run: node test/live/agent/redact.mjs restore agent-out
 
-      # Deterministic verdict: this step, not the agent, decides the check.
+      # Deterministic verdict: this step, not the agent, decides the check. Only on the output of an agent step
+      # that ran in this workflow run (the claims, audit and transcript are also checked against its run id).
       - name: Verify the agent's claims
         id: verify
-        if: needs.prepare.outputs.run_id != ''
+        if: needs.prepare.outputs.run_id != '' && needs.agent-run.result == 'success'
         timeout-minutes: 5
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}

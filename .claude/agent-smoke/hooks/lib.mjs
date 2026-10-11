@@ -22,10 +22,20 @@ export function readStdin() {
   }
 }
 
+/** Run id from agent-audit/context.json (written by prepare.mjs), or null. */
+export function runId(input) {
+  try {
+    return JSON.parse(readFileSync(join(auditDir(input), "context.json"), "utf8")).run_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Appends an entry stamped with the run id, so the verifier rejects evidence left over from another run. */
 export function append(input, file, entry) {
   const dir = auditDir(input);
   mkdirSync(dir, { recursive: true });
-  appendFileSync(join(dir, file), JSON.stringify({ ts: new Date().toISOString(), ...entry }) + "\n");
+  appendFileSync(join(dir, file), JSON.stringify({ ts: new Date().toISOString(), run_id: runId(input), ...entry }) + "\n");
 }
 
 export function readJsonl(path) {

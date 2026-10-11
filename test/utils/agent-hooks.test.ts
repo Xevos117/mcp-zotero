@@ -38,7 +38,7 @@ describe("hook Bash: solo i due wrapper nella forma esatta (AH-01)", () => {
     `${MAKE} agent-out/mzt-x-p-apa.docx ${SPEC}`,
     `${MAKE} agent-out/a.docx agent-out/b.docx agent-out/c.docx ${SPEC}`,
     `${MAKE} agent-out/nozcite.docx '[["No citations here."]]'`,
-    `${INJECT} agent-out/a.docx agent-out/a_skill.docx agent-out/metadata.json users/16095680 apa`,
+    `${INJECT} agent-out/a.docx agent-out/a_skill.docx agent-out/metadata.json users/424242 apa`,
     `${INJECT} agent-out/a.docx agent-out/a_skill.docx agent-out/group-metadata.json groups/777 vancouver`,
     `${INJECT} agent-out/a.docx agent-out/a_skill.docx agent-out/metadata.json 424242`,
   ])("AH-01a ammesso: %s", (command) => {
@@ -154,7 +154,7 @@ describe("script degli hook come processi (AH-03)", () => {
     const out = JSON.parse(denied.stdout).hookSpecificOutput;
     expect(out).toMatchObject({ hookEventName: "PreToolUse", permissionDecision: "deny" });
     expect(out.permissionDecisionReason).toMatch(/Only these Bash commands are allowed/);
-    expect(await lines("denials.jsonl")).toEqual([expect.objectContaining({ tool_name: "Bash", tool_use_id: "u1" })]);
+    expect(await lines("denials.jsonl")).toEqual([expect.objectContaining({ run_id: "r", tool_name: "Bash", tool_use_id: "u1" })]);
   });
 
   it("AH-03b bash-guard: stdin non JSON → negato (fallisce chiuso)", async () => {
@@ -170,7 +170,7 @@ describe("script degli hook come processi (AH-03)", () => {
     await hook("audit.mjs", { hook_event_name: "PostToolUseFailure", tool_name: "mcp__zotero__get_collections", tool_use_id: "a2", tool_input: {}, error: "403: Forbidden" }, dir.path);
     await hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "Read", tool_use_id: "a3", tool_input: {}, tool_response: "x" }, dir.path);
     expect(await lines("audit.jsonl")).toEqual([
-      expect.objectContaining({ tool_use_id: "a1", tool_name: "mcp__zotero__add_items", is_error: false, text: '{"success":[{"item_key":"ITEM2222"}]}' }),
+      expect.objectContaining({ run_id: "r", tool_use_id: "a1", tool_name: "mcp__zotero__add_items", is_error: false, text: '{"success":[{"item_key":"ITEM2222"}]}' }),
       expect.objectContaining({ tool_use_id: "a2", is_error: true, text: "403: Forbidden" }),
     ]);
     expect((await hook("delete-guard.mjs", { tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["ITEM2222"] } }, dir.path)).stdout).toBe("");

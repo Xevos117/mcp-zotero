@@ -19,6 +19,10 @@ shipped as a release zip, not in the npm package).
   them in PRs, issues or reports. Scrub keys, user ids and emails from anything you publish.
 - **Real Zotero libraries are someone's data.** Live runs only create items/collections prefixed
   `mzt-` and tagged `mzt-run:<runId>`, and delete only what that run created.
+- **Never commit run outputs.** `agent-out/`, `agent-audit/`, `.vitest/` and `live-artifacts/` hold
+  library content (titles, keys, collection names, user ids). They are gitignored, `test.yml` fails if
+  any is tracked (`scripts/check-tracked-artifacts.mjs`), and on a branch whose `.gitignore` predates
+  them (e.g. a lower layer of a stack) stage files by name, never with `git add -A` after a live run.
 
 ## Conventions
 
@@ -65,7 +69,7 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 |---|---|---|
 | `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging on Node 22/24/26 |
 | `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `live-tests-run`: `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; `live-tests` (required check) decides from it; nightly failures open/update one issue |
-| `claude-agent-smoke.yml` | same-repo PRs by the owner or a bot, `main`, manual | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
+| `claude-agent-smoke.yml` | same-repo PRs by the owner or a bot, manual (no `push`: claude-code-action does not support it; run it by hand on `main` after a merge) | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
 | `deps-update.yml` | 1st of the month, manual | three jobs: agent (read-only token, no install scripts, leaves a patch) → open-pr (no npm, no id-token: pushes `deps/<date>` and opens the PR with `GITHUB_TOKEN`, then starts test/live-tests/agent-smoke on the branch with `workflow_dispatch`) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for those checks on the exact SHA, `--match-head-commit`) |
 | `release.yml` | GitHub release published, manual | tests, npm publish, skill zips (owner only) |
 
