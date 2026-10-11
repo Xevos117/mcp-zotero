@@ -52,7 +52,7 @@ jobs:
           fi
           changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
           printf '%s\n' "$changed"
-          if printf '%s\n' "$changed" | grep -Eq '^(src/|skills/zotero-skill-mcp-integrations/|\.claude/skills/test-mcp-zotero/|test/live/agent/|test/live/verify-claims\.mjs|test/live/lock\.mjs|test/helpers/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|\.github/workflows/claude-agent-smoke\.yml)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|skills/zotero-skill-mcp-integrations/|\.claude/skills/test-mcp-zotero/|test/live/agent/|test/live/verify-claims\.mjs|test/live/lock\.mjs|test/live/cleanup\.mjs|test/live/global-setup\.ts|test/live/scrub-report\.mjs|test/live/helpers/|test/fixtures/csl/|test/e2e/server-process\.ts|vitest\.live\.config\.ts|test/helpers/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|\.github/workflows/claude-agent-smoke\.yml)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -183,6 +183,14 @@ jobs:
           path: ${{ runner.temp }}/workspace.tgz
           retention-days: 1
           if-no-files-found: error
+      # a failed or cancelled prepare must not leave the test account locked for 90 min
+      - name: Release the lock if prepare failed
+        if: (failure() || cancelled()) && steps.prepare.outputs.run_id != ''
+        timeout-minutes: 3
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          RUN_ID: ${{ steps.prepare.outputs.run_id }}
+        run: node test/live/lock.mjs release "$RUN_ID"
 
   agent-run:
     name: agent-smoke-run
@@ -255,6 +263,9 @@ jobs:
           anthropic_workspace_id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
           # read-only token: no Claude App token exchange, no write access for the agent
           github_token: ${{ github.token }}
+          # runs started by deps-update.yml (workflow_dispatch with GITHUB_TOKEN) have this bot as actor;
+          # agent mode refuses non-human actors otherwise. Only this bot, never "*".
+          allowed_bots: "github-actions[bot]"
           prompt: "Carica la skill test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt."
           claude_args: >-
             --model claude-sonnet-5-5

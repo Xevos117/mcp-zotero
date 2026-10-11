@@ -57,6 +57,26 @@ if (mode === "ci") {
   await assertDisposableAccount();
 }
 
+/** Group for the agent's group path: only a group named "mzt-test…" (same rule as the live suite), never in safe mode. */
+async function verifiedGroupId() {
+  const requested = process.env.ZOTERO_TEST_GROUP_ID;
+  const key = process.env.ZOTERO_TEST_API_KEY;
+  if (!requested || safeMode) return null;
+  if (!key) {
+    console.warn("ZOTERO_TEST_GROUP_ID ignored: ZOTERO_TEST_API_KEY is needed to verify the group name");
+    return null;
+  }
+  const r = await fetch(`https://api.zotero.org/groups/${encodeURIComponent(requested)}`, {
+    headers: { "Zotero-API-Key": key, "Zotero-API-Version": "3" },
+    signal: AbortSignal.timeout(30_000),
+  });
+  const name = r.ok ? String((await r.json())?.data?.name ?? "") : "";
+  if (name.startsWith("mzt-test")) return requested;
+  console.warn("ZOTERO_TEST_GROUP_ID ignored: group not accessible or its name does not start with mzt-test");
+  return null;
+}
+const groupId = await verifiedGroupId();
+
 const git = (...args) => {
   try {
     return execFileSync("git", args, { encoding: "utf8", timeout: 30_000, maxBuffer: 20 * 1024 * 1024 });
@@ -74,7 +94,7 @@ const context = {
   mode,
   safe_mode: safeMode,
   unsafe_operations: unsafe,
-  group_id: (!safeMode && process.env.ZOTERO_TEST_GROUP_ID) || null,
+  group_id: groupId,
   // in CI the deterministic verifier checks the claimed state, then the workflow deletes the run
   cleanup: mode === "ci" ? "verifier" : "agent",
   base,

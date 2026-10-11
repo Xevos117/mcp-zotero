@@ -588,7 +588,9 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
 - **Preparazione** (`test/live/agent/prepare.mjs`, uguale in CI e in locale): `agent-out/context.json` (runId, tag,
   prefisso, modalità, safe mode, gruppo, chi pulisce) e `agent-out/diff.txt` (file cambiati e patch troncata). In CI
   si ferma con errore, prima che l'agente parta, se la chiave non è di `ZOTERO_TEST_USERNAME` o se manca la sentinella
-  `__mzt_disposable__`.
+  `__mzt_disposable__`; passa all'agente un gruppo solo se il suo nome inizia con `mzt-test`. Se prepare fallisce o viene
+  annullato, rilascia subito il lock. L'action accetta come attore solo `github-actions[bot]` oltre agli umani
+  (`allowed_bots`), per le run avviate da deps-update.yml.
 - **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
   comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
   docx con i `<zcite>`) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
