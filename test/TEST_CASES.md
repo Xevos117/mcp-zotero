@@ -728,12 +728,14 @@ Federation di Anthropic, nessun secret). Tre job con il minimo dei permessi:
   `agent-out/deps-pr.md`, e usare npm e `git status/diff/log`; niente commit, push, `gh` o publish. Un aggiornamento che
   rompe qualcosa viene rinviato, non corretto. Lo step finale produce una patch dei soli tre file (se l'agente ha
   toccato altro il job fallisce senza PR).
-- **open-pr**: senza npm; applica la patch su `main`, ottiene il token della Claude GitHub App con lo stesso scambio OIDC
-  di claude-code-action (unico job con `id-token: write` oltre all'agente), fa push di `deps/<data>` e apre la PR (così
-  parte la CI), poi revoca il token.
+- **open-pr**: senza npm né id-token; applica la patch su `main`, fa push di `deps/<data>` e apre la PR col `GITHUB_TOKEN`
+  (serve l'impostazione "Allow GitHub Actions to create and approve pull requests"). Gli eventi del `GITHUB_TOKEN` non
+  fanno partire `pull_request`/`push`, quindi avvia con `gh workflow run --ref deps/<data>` (`actions: write`) i workflow
+  obbligatori: `test.yml`, `live-tests.yml`, `claude-agent-smoke.yml`; i loro check si agganciano alla testa del branch,
+  cioè alla testa della PR. Nessuna dipendenza dalla Claude GitHub App.
 - **merge-gate**: senza npm, checkout pulito di `main`; esegue la copia di `main` di `scripts/deps-merge-gate.mjs` sulla
-  testa della PR, verifica base `main`, testa invariata, autore = la App (bot), poi aspetta fino a 60 min che
-  `test (node 22/24/26)`, `live` e `agent-smoke` siano tutti verdi su quello SHA (non si affida solo al ruleset) e solo
+  testa della PR, verifica base `main`, testa invariata, autore = `github-actions[bot]` registrato da open-pr, poi aspetta
+  fino a 60 min che `test (node 22/24/26)`, `live-tests` e `agent-smoke` siano tutti verdi su quello SHA (non si affida solo al ruleset) e solo
   allora `gh pr merge --auto --squash --match-head-commit <sha>` col `GITHUB_TOKEN`. Altrimenti la PR resta al
   proprietario. Il push su `main` del merge automatico non fa partire workflow; il notturno copre `main`.
 

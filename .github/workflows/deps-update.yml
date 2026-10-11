@@ -4,10 +4,12 @@ name: Monthly dependency update
 #   1. agent      — a Claude Code agent follows .claude/skills/deps-update (minor/patch updates,
 #                   build/test/e2e/smoke, CHANGELOG). Read-only GitHub token, no install scripts, no git
 #                   push: it only leaves a patch of package.json, package-lock.json and CHANGELOG.md.
-#   2. open-pr    — no npm: applies the patch, pushes deps/<date> and opens the PR with the Claude GitHub
-#                   App token, so the PR triggers CI (a GITHUB_TOKEN push would not).
+#   2. open-pr    — no npm: applies the patch, pushes deps/<date> and opens the PR with GITHUB_TOKEN. Events
+#                   caused by GITHUB_TOKEN start no pull_request/push workflows, so it then starts the
+#                   required workflows on the branch with workflow_dispatch (allowed for GITHUB_TOKEN); their
+#                   check runs attach to the branch head, which is the PR head.
 #   3. merge-gate — no npm, fresh checkout of main: runs main's copy of scripts/deps-merge-gate.mjs on the
-#                   PR head, waits for every check (test, live, agent-smoke) to succeed on that exact SHA,
+#                   PR head, waits for every check (test, live-tests, agent-smoke) to succeed on that exact SHA,
 #                   then enables auto-merge pinned to it. Anything else stays for the owner.
 # Anthropic auth: Workload Identity Federation (environment `claude-deps` VARIABLES ANTHROPIC_FEDERATION_RULE_ID,
 # ANTHROPIC_ORGANIZATION_ID, ANTHROPIC_SERVICE_ACCOUNT_ID, ANTHROPIC_WORKSPACE_ID); no API key.
@@ -121,11 +123,11 @@ jobs:
     needs: agent
     if: needs.agent.outputs.has_patch == 'true'
     runs-on: ubuntu-latest
-    environment: claude-deps
     timeout-minutes: 15
     permissions:
-      contents: read
-      id-token: write # only for the Claude GitHub App token exchange below
+      contents: write # push deps/<date>
+      pull-requests: write
+      actions: write # workflow_dispatch of the required workflows
     outputs:
       number: ${{ steps.pr.outputs.number }}
       head_sha: ${{ steps.pr.outputs.head_sha }}
@@ -152,39 +154,11 @@ jobs:
             case "$f" in package.json|package-lock.json|CHANGELOG.md) ;; *) echo "::error::patch touches $f"; exit 1 ;; esac
           done
 
-      # Same exchange claude-code-action v1.0.248 performs (src/github/token.ts): GitHub OIDC token with
-      # audience "claude-code-github-action" → Claude GitHub App installation token. Revoked at the end.
-      - name: Claude GitHub App token
-        id: app
-        timeout-minutes: 2
-        run: |
-          # shellcheck disable=SC2016 # JavaScript in single quotes
-          node -e '
-            (async () => {
-              const oidcUrl = `${process.env.ACTIONS_ID_TOKEN_REQUEST_URL}&audience=claude-code-github-action`;
-              const oidc = await fetch(oidcUrl, { headers: { Authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}` }, signal: AbortSignal.timeout(30000) });
-              if (!oidc.ok) throw new Error(`OIDC token: HTTP ${oidc.status}`);
-              const { value } = await oidc.json();
-              const r = await fetch("https://api.anthropic.com/api/github/github-app-token-exchange", {
-                method: "POST",
-                headers: { Authorization: `Bearer ${value}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ permissions: { contents: "write", pull_requests: "write" } }),
-                signal: AbortSignal.timeout(30000),
-              });
-              if (!r.ok) throw new Error(`App token exchange: HTTP ${r.status}`);
-              const data = await r.json();
-              const token = data.token || data.app_token;
-              if (!token) throw new Error("App token missing in the response");
-              console.log(`::add-mask::${token}`);
-              require("fs").appendFileSync(process.env.GITHUB_OUTPUT, `token=${token}\n`);
-            })().catch((e) => { console.error(e.message); process.exit(1); });
-          '
-
       - name: Push deps/<date> and open the PR
         id: pr
         timeout-minutes: 5
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           branch="deps/$(date -u +%Y-%m-%d)"
@@ -192,22 +166,28 @@ jobs:
           tail -n +2 "$RUNNER_TEMP/deps/deps-pr.md" > "$RUNNER_TEMP/deps/body.md"
           git switch -c "$branch"
           git add package.json package-lock.json CHANGELOG.md
-          git -c user.name="mcp-zotero deps-update" -c user.email="deps-update@users.noreply.github.com" commit -q -m "$title"
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "$title"
           git push -q "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/$branch"
           url=$(gh pr create --repo "$REPO" --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/deps/body.md")
           number=$(gh pr view "$url" --repo "$REPO" --json number --jq .number)
           {
             echo "number=$number"
+            echo "branch=$branch"
             echo "head_sha=$(git rev-parse HEAD)"
             echo "author=$(gh pr view "$number" --repo "$REPO" --json author --jq .author.login)"
           } >> "$GITHUB_OUTPUT"
-      - name: Revoke the App token
-        if: always() && steps.app.outputs.token != ''
-        timeout-minutes: 1
+
+      # The required checks run on the branch head (= PR head): test (node 22/24/26), live-tests, agent-smoke.
+      - name: Start the required workflows on the branch
+        timeout-minutes: 3
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
         run: |
-          curl -fsS --max-time 10 -X DELETE -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/installation/token || true
+          for wf in test.yml live-tests.yml claude-agent-smoke.yml; do
+            gh workflow run "$wf" --repo "$REPO" --ref "$BRANCH"
+          done
 
   merge-gate:
     needs: open-pr
@@ -239,7 +219,9 @@ jobs:
           [ "$(printf '%s' "$info" | jq -r .baseRefName)" = "main" ] || { echo "::error::PR base is not main"; exit 1; }
           [ "$(printf '%s' "$info" | jq -r .headRefOid)" = "$HEAD_SHA" ] || { echo "::error::PR head moved since it was opened"; exit 1; }
           [ "$(printf '%s' "$info" | jq -r .isCrossRepository)" = "false" ] || { echo "::error::cross-repository PR"; exit 1; }
-          [ "$(printf '%s' "$info" | jq -r .author.is_bot)" = "true" ] && [ "$(printf '%s' "$info" | jq -r .author.login)" = "$AUTHOR" ] || { echo "::error::PR author is not the Claude GitHub App"; exit 1; }
+          login=$(printf '%s' "$info" | jq -r .author.login)
+          case "$login" in github-actions|app/github-actions|github-actions\[bot\]) ;; *) echo "::error::PR author $login is not github-actions[bot]"; exit 1 ;; esac
+          [ "$login" = "$AUTHOR" ] || { echo "::error::PR author changed since open-pr"; exit 1; }
           git fetch -q --no-tags origin "$HEAD_SHA"
           if node "$RUNNER_TEMP/gate.mjs" origin/main "$HEAD_SHA" > "$RUNNER_TEMP/gate.json"; then
             echo "mergeable=true" >> "$GITHUB_OUTPUT"
@@ -261,7 +243,8 @@ jobs:
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ needs.open-pr.outputs.head_sha }}
         run: |
-          required="test (node 22)|test (node 24)|test (node 26)|live|agent-smoke"
+          # the ruleset's required checks, plus the live ones (until the ruleset requires them too)
+          required="test (node 22)|test (node 24)|test (node 26)|live-tests|agent-smoke"
           deadline=$(( $(date +%s) + 60 * 60 ))
           while :; do
             runs=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" --jq '[.check_runs[] | {name, status, conclusion}]')
