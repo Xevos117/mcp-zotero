@@ -81,8 +81,12 @@ jobs:
           # read-only token: the agent cannot push, open PRs or merge
           github_token: ${{ github.token }}
           prompt: "Carica la skill deps-update e seguila."
+          # --tools: only the built-in tools the skill uses (Write creates agent-out/deps-pr.md; its permission
+          # rule is Edit(...)); dontAsk denies whatever the allow rules do not cover, without prompting
           claude_args: >-
             --model claude-opus-5-5
+            --tools "Skill,Read,Glob,Grep,Edit,Write,Bash"
+            --permission-mode dontAsk
             --max-turns 120
             --max-budget-usd 15
             --allowedTools "Skill,Read,Glob,Grep,Edit(./package.json),Edit(./package-lock.json),Edit(./CHANGELOG.md),Edit(./agent-out/**),Bash(npm outdated *),Bash(npm view *),Bash(npm update *),Bash(npm install *),Bash(npm ci *),Bash(npm run *),Bash(git status *),Bash(git diff *),Bash(git log *)"

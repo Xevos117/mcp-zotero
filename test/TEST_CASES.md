@@ -723,7 +723,7 @@ livello 3b (AID-28..31) e da allora la scansione di robustezza tratta quel testo
 Il primo del mese (e a mano), nell'environment `claude-deps` (solo le variabili `ANTHROPIC_*` della Workload Identity
 Federation di Anthropic, nessun secret). Tre job con il minimo dei permessi:
 - **agent**: esce subito se c'è già una PR `deps/*`; `npm ci --ignore-scripts` e `NPM_CONFIG_IGNORE_SCRIPTS=true` per
-  tutto il job; l'agente (claude-code-action, `claude-opus-5-5`, `--max-turns 120`, `--max-budget-usd 15`) ha il
+  tutto il job; l'agente (claude-code-action, `claude-opus-5-5`, `--tools "Skill,Read,Glob,Grep,Edit,Write,Bash"`, `--permission-mode dontAsk`, `--max-turns 120`, `--max-budget-usd 15`) ha il
   `GITHUB_TOKEN` in sola lettura, può modificare solo `package.json`, `package-lock.json`, `CHANGELOG.md` e
   `agent-out/deps-pr.md`, e usare `npm outdated|view|update|install|ci|run` e `git status/diff/log`; niente commit, push, `gh` o publish. Un aggiornamento che
   rompe qualcosa viene rinviato, non corretto. Lo step finale produce una patch dei soli tre file (se l'agente ha
