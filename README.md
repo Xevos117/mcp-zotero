@@ -276,12 +276,29 @@ API key). Recommended: one federation rule per environment, as narrow as possibl
 Audience `https://api.anthropic.com`. The subject is an exact match unless it ends with `*`; jobs that use
 an environment get the OIDC subject `repo:Xevos117/mcp-zotero:environment:<environment>`, so a rule
 written for a branch or PR subject never matches. Numeric ids (not names) keep a renamed or re-created
-repository/account from matching. The
-Zotero test account needs a collection named `__mzt_disposable__`. For the dependency agent enable, in
-the repository settings, "Allow auto-merge" and "Allow GitHub Actions to create and approve pull requests"
-(it opens the PR with `GITHUB_TOKEN`; the ruleset's required checks still gate the merge). No GitHub App
-is needed. Required checks after the stack merges: `test (node 22)`, `test (node 24)`, `test (node 26)`,
-`live-tests`, `agent-smoke`.
+repository/account from matching.
+
+Trade-off for `zotero-live`: `claude-agent-smoke.yml@*` is needed for the agent smoke test to run on pull
+requests, but it also accepts a modified copy of that workflow file pushed to any branch of this repository
+(only people with write access can push). Pinning it to `@refs/heads/main` closes that gap but disables the
+agent smoke test on PRs (it would then run only on `main` and manual runs from `main`).
+
+Other owner settings:
+
+- The Zotero test account needs a collection named `__mzt_disposable__`.
+- Repository settings: "Allow auto-merge", and "Allow GitHub Actions to create and approve pull requests"
+  (the dependency workflow opens its PR with `GITHUB_TOKEN`). The latter is safe only while the ruleset
+  requires **0 approvals**: if approvals are ever required, it would let a workflow approve its own PR.
+- No GitHub App is used by any workflow (the agents authenticate to Anthropic with Workload Identity
+  Federation and use only `GITHUB_TOKEN` on GitHub, read-only for the agents). If the Claude GitHub App is
+  installed on this repository, uninstall it.
+- Set a monthly spend limit on the Anthropic workspace used by the federation rules: it is the real cap on
+  agent costs.
+- Residual risk: the agent smoke job that holds the OIDC token also runs the MCP server built from the PR's
+  code (that is what it tests). It runs only for same-repository PRs by the owner or a bot, the token is
+  bound to the `zotero-live` environment and the workspace spend limit caps any misuse.
+- Required checks after the stack merges: `test (node 22)`, `test (node 24)`, `test (node 26)`,
+  `live-tests`, `agent-smoke`.
 
 ### Releasing
 
