@@ -43,11 +43,12 @@ describe.skipIf(!live.enabled)("inject_citations (live)", () => {
     }
   );
 
-  it("LIVE-IC-02 chiave inesistente → isError (404), nessun output", async () => {
+  it("LIVE-IC-02 chiave inesistente → isError che la nomina (come inject.js), nessun output", async () => {
     const input = await dir.file("live-missing.docx", await makeDocx(para(zcite({ keys: FAKE_KEY }))));
     const r = await s.call("inject_citations", { file_path: input });
     expect(r.isError).toBe(true);
-    expect(r.text).toMatch(/404/);
+    expect(r.text).toContain(`1 cited key(s) not found in the library: ${FAKE_KEY}`);
+    await expect(readFile(input.replace(/\.docx$/, "_cited.docx"))).rejects.toThrow();
   });
 
   it("LIVE-IC-03 override library_type user → stessi URI della libreria utente", async () => {

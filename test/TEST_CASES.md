@@ -324,12 +324,13 @@ test normali. Non restano `it.fails` nella suite.
 | IC-10 | file inesistente | isError ENOENT |
 | IC-11..14 | **.docx malformati**: byte casuali, zip senza document.xml, zip troncato, file vuoto | isError (document.xml citato nel messaggio) |
 | IC-15 | zcite senza keys | ignorato |
-| IC-16 | chiave 404 | isError, nessun output |
+| IC-16 | chiavi 404 (sola e accanto a una valida) | isError "2 cited key(s) not found in the library: …" con tutte le chiavi, senza "404" grezzo, nessun output (come SK-05) |
 | IC-17/18 | HTTP 403/429/500/503, rete | isError |
 | IC-19 | output | zip valido con le altre parti |
 | IC-20 | cartella `x.docx.d/` | output accanto all'input |
 | IC-21 | file_path mancante o numero, style non valido | isError |
 | IC-22 | `keys=" A, B ,"` con spazi | chiavi ripulite, URI senza spazi, nessuna richiesta fuori route |
+| IC-24 | chiave `<zcite>` non alfanumerica (`../tags`, `AB?C`, mista a una valida) | isError "Invalid Zotero item key(s) in <zcite>", nessuna richiesta, nessun output (come SK-10) |
 | IC-23 | itemData | volume/issue/page/publisher/publisher-place inclusi, abstract escluso, cognome multiparola intatto |
 
 Gli output di IC-01/02/03/04/07/19/23 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
@@ -358,10 +359,11 @@ una PR separata, il caso diventa normale) o le smentisce (il caso si rimuove). i
 | SK-02 | ieee con `num` | `[1]`, `[1,2]`, nessun warning |
 | SK-03 | vancouver senza `num` | WARNING su stderr |
 | SK-04 | `keys="A, B"` | chiavi ripulite |
-| SK-05 | chiave assente da metadata.json | WARNING che la nomina, exit 0 |
+| SK-05 | chiavi assenti da metadata.json (sola e accanto a una presente) | exit 1 "2 cited key(s) not found in the metadata: …", nessun output (come IC-16) |
 | SK-06 | argomenti mancanti, libreria non valida, stile `mla`, file inesistenti | exit 1 con messaggio |
 | SK-07 | copia `inject.mjs` sotto `package.json` `"type": "commonjs"` | esegue senza SyntaxError/warning |
 | SK-08 | metadata.json da get_items_details (cognomi multiparola, nome istituzionale, nessun autore) | itemData e testo identici a inject_citations |
+| SK-10 | chiave `<zcite>` non alfanumerica (`../tags`, `AB?C`, mista a una valida) | exit 1 con lo stesso errore di inject_citations, nessun output |
 | SK-V01 | stili apa, harvard, chicago, ieee, vancouver; singola, multi-chiave con locator/prefix, ripetuta | output di inject.js valido (struttura, schema, URI, citeproc con 2 voci in bibliografia, parti chiave) |
 | SK-V02 | libreria `groups/777` | URI di gruppo validi |
 | SK-09 | `place` restituito da get_items_details | `publisher-place` nell'itemData come in inject_citations (bug trovato da LIVE-SK-01, corretto: prima inject.js leggeva solo `publisherPlace`) |
@@ -541,7 +543,7 @@ si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standal
 | `find-and-attach-pdfs` (soft per 04/05) | LIVE-FA-01 entrambi/nessuno; 02 chiave sconosciuta e senza DOI; 03 skipped e skip_if_attachment_exists false; 04 collezione dry_run → processed = voci regolari create (LIVE-STALE-2); 05 collezione reale (LIVE-STALE-4); 06 override |
 | `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci cancellate definitivamente (non nel cestino); 03 solo sconosciute (LIVE-STALE-1); 04 mista; 05 51/0 chiavi; 06 genitore → anche il figlio; 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione |
 | `delete-collection` | LIVE-DC-01 UNSAFE none/items rifiutato; 02-03 (solo fuori safe mode) cancellata con la voce che resta, chiave sconosciuta/vuota |
-| `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente; 03 override |
+| `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente (isError che la nomina, nessun output); 03 override |
 | `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations |
 | `groups` | solo con gruppo `mzt-test…`: LIVE-GRP-01 server in modalità gruppo dall'ambiente (`ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID`): get_user_id → `groups/<id>` con lo user_id dell'utente (get_user_id descrive sempre la libreria dell'ambiente, gli argomenti per chiamata non si applicano); 02 create_collection, add_items, get_collection_items e inject nel gruppo per singola chiamata; 03 server in modalità gruppo senza argomenti di libreria: legge collezione e voce create in 02, override per chiamata verso la libreria utente |
 

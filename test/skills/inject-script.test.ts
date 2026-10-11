@@ -107,12 +107,26 @@ describe("skill inject.js (processo reale)", () => {
     expect(c.citationItems[1].itemData.title).toBe("Pair Book");
   });
 
-  it("SK-05 chiave assente da metadata.json → WARNING che la nomina, exit 0", async () => {
-    const missing = await dir.file("missing.docx", await makeDocx(para(zcite({ keys: "GHPSTQQR" }))));
-    const r = await run([missing, join(dir.path, "missing-out.docx"), meta, "424242"]);
-    expect(r.code).toBe(0);
-    expect(r.stderr).toMatch(/WARNING: 1 cited key\(s\) not found in metadata\.json: GHPSTQQR/);
+  it("SK-05 chiavi assenti da metadata.json → exit 1 con l'elenco (come inject_citations), nessun output", async () => {
+    const missing = await dir.file("missing.docx", await makeDocx(para(zcite({ keys: "GHPSTQQR" })) + para(zcite({ keys: "SMITH001,GHPSTQQS" }))));
+    const out = join(dir.path, "missing-out.docx");
+    const r = await run([missing, out, meta, "424242"]);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain("2 cited key(s) not found in the metadata: GHPSTQQR, GHPSTQQS");
+    await expect(readFile(out)).rejects.toThrow();
   });
+
+  it.each(["../tags", "AB?C", "SMITH001,../items/X"])(
+    'SK-10 chiave <zcite> non alfanumerica "%s" → exit 1 con lo stesso errore di inject_citations, nessun output',
+    async (keys) => {
+      const bad = await dir.file("badkey.docx", await makeDocx(para(zcite({ keys }))));
+      const out = join(dir.path, "badkey-out.docx");
+      const r = await run([bad, out, meta, "424242"]);
+      expect(r.code).toBe(1);
+      expect(r.stderr).toContain("Invalid Zotero item key(s) in <zcite>");
+      await expect(readFile(out)).rejects.toThrow();
+    }
+  );
 
   it.each([
     ["meno di 4 argomenti", (i: string, m: string) => [i, "o.docx", m], /Usage/],

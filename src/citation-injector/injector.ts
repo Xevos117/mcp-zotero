@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import { readFile, writeFile } from "node:fs/promises";
 import { format, parse } from "node:path";
-import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
+import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
 import { CslItemData, ZoteroCitationItem } from "../types/csl-types.js";
 import { generateZoteroFieldCode, generateBibliographyFieldCode } from "./field-codes.js";
 import { formatCitationText } from "./citation-formatter.js";
@@ -69,10 +69,17 @@ async function fetchCslData(
   const cslData = new Map<string, CslItemData>();
 
   for (const key of keys) {
-    const response = await zoteroApi
-      .library(libraryType, userId)
-      .items(key)
-      .get();
+    let response;
+    try {
+      response = await zoteroApi
+        .library(libraryType, userId)
+        .items(key)
+        .get();
+    } catch (err) {
+      // Unknown keys are collected and reported together by the caller; any other failure aborts at once
+      if (isZoteroApiError(err) && err.response?.status === 404) continue;
+      throw err;
+    }
     const zoteroItem = response.getData() as ZoteroItemData;
     cslData.set(key, zoteroItemToCsl(zoteroItem));
   }
@@ -189,7 +196,7 @@ export async function injectCitations(
   // Collect all unique item keys
   const uniqueKeys = new Set(matches.flatMap((m) => m.keys));
   // Keys from the document go into API URL paths (one GET per key): only letters and digits, so a crafted
-  // <zcite> cannot point the request at another endpoint ("../", "?", "&"); unknown keys still give a 404
+  // <zcite> cannot point the request at another endpoint ("../", "?", "&"). The skill's inject.js applies the same check
   const invalid = [...uniqueKeys].filter((k) => !/^[A-Za-z0-9]{1,32}$/.test(k));
   if (invalid.length > 0) {
     throw new Error(`Invalid Zotero item key(s) in <zcite>: ${invalid.join(", ")} (letters and digits only)`);
@@ -197,6 +204,12 @@ export async function injectCitations(
 
   // Fetch CSL data from Zotero
   const cslData = await fetchCslData(uniqueKeys, zoteroApi, libraryType, userId);
+  // No placeholder citations in the user's document: a citation of a nonexistent item fails the injection,
+  // like the skill's inject.js with a key missing from metadata.json
+  const missingKeys = [...uniqueKeys].filter((k) => !cslData.has(k));
+  if (missingKeys.length > 0) {
+    throw new Error(`${missingKeys.length} cited key(s) not found in the library: ${missingKeys.join(", ")}`);
+  }
 
   // Replace each zcite tag with a field code
   let injected = 0;

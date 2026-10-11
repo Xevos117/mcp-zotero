@@ -692,6 +692,12 @@ async function main() {
     return;
   }
 
+  // 4a. Same rule as inject_citations: keys end up in Zotero URIs, so only letters and digits
+  const invalidKeys = [...new Set(matches.flatMap((m) => m.keys))].filter((k) => !/^[A-Za-z0-9]{1,32}$/.test(k));
+  if (invalidKeys.length > 0) {
+    throw new Error(`Invalid Zotero item key(s) in <zcite>: ${invalidKeys.join(", ")} (letters and digits only)`);
+  }
+
   // 4b. Warn if using a numbered style but tags are missing the num attribute
   if (style === "ieee" || style === "vancouver") {
     const withNum = matches.filter((m) => m.num !== undefined).length;
@@ -702,12 +708,10 @@ async function main() {
     }
   }
 
-  // 4c. Warn about cited keys missing from metadata.json (they would render as "Unknown, n.d.")
+  // 4c. Same rule as inject_citations: a cited key missing from metadata.json fails, nothing is written
   const missingKeys = [...new Set(matches.flatMap((m) => m.keys))].filter((k) => !cslData.has(k));
   if (missingKeys.length > 0) {
-    console.error(
-      `WARNING: ${missingKeys.length} cited key(s) not found in metadata.json: ${missingKeys.join(", ")}. Their citations will show "Unknown" until Zotero refreshes them.`
-    );
+    throw new Error(`${missingKeys.length} cited key(s) not found in the metadata: ${missingKeys.join(", ")}`);
   }
 
   // 5. Replace each zcite tag with a field code

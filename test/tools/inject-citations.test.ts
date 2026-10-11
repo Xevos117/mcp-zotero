@@ -247,12 +247,24 @@ describe("inject_citations (MCP)", () => {
   });
 
   describe("errori Zotero", () => {
-    it("IC-16 chiave inesistente (404) → isError, nessun output scritto", async () => {
-      serveItems(h, {});
-      const input = await dir.file("missingkey.docx", await makeDocx(para(zcite({ keys: "NOPE0001" }))));
-      expectToolError(await h.call("inject_citations", { file_path: input }), "404");
+    it("IC-16 chiavi inesistenti (404) → isError che le elenca tutte, come inject.js; nessun output scritto", async () => {
+      serveItems(h, { SMITH001: SMITH });
+      const input = await dir.file("missingkey.docx", await makeDocx(para(zcite({ keys: "NOPE2222" })) + para(zcite({ keys: "SMITH001,NOPE3333" }))));
+      const out = await h.call("inject_citations", { file_path: input });
+      expectToolError(out, "2 cited key(s) not found in the library: NOPE2222, NOPE3333");
+      expect(out.text).not.toMatch(/\b404\b/);
       await expect(stat(join(dir.path, "missingkey_cited.docx"))).rejects.toThrow();
     });
+
+    it.each(["../tags", "AB?C", "SMITH001,../items/X"])(
+      'IC-24 chiave <zcite> non alfanumerica "%s" → isError, nessuna richiesta, nessun output',
+      async (keys) => {
+        const input = await dir.file("badkey.docx", await makeDocx(para(zcite({ keys }))));
+        expectToolError(await h.call("inject_citations", { file_path: input }), "Invalid Zotero item key(s) in <zcite>");
+        expect(h.net.calls).toHaveLength(0);
+        await expect(stat(join(dir.path, "badkey_cited.docx"))).rejects.toThrow();
+      }
+    );
 
     it.each([403, 429, 500, 503])("IC-17 HTTP %i → isError", async (status) => {
       h.net.on("GET", ITEM_ROUTE, zError(status));
