@@ -4,10 +4,12 @@ name: Monthly dependency update
 #   1. agent      — a Claude Code agent follows .claude/skills/deps-update (minor/patch updates,
 #                   build/test/e2e/smoke, CHANGELOG). Read-only GitHub token, no install scripts, no git
 #                   push: it only leaves a patch of package.json, package-lock.json and CHANGELOG.md.
-#   2. open-pr    — no npm: applies the patch, pushes deps/<date> and opens the PR with GITHUB_TOKEN. Events
-#                   caused by GITHUB_TOKEN start no pull_request/push workflows, so it then starts the
-#                   required workflows on the branch with workflow_dispatch (allowed for GITHUB_TOKEN); their
-#                   check runs attach to the branch head, which is the PR head.
+#   2. open-pr    — no npm: applies the patch, rejects symlinks/type changes, runs main's copy of the gate on
+#                   the local commit, pushes deps/<date> and opens the PR with GITHUB_TOKEN. Events caused by
+#                   GITHUB_TOKEN start no pull_request/push workflows, so it starts the required workflows on
+#                   the branch with workflow_dispatch; their check runs attach to the PR head. live-tests and
+#                   agent-smoke (secrets, id-token) are started ONLY if the gate passed: otherwise only
+#                   test.yml runs, the PR stays for the owner with a comment, and there is no merge-gate.
 #   3. merge-gate — no npm, fresh checkout of main: runs main's copy of scripts/deps-merge-gate.mjs on the
 #                   PR head, waits for every check (test, live-tests, agent-smoke) to succeed on that exact SHA,
 #                   then enables auto-merge pinned to it. Anything else stays for the owner.
@@ -132,6 +134,7 @@ jobs:
       number: ${{ steps.pr.outputs.number }}
       head_sha: ${{ steps.pr.outputs.head_sha }}
       author: ${{ steps.pr.outputs.author }}
+      gate: ${{ steps.gate.outputs.passed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 3
@@ -153,6 +156,27 @@ jobs:
           for f in $changed; do
             case "$f" in package.json|package-lock.json|CHANGELOG.md) ;; *) echo "::error::patch touches $f"; exit 1 ;; esac
           done
+          git add package.json package-lock.json CHANGELOG.md
+          # regular files only: no symlinks, no type or mode changes
+          if git diff --cached --summary | grep -Eq 'mode change|120000'; then echo "::error::patch changes a file mode or creates a symlink"; exit 1; fi
+          if git diff --cached --name-status | grep -Eq '^T'; then echo "::error::patch changes a file type"; exit 1; fi
+          title=$(head -n 1 "$RUNNER_TEMP/deps/deps-pr.md")
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "$title"
+
+      # Before anything runs with secrets on this branch: main's copy of the gate on the local commit.
+      - name: Gate (main's copy) on the local commit
+        id: gate
+        timeout-minutes: 3
+        run: |
+          git show origin/main:scripts/deps-merge-gate.mjs > "$RUNNER_TEMP/gate.mjs"
+          if node "$RUNNER_TEMP/gate.mjs" origin/main HEAD > "$RUNNER_TEMP/gate.json"; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            code=$?
+            cat "$RUNNER_TEMP/gate.json"
+            [ "$code" -eq 1 ] || exit "$code"
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Push deps/<date> and open the PR
         id: pr
@@ -165,8 +189,6 @@ jobs:
           title=$(head -n 1 "$RUNNER_TEMP/deps/deps-pr.md")
           tail -n +2 "$RUNNER_TEMP/deps/deps-pr.md" > "$RUNNER_TEMP/deps/body.md"
           git switch -c "$branch"
-          git add package.json package-lock.json CHANGELOG.md
-          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -q -m "$title"
           git push -q "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/$branch"
           url=$(gh pr create --repo "$REPO" --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/deps/body.md")
           number=$(gh pr view "$url" --repo "$REPO" --json number --jq .number)
@@ -178,21 +200,36 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # The required checks run on the branch head (= PR head): test (node 22/24/26), live-tests, agent-smoke.
+      # Workflows with secrets or id-token only after the gate passed.
       - name: Start the required workflows on the branch
         timeout-minutes: 3
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ steps.pr.outputs.branch }}
+          NUMBER: ${{ steps.pr.outputs.number }}
+          GATE: ${{ steps.gate.outputs.passed }}
         run: |
-          for wf in test.yml live-tests.yml claude-agent-smoke.yml; do
-            gh workflow run "$wf" --repo "$REPO" --ref "$BRANCH"
-          done
+          gh workflow run test.yml --repo "$REPO" --ref "$BRANCH"
+          if [ "$GATE" = "true" ]; then
+            gh workflow run live-tests.yml --repo "$REPO" --ref "$BRANCH"
+            gh workflow run claude-agent-smoke.yml --repo "$REPO" --ref "$BRANCH"
+          else
+            {
+              echo "Merge automatico disattivato: il gate delle dipendenze non è passato, quindi test dal vivo e agente smoke (che usano i secret) non sono stati avviati su questo branch. Da rivedere a mano."
+              echo
+              echo '```json'
+              cat "$RUNNER_TEMP/gate.json"
+              echo '```'
+            } > "$RUNNER_TEMP/comment.md"
+            gh pr comment "$NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md"
+          fi
 
   merge-gate:
     needs: open-pr
+    if: needs.open-pr.outputs.gate == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 135
     permissions:
       contents: write # enable auto-merge
       pull-requests: write
@@ -237,7 +274,7 @@ jobs:
       - name: Wait for every check on the PR head
         id: checks
         if: steps.gate.outputs.mergeable == 'true'
-        timeout-minutes: 65
+        timeout-minutes: 125
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -245,15 +282,17 @@ jobs:
         run: |
           # the ruleset's required checks, plus the live ones (until the ruleset requires them too)
           required="test (node 22)|test (node 24)|test (node 26)|live-tests|agent-smoke"
-          deadline=$(( $(date +%s) + 60 * 60 ))
+          # up to 120 min: test + live-tests (lock wait up to 25 min + ~45 min) + agent-smoke (up to ~75 min)
+          deadline=$(( $(date +%s) + 120 * 60 ))
           while :; do
-            runs=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" --jq '[.check_runs[] | {name, status, conclusion}]')
+            runs=$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?per_page=100" --jq '[.check_runs[] | {name, status, conclusion, started_at, app: .app.id}]')
             # shellcheck disable=SC2016 # JavaScript in single quotes
             verdict=$(printf '%s' "$runs" | REQUIRED="$required" node -e '
               const runs = JSON.parse(require("fs").readFileSync(0, "utf8"));
               const req = process.env.REQUIRED.split("|");
+              // only GitHub Actions check runs (app id 15368), newest run per name
               const state = req.map((n) => {
-                const r = runs.filter((x) => x.name === n).pop();
+                const r = runs.filter((x) => x.name === n && x.app === 15368).sort((a, b) => String(a.started_at).localeCompare(String(b.started_at))).pop();
                 return !r ? "missing" : r.status !== "completed" ? "pending" : r.conclusion === "success" ? "ok" : `failed:${r.conclusion}`;
               });
               console.log(state.some((s) => s.startsWith("failed")) ? "failed " + req.filter((_, i) => state[i].startsWith("failed")).join(",") : state.every((s) => s === "ok") ? "ok" : "wait");
@@ -263,7 +302,7 @@ jobs:
               failed*) echo "::notice::checks not green ($verdict): PR left for the owner"; echo "green=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
             esac
             if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::notice::checks still pending after 60 min: PR left for the owner"
+              echo "::notice::checks still pending after 120 min: PR left for the owner"
               echo "green=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi

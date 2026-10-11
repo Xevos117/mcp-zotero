@@ -728,20 +728,23 @@ Federation di Anthropic, nessun secret). Tre job con il minimo dei permessi:
   `agent-out/deps-pr.md`, e usare npm e `git status/diff/log`; niente commit, push, `gh` o publish. Un aggiornamento che
   rompe qualcosa viene rinviato, non corretto. Lo step finale produce una patch dei soli tre file (se l'agente ha
   toccato altro il job fallisce senza PR).
-- **open-pr**: senza npm né id-token; applica la patch su `main`, fa push di `deps/<data>` e apre la PR col `GITHUB_TOKEN`
-  (serve l'impostazione "Allow GitHub Actions to create and approve pull requests"). Gli eventi del `GITHUB_TOKEN` non
-  fanno partire `pull_request`/`push`, quindi avvia con `gh workflow run --ref deps/<data>` (`actions: write`) i workflow
-  obbligatori: `test.yml`, `live-tests.yml`, `claude-agent-smoke.yml`; i loro check si agganciano alla testa del branch,
-  cioè alla testa della PR. Nessuna dipendenza dalla Claude GitHub App.
+- **open-pr**: senza npm né id-token; applica la patch su `main` (solo i tre file, niente symlink né cambi di tipo o di
+  modo), la committa in locale ed esegue **la copia di `main` del gate** (controlli statici ed età) su quel commit; poi
+  push di `deps/<data>` e PR col `GITHUB_TOKEN` (serve "Allow GitHub Actions to create and approve pull requests").
+  Gli eventi del `GITHUB_TOKEN` non fanno partire `pull_request`/`push`, quindi avvia con `gh workflow run --ref` i
+  workflow obbligatori: `test.yml` sempre; `live-tests.yml` e `claude-agent-smoke.yml` (secret, id-token) **solo se il
+  gate è passato**. Altrimenti commenta la PR (merge automatico disattivato, motivi del gate) e il merge-gate non parte.
 - **merge-gate**: senza npm, checkout pulito di `main`; esegue la copia di `main` di `scripts/deps-merge-gate.mjs` sulla
   testa della PR, verifica base `main`, testa invariata, autore = `github-actions[bot]` registrato da open-pr, poi aspetta
-  fino a 60 min che `test (node 22/24/26)`, `live-tests` e `agent-smoke` siano tutti verdi su quello SHA (non si affida solo al ruleset) e solo
+  fino a 120 min che `test (node 22/24/26)`, `live-tests` e `agent-smoke` siano tutti verdi su quello SHA (solo check di
+  GitHub Actions, app id 15368, la run più recente per nome) (non si affida solo al ruleset) e solo
   allora `gh pr merge --auto --squash --match-head-commit <sha>` col `GITHUB_TOKEN`. Altrimenti la PR resta al
   proprietario. Il push su `main` del merge automatico non fa partire workflow; il notturno copre `main`.
 
 **Regole del gate**: solo `package.json`, `package-lock.json`, `CHANGELOG.md`; range in `package.json` spostati al più di
 una patch; campi di primo livello del lockfile e voce radice invariati; nessun pacchetto aggiunto o rimosso; ogni voce
-che cambia versione è una patch semver, risolta da `https://registry.npmjs.org/<nome>/-/…`, con integrity `sha512`, e
+che cambia versione è una patch semver, risolta esattamente da `https://registry.npmjs.org/<nome>/-/<base>-<versione>.tgz`
+(uguaglianza, niente `..`/`%2e`/query), con integrity `sha512`, e
 non cambia `name`, `hasInstallScript`, `bin`, `os`, `cpu` né i flag dev/optional/peer; le voci con la stessa versione non
 cambiano `resolved` né `integrity`; ogni nuova versione è pubblicata da almeno 7 giorni (campo `time` del registry).
 
@@ -751,6 +754,8 @@ cambiano `resolved` né `integrity`; ogni nuova versione è pubblicata da almeno
 | DG-02 | patch diretti e transitivi, range `^` aggiornati | mergeable |
 | DG-03 | minor nel lockfile, file di codice, pacchetto aggiunto, range allargato a una minor, `version` cambiata, lockfile invariato | lasciata al proprietario con il motivo |
 | DG-04 | aggiramenti della revisione di sicurezza: `resolved` verso un altro server + `hasInstallScript`, stessa versione ripuntata su `git+ssh`, alias npm (stesso path, altro pacchetto), nuovo `bin`, integrity assente, `resolved` del registry con un altro nome, campi di primo livello del lockfile, `os`/`cpu` | lasciata al proprietario con il motivo |
+| DG-04 (bis) | `resolved` con `..`, `%2e%2e`, query e frammento, o di un'altra versione; `package.json` con scripts, overrides, bin/main/files | lasciata al proprietario |
+| DG-06 | pacchetto con scope (`@types/node` → `…/@types/node/-/node-<v>.tgz`) | accettato |
 | DG-05 | età della release: da più di 7 giorni / di ieri / registry irraggiungibile o versione senza data | accettata / lasciata al proprietario |
 
 ### Le 5 righe segnate OK a mano nel collaudo 2.0.0 (LIVE-STALE)

