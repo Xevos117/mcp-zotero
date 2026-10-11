@@ -31,6 +31,7 @@ describe("putFulltext", () => {
           indexedPages: 3,
           totalPages: 3,
         }),
+        signal: expect.any(AbortSignal),
       }
     );
   });

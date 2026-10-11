@@ -9,6 +9,7 @@ import { registerAllTools } from "./tools/index.js";
 import { logger } from "./utils/logger.js";
 import { parseUnsafeOperations, UnsafeOperationsMode } from "./utils/unsafe-operations.js";
 import { getDefaultLibrary } from "./utils/library-context.js";
+import { withRequestTimeout } from "./utils/timeouts.js";
 
 // Report the package version in the MCP handshake (package.json sits one level above both src/ and build/).
 const { version: SERVER_VERSION } = createRequire(import.meta.url)("../package.json") as { version: string };
@@ -70,7 +71,8 @@ class ZoteroServer {
       // global fetch; the old lib/main-node.cjs (cross-fetch polyfill) no longer exists.
       const require = createRequire(import.meta.url);
       const { default: zoteroApiFactory } = require("zotero-api-client") as typeof import("zotero-api-client");
-      this.zoteroApi = zoteroApiFactory(apiKey) as ZoteroApiInterface;
+      // every request carries its own AbortSignal.timeout (TIMEOUTS.zoteroApiMs)
+      this.zoteroApi = withRequestTimeout(zoteroApiFactory(apiKey) as ZoteroApiInterface);
     }
   }
 

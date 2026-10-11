@@ -9,7 +9,7 @@ export async function resolveDoi(doi: string): Promise<CslItemData> {
       Accept: "application/vnd.citationstyles.csl+json",
     },
     redirect: "follow",
-  });
+  }, { label: "DOI resolution" });
 
   if (!response.ok) {
     throw new Error(

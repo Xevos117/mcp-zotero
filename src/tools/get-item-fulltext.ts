@@ -3,7 +3,8 @@ import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface, ZoteroItemData, ZoteroFulltextResponse, isZoteroApiError } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
-import { findPdfAttachment, isPdfAttachment } from "../utils/attachments.js";
+import { findPdfAttachments, isLinkedUrl, isPdfAttachment } from "../utils/attachments.js";
+import { fetchWithTimeout, isTimeoutAbort, timeoutError, TIMEOUTS } from "../utils/timeouts.js";
 
 export const toolConfig = {
   name: "get_item_fulltext",
@@ -44,12 +45,28 @@ export async function handleGetItemFulltext(
 
     const itemData = itemResponse.getData() as ZoteroItemData;
 
-    // If the item itself is a PDF attachment, use it directly
+    // If the item itself is a PDF attachment, use it directly (a web link has no stored file)
     if (isPdfAttachment(itemData)) {
+      if (isLinkedUrl(itemData)) {
+        return formatErrorResponse(
+          "This attachment is a link to a PDF on the web (linked URL): Zotero stores no file or full text for it. Fetch the URL directly.",
+          { item_key, url: itemData.url || undefined }
+        );
+      }
       return fetchFulltext(item_key, item_key, libraryType, libraryId, apiKey, max_characters);
     }
 
-    const pdfAttachment = await findPdfAttachment(zoteroApi, { type: libraryType, id: libraryId }, item_key);
+    // Stored PDFs first: linked URLs never have server-side full text, even when listed first
+    const pdfs = await findPdfAttachments(zoteroApi, { type: libraryType, id: libraryId }, item_key);
+    const pdfAttachment = pdfs.find((p) => !isLinkedUrl(p));
+    const linkedPdf = pdfs.find(isLinkedUrl);
+
+    if (!pdfAttachment?.key && linkedPdf) {
+      return formatErrorResponse(
+        "No stored PDF attachment found. This item only links to a PDF on the web (linked URL attachment), which Zotero does not index — fetch the linked URL directly.",
+        { item_key, attachment_key: linkedPdf.key, url: linkedPdf.url || undefined }
+      );
+    }
 
     if (!pdfAttachment?.key) {
       // Provide context-aware error messages
@@ -88,9 +105,7 @@ async function fetchFulltext(
   maxCharacters: number
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const url = `https://api.zotero.org/${libraryType}s/${userId}/items/${attachmentKey}/fulltext`;
-  const response = await fetch(url, {
-    headers: { "Zotero-API-Key": apiKey },
-  });
+  const response = await fetchWithTimeout(url, { headers: { "Zotero-API-Key": apiKey } }, TIMEOUTS.zoteroApiMs, "Zotero fulltext request");
 
   if (response.status === 404) {
     return formatErrorResponse(
@@ -106,7 +121,16 @@ async function fetchFulltext(
     );
   }
 
-  const data = (await response.json()) as ZoteroFulltextResponse;
+  let data: ZoteroFulltextResponse;
+  try {
+    data = (await response.json()) as ZoteroFulltextResponse;
+  } catch (err) {
+    if (!isTimeoutAbort(err)) throw err;
+    return formatErrorResponse(timeoutError("Zotero fulltext request", url, TIMEOUTS.zoteroApiMs).message, {
+      item_key: itemKey,
+      attachment_key: attachmentKey,
+    });
+  }
   let text = data.content;
   let truncated = false;
 

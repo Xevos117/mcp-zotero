@@ -64,7 +64,7 @@ export async function lookupOaPdfWithFallbacks(doi: string): Promise<{
 
   let response: Response;
   try {
-    response = await fetchWithRetry(url);
+    response = await fetchWithRetry(url, undefined, { label: "Unpaywall lookup" });
   } catch (err) {
     const detail = errorMessage(err);
     logger.error("Unpaywall API network error", { doi, error: detail });

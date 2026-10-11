@@ -66,13 +66,14 @@ describe.skipIf(!live.enabled)("get_item_fulltext (live)", () => {
     expect((await s.call("get_item_fulltext", { item_key: parent, max_characters: "x" })).text).toMatch(/max_characters/);
   });
 
-  // Ex riga segnata OK a mano nel collaudo 2.0.0 (vedi TEST_CASES.md, LIVE-STALE-3): un allegato linked_url
-  // con contentType application/pdf viene scelto come PDF; il fulltext di un link non esiste mai sul server,
-  // quindi l'utente riceve "Open the PDF in Zotero desktop to trigger indexing", che non può funzionare.
-  it.fails("LIVE-GIF-08 solo un link a un PDF (linked_url) → guida al link, non 'apri il PDF in Zotero'", async () => {
+  // Ex riga segnata OK a mano nel collaudo 2.0.0 (TEST_CASES.md, LIVE-STALE-3): un allegato linked_url con
+  // contentType application/pdf veniva scelto come PDF e l'utente riceveva "Open the PDF in Zotero desktop
+  // to trigger indexing", che per un link non può funzionare.
+  it("LIVE-GIF-08 solo un link a un PDF (linked_url) → guida al link, non 'apri il PDF in Zotero'", async () => {
     const r = await s.call("get_item_fulltext", { item_key: linkedOnly });
     expect(r.isError).toBe(true);
     expect(r.text).not.toMatch(/Open the PDF in Zotero desktop/);
-    expect(r.text).toMatch(/linked|URL/i);
+    expect(r.json).toMatchObject({ url: "https://example.org/mzt-linked.pdf" });
+    expect(r.json.error).toMatch(/linked URL/);
   });
 });

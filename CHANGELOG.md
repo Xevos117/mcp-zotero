@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Correzioni
+
+- **Every network call is bounded** (`src/utils/timeouts.ts`): Zotero Web API requests made through `zotero-api-client` (each request gets its own `AbortSignal.timeout`), fulltext GET/PUT, upload authorization and registration: 30 s; doi.org and Unpaywall: 30 s per attempt; PDF download (body included) and upload to Zotero storage: 180 s. Before, a server that accepted the connection and never answered blocked the tool until the MCP client gave up. A timeout is reported with the operation, bound and host (e.g. `PDF download timed out after 180 s (example.org)`); `import_pdf_to_zotero` now includes the network detail for authorization, upload and registration failures.
+- **`get_item_fulltext` and linked URL attachments**: a `linked_url` attachment with content type `application/pdf` was taken for a stored PDF, so the tool answered "Full text not indexed… Open the PDF in Zotero desktop", which cannot work for a web link. Stored PDFs are now preferred over links; an item (or attachment key) with only a linked PDF gets a dedicated message with the link URL.
+- **Skill `inject.js`**: reads `place` (the field name returned by `get_items_details`) for `publisher-place`, so skill citations match `inject_citations` for books and reports with a place of publication. `publisherPlace` is still accepted.
+- **`import_pdf_to_zotero`**: the `content_type` description now says that only PDFs are imported (the file must start with `%PDF-`) and that the value is the MIME type recorded on the attachment.
+
 ## [2.0.1] - 2026-10-11
 
 Security and data-loss fixes. Affected: every release with these tools, including 1.0.9 and 2.0.0.

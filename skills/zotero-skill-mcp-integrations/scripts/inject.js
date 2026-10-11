@@ -187,7 +187,8 @@ function metadataToCsl(meta) {
   if (meta.issue) csl.issue = meta.issue;
   if (meta.page || meta.pages) csl.page = meta.page || meta.pages;
   if (meta.publisher) csl.publisher = meta.publisher;
-  if (meta.publisherPlace) csl["publisher-place"] = meta.publisherPlace;
+  // get_items_details returns Zotero's field name "place"; publisherPlace kept for older metadata files
+  if (meta.publisherPlace || meta.place) csl["publisher-place"] = meta.publisherPlace || meta.place;
   if (meta.URL || meta.url) csl.URL = meta.URL || meta.url;
 
   return csl;

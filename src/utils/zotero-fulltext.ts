@@ -1,4 +1,5 @@
 import { LibraryType } from "./library-context.js";
+import { fetchWithTimeout, TIMEOUTS } from "./timeouts.js";
 interface FulltextPutResult {
   success: boolean;
   error?: string;
@@ -13,7 +14,7 @@ export async function putFulltext(
   totalPages: number
 ): Promise<FulltextPutResult> {
   const url = `https://api.zotero.org/${libraryType}s/${userId}/items/${itemKey}/fulltext`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -24,7 +25,7 @@ export async function putFulltext(
       indexedPages: totalPages,
       totalPages,
     }),
-  });
+  }, TIMEOUTS.zoteroApiMs, "Zotero fulltext upload");
 
   if (response.status === 204) {
     return { success: true };

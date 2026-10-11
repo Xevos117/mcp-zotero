@@ -185,9 +185,8 @@ describe("skill inject.js (processo reale)", () => {
   });
 
   // Trovato dalla suite dal vivo (LIVE-SK-01): get_items_details restituisce il campo Zotero `place`,
-  // inject.js legge solo `publisherPlace`, quindi publisher-place manca dall'itemData della skill mentre
-  // inject_citations lo include. Bug del prodotto da correggere in una PR separata.
-  it.fails("SK-09 place da get_items_details → itemData publisher-place come inject_citations", async () => {
+  // che inject.js prima ignorava (leggeva solo `publisherPlace`).
+  it("SK-09 place da get_items_details → itemData publisher-place come inject_citations", async () => {
     const placed = await dir.file("meta-place.json", JSON.stringify({ PLACE001: { itemType: "book", title: "Placed Book", authors: "Jane Doe", date: "2020", publisher: "Press", place: "Rome" } }));
     const src = await dir.file("place.docx", await makeDocx(para(zcite({ keys: "PLACE001" }))));
     const out = join(dir.path, "place-out.docx");

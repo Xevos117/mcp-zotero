@@ -62,13 +62,10 @@ describe.skipIf(!live.enabled)("skill inject.js (live)", () => {
 
     const tool = await s.call("inject_citations", { file_path: forTool, style });
     expect(tool.isError, tool.text).toBe(false);
-    // publisher-place escluso: inject.js legge publisherPlace mentre get_items_details restituisce place
-    // (divergenza nota, SK-09 it.fails in test/skills/inject-script.test.ts)
-    const withoutPlace = ({ "publisher-place": _place, ...rest }: Record<string, unknown>) => rest;
     const strip = (xml: string) =>
       citations(xml).map((c) => ({
         text: c.properties.formattedCitation,
-        items: c.citationItems.map((ci: any) => ({ uris: ci.uris, itemData: withoutPlace(ci.itemData), locator: ci.locator })),
+        items: c.citationItems.map((ci: any) => ({ uris: ci.uris, itemData: ci.itemData, locator: ci.locator })),
       }));
     const toolReport = await expectValidDocx(await readFile(tool.json.output_path), { style });
     expect(strip(report.documentXml)).toEqual(strip(toolReport.documentXml));

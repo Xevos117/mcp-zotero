@@ -23,7 +23,9 @@ export const toolConfig = {
       .string()
       .optional()
       .default("application/pdf")
-      .describe('MIME type of the file (default: "application/pdf")'),
+      .describe(
+        'MIME type recorded on the attachment (default: "application/pdf"). This tool imports PDFs only: the downloaded file must start with %PDF- or the import is rejected, whatever this value says. Full text is extracted only for "application/pdf".'
+      ),
     parent_item: zoteroKey()
       .optional()
       .describe("Item key of the parent item. If provided, the attachment becomes a child of that item."),
@@ -94,10 +96,12 @@ export async function handleImportPdfToZotero(
         case "auth_failed":
           return formatErrorResponse("Upload authorization failed", {
             status: result.error.status,
+            details: result.error.networkDetail, // e.g. the timeout or connection error
           });
         case "upload_failed":
           return formatErrorResponse("File upload failed", {
             status: result.error.status,
+            details: result.error.networkDetail, // e.g. the timeout or connection error
           });
         case "not_pdf":
           return formatErrorResponse("Downloaded file is not a valid PDF", {
@@ -108,6 +112,7 @@ export async function handleImportPdfToZotero(
         case "registration_failed":
           return formatErrorResponse("Upload registration failed", {
             status: result.error.status,
+            details: result.error.networkDetail, // e.g. the timeout or connection error
           });
         case "item_creation_failed":
           return formatErrorResponse("import_pdf_to_zotero failed", {

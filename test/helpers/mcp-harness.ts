@@ -8,6 +8,7 @@ import { ZoteroApiInterface } from "../../src/types/zotero-types.js";
 import { UnsafeOperationsMode } from "../../src/utils/unsafe-operations.js";
 import { FakeNet } from "./fake-net.js";
 import { USER_ID } from "./zotero-fake.js";
+import { withRequestTimeout } from "../../src/utils/timeouts.js";
 
 /**
  * Harness MCP in-process: vero McpServer + vero Client collegati in memoria,
@@ -47,7 +48,8 @@ export function createZoteroClient(apiKey = TEST_API_KEY): ZoteroApiInterface {
   // Stesso caricamento di src/server.ts (zotero-api-client >= 0.51: unico entry lib/main.cjs)
   const require = createRequire(import.meta.url);
   const factory = require("zotero-api-client").default;
-  return factory(apiKey) as ZoteroApiInterface;
+  // come in src/server.ts: ogni richiesta porta un AbortSignal.timeout
+  return withRequestTimeout(factory(apiKey) as ZoteroApiInterface);
 }
 
 function toOutcome(result: any): ToolOutcome {

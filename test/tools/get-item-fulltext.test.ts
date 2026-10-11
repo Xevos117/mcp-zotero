@@ -191,4 +191,34 @@ describe("get_item_fulltext (MCP)", () => {
       expect(h.net.calls).toHaveLength(0);
     });
   });
+
+  describe("allegati linked_url (link a un PDF sul web, nessun file su Zotero)", () => {
+    const linked = (key: string, parent: string) =>
+      pdfAttachment(key, parent, { linkMode: "linked_url", url: "https://example.org/paper.pdf", filename: undefined });
+
+    it("GIF-20 solo un link a un PDF → guida al link, nessuna richiesta fulltext", async () => {
+      h.net.on("GET", PARENT, zSingle(article("PAR00001", { url: "" })));
+      h.net.on("GET", CHILDREN, zList([linked("LNK00001", "PAR00001")]));
+      const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PAR00001" }), "linked URL");
+      expect(json).toMatchObject({ attachment_key: "LNK00001", url: "https://example.org/paper.pdf" });
+      expect(json.error).not.toMatch(/Open the PDF in Zotero desktop/);
+      expect(h.net.requests("GET", /\/fulltext$/)).toHaveLength(0);
+    });
+
+    it("GIF-21 link elencato prima di un PDF importato → usa il PDF importato", async () => {
+      h.net.on("GET", PARENT, zSingle(article("PAR00001")));
+      h.net.on("GET", CHILDREN, zList([linked("LNK00001", "PAR00001"), pdfAttachment("ATT00001", "PAR00001")]));
+      h.net.on("GET", FULLTEXT, jsonResponse({ content: "Stored PDF text" }));
+      const out = await h.call("get_item_fulltext", { item_key: "PAR00001" });
+      expect(out.isError).toBe(false);
+      expect(out.json).toMatchObject({ attachment_key: "ATT00001", text: "Stored PDF text" });
+    });
+
+    it("GIF-22 chiave di un allegato linked_url → guida al link, nessuna richiesta fulltext", async () => {
+      h.net.on("GET", `${ZBASE}/items/LNK00001`, zSingle(linked("LNK00001", "PAR00001")));
+      const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "LNK00001" }), "linked URL");
+      expect(json.url).toBe("https://example.org/paper.pdf");
+      expect(h.net.requests("GET", /\/fulltext$/)).toHaveLength(0);
+    });
+  });
 });

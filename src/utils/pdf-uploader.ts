@@ -6,6 +6,7 @@ import { putFulltext } from "./zotero-fulltext.js";
 import { formatWriteErrors } from "./write-results.js";
 import { LibraryType } from "./library-context.js";
 import { errorMessage } from "./error-formatter.js";
+import { fetchWithTimeout, isTimeoutAbort, timeoutError, RequestTimeoutError, TIMEOUTS } from "./timeouts.js";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
@@ -118,11 +119,12 @@ export async function downloadAndUploadPdf(
   // 1. Download the file
   let downloadResponse: Response;
   try {
-    downloadResponse = await fetch(options.url, {
-      headers: {
-        "User-Agent": "mcp-zotero/1.0 (Open Access PDF retrieval)",
-      },
-    });
+    downloadResponse = await fetchWithTimeout(
+      options.url,
+      { headers: { "User-Agent": "mcp-zotero/1.0 (Open Access PDF retrieval)" } },
+      TIMEOUTS.pdfTransferMs,
+      "PDF download"
+    );
   } catch (err) {
     const detail = errorMessage(err);
     return {
@@ -154,8 +156,17 @@ export async function downloadAndUploadPdf(
     });
   }
 
-  const arrayBuffer = await downloadResponse.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(await downloadResponse.arrayBuffer());
+  } catch (err) {
+    // the download bound also covers the body: a server that stalls mid-file ends here
+    const detail = isTimeoutAbort(err) ? timeoutError("PDF download", options.url, TIMEOUTS.pdfTransferMs).message : errorMessage(err);
+    return {
+      success: false,
+      error: { code: "network_error", message: `Network error downloading file: ${detail}.`, networkDetail: detail },
+    };
+  }
   const filename =
     options.filename ??
     resolvePdfFilename(options.url, downloadResponse.headers.get("content-disposition"), options.doi);
@@ -255,7 +266,7 @@ export async function downloadAndUploadPdf(
 
   let authResponse: Response;
   try {
-    authResponse = await fetch(authUrl, {
+    authResponse = await fetchWithTimeout(authUrl, {
       method: "POST",
       headers: {
         "Zotero-API-Key": apiKey,
@@ -263,7 +274,7 @@ export async function downloadAndUploadPdf(
         "If-None-Match": "*",
       },
       body: authBody.toString(),
-    });
+    }, TIMEOUTS.zoteroApiMs, "Upload authorization");
   } catch (err) {
     const detail = errorMessage(err);
     return {
@@ -312,11 +323,11 @@ export async function downloadAndUploadPdf(
 
     let uploadResponse: Response;
     try {
-      uploadResponse = await fetch(auth.url, {
+      uploadResponse = await fetchWithTimeout(auth.url, {
         method: "POST",
         headers: { "Content-Type": auth.contentType },
         body: uploadBody,
-      });
+      }, TIMEOUTS.pdfTransferMs, "File upload");
     } catch (err) {
       const detail = errorMessage(err);
       return {
@@ -344,7 +355,7 @@ export async function downloadAndUploadPdf(
 
     let registerResponse: Response;
     try {
-      registerResponse = await fetch(authUrl, {
+      registerResponse = await fetchWithTimeout(authUrl, {
         method: "POST",
         headers: {
           "Zotero-API-Key": apiKey,
@@ -352,7 +363,7 @@ export async function downloadAndUploadPdf(
           "If-None-Match": "*",
         },
         body: `upload=${auth.uploadKey}`,
-      });
+      }, TIMEOUTS.zoteroApiMs, "Upload registration");
     } catch (err) {
       const detail = errorMessage(err);
       return {
@@ -391,8 +402,11 @@ export async function downloadAndUploadPdf(
       fulltextStatus = putResult.success
         ? "Fulltext indexed successfully. Use get_item_fulltext to retrieve content."
         : `Fulltext PUT failed: ${putResult.error}. Sync with Zotero Desktop to index the PDF.`;
-    } catch {
-      fulltextStatus = "PDF text extraction failed. Sync with Zotero Desktop to index the PDF.";
+    } catch (err) {
+      fulltextStatus =
+        err instanceof RequestTimeoutError
+          ? `Fulltext indexing failed: ${err.message}. Sync with Zotero Desktop to index the PDF.`
+          : "PDF text extraction failed. Sync with Zotero Desktop to index the PDF.";
     }
   } else {
     fulltextStatus = "Non-PDF content type, fulltext extraction skipped.";

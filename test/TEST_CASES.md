@@ -131,6 +131,9 @@ test normali. Non restano `it.fails` nella suite.
 | GIF-15/16/17 | item HTTP 4xx/5xx, children 500, rete | isError |
 | GIF-18 | ZOTERO_API_KEY assente | errore strutturato, nessuna chiamata HTTP |
 | GIF-19 | item_key mancante o non stringa, max_characters stringa | isError |
+| GIF-20 | solo un allegato linked_url con contentType PDF | errore con "linked URL", attachment_key e url del link, nessuna GET fulltext |
+| GIF-21 | link elencato prima di un PDF importato | usa il PDF importato |
+| GIF-22 | chiave di un allegato linked_url | errore con "linked URL" e url, nessuna GET fulltext |
 
 ## get_user_id (`get-user-id.test.ts`)
 | ID | Scenario | Atteso |
@@ -359,7 +362,7 @@ una PR separata, il caso diventa normale) o le smentisce (il caso si rimuove). i
 | SK-08 | metadata.json da get_items_details (cognomi multiparola, nome istituzionale, nessun autore) | itemData e testo identici a inject_citations |
 | SK-V01 | stili apa, harvard, chicago, ieee, vancouver; singola, multi-chiave con locator/prefix, ripetuta | output di inject.js valido (struttura, schema, URI, citeproc con 2 voci in bibliografia, parti chiave) |
 | SK-V02 | libreria `groups/777` | URI di gruppo validi |
-| SK-09 (`it.fails`) | `place` restituito da get_items_details | atteso `publisher-place` nell'itemData come in inject_citations; oggi inject.js legge solo `publisherPlace` (trovato da LIVE-SK-01) |
+| SK-09 | `place` restituito da get_items_details | `publisher-place` nell'itemData come in inject_citations (bug trovato da LIVE-SK-01, corretto: prima inject.js leggeva solo `publisherPlace`) |
 
 Gli output di SK-01, SK-02 e SK-08 passano anche da `expectValidDocx`.
 
@@ -454,6 +457,21 @@ Server avviato con `ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID=777` (e `ZOTE
 | E2E-G13 | group senza `ZOTERO_LIBRARY_ID` | exit code 1 entro 5 s, "requires ZOTERO_LIBRARY_ID", nessuna chiamata HTTP |
 | E2E-G14 | `ZOTERO_LIBRARY_ID` non numerico / `ZOTERO_LIBRARY_TYPE` sconosciuto | exit code 1 con messaggio dedicato |
 
+## Timeout di rete (`test/tools/timeouts.test.ts`, `src/utils/timeouts.test.ts`)
+Bound in `src/utils/timeouts.ts` (`TIMEOUTS`: Web API Zotero 30 s, doi.org/Unpaywall 30 s per tentativo, download e
+upload PDF 180 s), abbassati a 50-100 ms nei test. Il server della FakeNet resta fermo (`hang()`, `stalledBody()`)
+finché il signal del prodotto non abortisce; senza signal il test scadrebbe sul suo timeout.
+| ID | Scenario | Atteso |
+|---|---|---|
+| TO-01 | Web API ferma (zotero-api-client, search_library) | isError "Zotero API request (GET) timed out after 0.1 s (api.zotero.org)" |
+| TO-02/03 | download PDF senza risposta / bloccato a metà corpo | isError con "PDF download timed out", nessun item creato (TO-02) |
+| TO-04 | autorizzazione, upload su storage, registrazione fermi | isError con "Upload authorization / File upload / Upload registration timed out" nei details |
+| TO-05 | PUT del fulltext fermo | import riuscito, `fulltext_indexed: false`, motivo nel `fulltext_status` |
+| TO-06 | GET del fulltext ferma | isError "Zotero fulltext request timed out" |
+| TO-07 | doi.org fermo | DOI tra i falliti con "DOI resolution timed out" |
+| TO-08 | Unpaywall fermo | `not_found` entro il bound |
+| (unit) | fetchWithTimeout, abort del chiamante, fetchWithRetry (timeout non ritentato), resolveDoi, putFulltext, withRequestTimeout su GET/POST/DELETE, signal nuovo per ogni richiesta | messaggi con operazione, bound e host |
+
 ## Suite dal vivo (`test/live/`, `npm run test:live`)
 
 Gira contro la Web API Zotero vera con il server compilato su stdio. Si attiva **solo** con
@@ -512,7 +530,7 @@ si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standal
 | `get-collections` | LIVE-GC-01 collezione e sottocollezione con genitore; 02 include_trashed; 03 override e tipo sbagliato |
 | `get-collection-items` | LIVE-GCI-01 collezione con 3 voci note + inclusione delle fixture; 02 sottocollezione; 03 105 voci (paginazione >100); 04 allegato standalone escluso/incluso; 05 vuota; 06 inesistente / chiave mancante; 07 override |
 | `get-items-details` | LIVE-GID-01 campi per tipo e creators; 02 include_abstract; 03 105 chiavi; 04 sconosciute / miste; 05 override, lista vuota |
-| `get-item-fulltext` | LIVE-GIF-01 PDF importato → testo; 02 max_characters; 03 chiave dell'allegato; 04 webpage; 05 URL senza allegati; 06 nessun PDF; 07 inesistente / max_characters non numerico; **08 `it.fails`** (LIVE-STALE-3) |
+| `get-item-fulltext` | LIVE-GIF-01 PDF importato → testo; 02 max_characters; 03 chiave dell'allegato; 04 webpage; 05 URL senza allegati; 06 nessun PDF; 07 inesistente / max_characters non numerico; 08 solo un link a un PDF → guida al link (LIVE-STALE-3) |
 | `create-collection` | LIVE-CC-01 primo livello; 02 sottocollezione; 03 nome ripulito + override; 04 nome vuoto; 05 genitore inesistente leggibile |
 | `add-items` | LIVE-AI-01 8 tipi con collezione e tag, campi verificati via API; 02 55 voci in due POST; 03 tipo/campo/creatorType non validi, lista vuota; 04 collezione inesistente leggibile |
 | `add-items-by-doi` (soft) | LIVE-AID-01 metadati Crossref, nessun allegato; 02 DOI inesistente; 03 parziale; 04 forma URL `https://doi.org/…` risolta da doi.org, campo DOI senza prefisso; 05 DOI OA → PDF allegato; 06 lista vuota |
@@ -522,7 +540,7 @@ si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standal
 | `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci cancellate definitivamente (non nel cestino); 03 solo sconosciute (LIVE-STALE-1); 04 mista; 05 51/0 chiavi; 06 genitore → anche il figlio; 07 override |
 | `delete-collection` | LIVE-DC-01 UNSAFE none/items rifiutato; 02-03 (solo fuori safe mode) cancellata con la voce che resta, chiave sconosciuta/vuota |
 | `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente; 03 override |
-| `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations (salvo publisher-place, SK-09) |
+| `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations |
 | `groups` | solo con gruppo `mzt-test…`: LIVE-GRP-01 server in modalità gruppo dall'ambiente (`ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID`): get_user_id → `groups/<id>` con lo user_id dell'utente (get_user_id descrive sempre la libreria dell'ambiente, gli argomenti per chiamata non si applicano); 02 create_collection, add_items, get_collection_items e inject nel gruppo per singola chiamata; 03 server in modalità gruppo senza argomenti di libreria: legge collezione e voce create in 02, override per chiamata verso la libreria utente |
 
 ### Le 5 righe segnate OK a mano nel collaudo 2.0.0 (LIVE-STALE)
@@ -533,7 +551,7 @@ Indagate una per una su `main` @ 5a0f772.
 |---|---|---|---|
 | LIVE-STALE-1 | delete_items con sole chiavi sconosciute, atteso `/not found/i` | `isError`, `{"error":"No items found for the given keys","status":"not_found"}`: "No items found" non contiene "not found" | **assertion** sbagliata; ora LIVE-DI-03 controlla `status: "not_found"` |
 | LIVE-STALE-2 | find_and_attach_pdfs su collezione in dry_run con `processed >= 70` | `processed` = 69: le voci regolari create (8 tipi + 55 batch + 6 da DOI); gli allegati standalone non sono processati e il DOI fallito non crea voci | **assertion** sbagliata (conteggio a mano); ora LIVE-FA-04 confronta con le voci regolari create dalla run |
-| LIVE-STALE-3 | get_item_fulltext su voce con solo un URL collegato, regex sul messaggio guida | la voce aveva un allegato linked_url con `contentType: application/pdf`; `isPdfAttachment` non guarda `linkMode`, quindi il link viene trattato come PDF e il tool risponde "Full text not indexed… Open the PDF in Zotero desktop", consiglio impossibile per un link | **codice**: allegati linked_url da escludere (o messaggio dedicato). Tracciato come `it.fails` LIVE-GIF-08, correzione in una PR separata |
+| LIVE-STALE-3 | get_item_fulltext su voce con solo un URL collegato, regex sul messaggio guida | la voce aveva un allegato linked_url con `contentType: application/pdf`; `isPdfAttachment` non guarda `linkMode`, quindi il link viene trattato come PDF e il tool risponde "Full text not indexed… Open the PDF in Zotero desktop", consiglio impossibile per un link | **codice**: corretto in questa stack (livello 3b): i PDF salvati hanno la precedenza sui link, un link da solo riceve un messaggio dedicato con l'URL. LIVE-GIF-08 e GIF-20..22 |
 | LIVE-STALE-4 | find_and_attach_pdfs reale sulla stessa collezione, `processed >= 70` | come LIVE-STALE-2 | **assertion** sbagliata; ora LIVE-FA-05 |
 | LIVE-STALE-5 | import_pdf_to_zotero con `content_type: text/html`, atteso successo senza fulltext | rifiutato con not_pdf: il tool controlla sempre i byte `%PDF-`; `content_type` è solo il MIME salvato sull'allegato | **assertion** sbagliata (il tool è solo PDF); ora LIVE-IP-05. La descrizione di `content_type` ("MIME type of the file") lascia intendere altri formati: da chiarire nella descrizione |
 
