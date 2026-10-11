@@ -58,6 +58,7 @@ jobs:
           fi
 
   live:
+    name: live-tests # required check name
     needs: changes
     if: >-
       needs.changes.outputs.relevant == 'true' &&

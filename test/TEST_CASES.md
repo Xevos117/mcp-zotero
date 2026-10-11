@@ -555,7 +555,7 @@ si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standal
 
 ### In CI (`.github/workflows/live-tests.yml`)
 
-Gira sulle PR dello stesso repo (le PR da fork e di Dependabot risultano saltate), su `main`, ogni notte e a mano,
+Il job (check `live-tests`) gira sulle PR dello stesso repo (le PR da fork e di Dependabot risultano saltate), su `main`, ogni notte e a mano (anche avviato da deps-update.yml sul branch delle dipendenze),
 nell'environment `zotero-live`. Concurrency per workflow e PR/ref (`cancel-in-progress` solo sulle PR: un nuovo push
 sostituisce la run precedente della stessa PR); le run di PR diverse e dell'agente si serializzano sul lato Zotero con
 `test/live/lock.mjs` (attesa fino a 25 min, poi "test account busy"), così le PR in stack non si annullano a vicenda i
