@@ -518,8 +518,8 @@ la libreria intera.
 
 **Run concorrenti** (`test/live/lock.mjs`, usato dalla suite e, in CI, dall'agente smoke): all'avvio la run crea la
 collezione `mzt-lock <runId>`; se ne trova una più vecchia e non scaduta di un'altra run (di un'altra PR, dell'agente,
-di un altro worktree), aspetta con backoff (15 s, 30 s, poi ogni 60 s) fino a 25 min (`ZOTERO_LIVE_LOCK_WAIT_MIN`) e poi
-si ferma con "test account busy". I lock più vecchi di 90 min (più del job più lungo) sono di run morte e vengono rimossi.
+di un altro worktree), aspetta con backoff (15 s, 30 s, poi ogni 60 s) fino a 25 min (`ZOTERO_LIVE_LOCK_WAIT_MIN`; 70 min in CI) e poi
+si ferma con "test account busy". I lock con runId più vecchio di 180 min (attesa in CI più la run più lunga, l'agente smoke) sono di run morte e vengono rimossi.
 I log riportano `[lock] acquired <runId>` e `[lock] released <runId>` (LK-01, `test/utils/lock.test.ts`). A parità di corsa vince il runId più vecchio. Le collezioni di lock sono escluse dai conteggi prima/dopo (una run in attesa
 crea la sua mentre un'altra è fra i due conteggi). Rilascio a fine teardown (sempre) e nella modalità solo pulizia. I DELETE
 ritentano fino a 8 volte con jitter sui 412 (versione della libreria cambiata nel frattempo).
@@ -558,8 +558,8 @@ si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standal
 Il job (check `live-tests`) gira sulle PR dello stesso repo (le PR da fork e di Dependabot risultano saltate), su `main`, ogni notte e a mano (anche avviato da deps-update.yml sul branch delle dipendenze),
 nell'environment `zotero-live`. Concurrency per workflow e PR/ref (`cancel-in-progress` solo sulle PR: un nuovo push
 sostituisce la run precedente della stessa PR); le run di PR diverse e dell'agente si serializzano sul lato Zotero con
-`test/live/lock.mjs` (attesa fino a 25 min, poi "test account busy"), così le PR in stack non si annullano a vicenda i
-check obbligatori. Job di 60 min, step dei test di 45 (attesa del lock compresa). Il filtro sui file è un job
+`test/live/lock.mjs` (attesa fino a 70 min, poi "test account busy": l'agente smoke tiene l'account fino a circa 80 min), così le PR in stack non si annullano a vicenda i
+check obbligatori. Job di 100 min, step dei test di 85 (attesa del lock compresa). Il filtro sui file è un job
 (`changes`), non `on.paths`, così una PR di sola documentazione ha il check "saltato" (che vale come superato).
 Senza i secret lo step "Require the test account" fallisce invece di far passare una suite tutta saltata;
 con più di 2 casi soft saltati (`ZOTERO_LIVE_MAX_SOFT_SKIPS`) la run fallisce.
@@ -593,8 +593,9 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
   (`allowed_bots`), per le run avviate da deps-update.yml.
 - **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
   comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
-  docx con i `<zcite>`) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
-  negati; `--max-turns 80`, `--max-budget-usd 5`, `MCP_TOOL_TIMEOUT` 120 s, step 25 min. La chiave Zotero sta solo nel file
+  docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
+  negati; `--max-turns 160`, `--max-budget-usd 10`, `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min (costo atteso: vedi
+  il collaudo locale sotto; i limiti sono circa il doppio). La chiave Zotero sta solo nel file
   di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente. Gli artifact fra i job
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
   nel job successivo), username, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne resta uno
@@ -603,9 +604,18 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
   scritta nella PR = non fidata): gira la skill del branch di base. Se lì la skill non c'è ancora (la PR che la
   introduce), il job lo segnala e salta; il primo collaudo vero è l'avvio manuale da `main` dopo il merge.
 - **Percorso**: P0 precondizioni (15 tool, get_user_id, sentinella o safe mode); F1 DOI con PDF OA; F2 collezione,
-  sottocollezione, add_items; F3 link e fulltext (messaggio "linked URL"); F4 ricerca, collezione, dettagli;
-  F5 inject_citations; F6 stesso documento con inject.js e confronto; F7 gruppo (solo con gruppo); F8 cancellazione;
-  poi gli scenari T-… per i file toccati (tabella nella skill), la valutazione d'uso e `agent-out/claims.json`.
+  sottocollezione, add_items di tre voci (libro con autore istituzionale, articolo con titolo e autori non ASCII,
+  report senza data né autori); F3 link e fulltext (messaggio "linked URL"); F4 ricerca, collezione, dettagli;
+  F5/F6 **parità esplicita inject_citations ⇄ inject.js a ogni run**: lo stesso documento (citazione singola,
+  multi-chiave, locator+prefix+suffix, zcite in linea a metà frase, zcite spezzato su tre run; variante con `num` per
+  ieee e vancouver) iniettato dai due produttori in tutti e 5 gli stili, un `compare_group` per stile; F7 gruppo (solo
+  con gruppo, con la coppia di parità sul gruppo); F8 cancellazione; F9 casi limite dei `<zcite>` con i due produttori
+  (chiave sconosciuta ben formata → stesso avviso e segnaposto; chiave malformata `../items` → stesso rifiuto; `keys="A, B"`;
+  chiave ripetuta; documento senza zcite); F10 casi limite degli input dei tool (array vuoti, stringhe di soli spazi,
+  limiti 0/1/max/max+1 dove lo schema li fissa: delete_items 1..50, add_items almeno 1, search_library massimo 100);
+  poi gli scenari T-… per i file toccati, fino a 5 **scenari esplorativi** X1..X5 scelti dall'agente in base al diff
+  (null, tipi sbagliati, vuoti, spazi, stringhe lunghissime, unicode, limiti, duplicati, valori validi e non validi
+  insieme), la valutazione d'uso e `agent-out/claims.json` (`schema_version: 2`).
 - **verify-claims** (exit 0/1/2, `verdict.json` e riepilogo nello step summary): scenari fissi presenti e non falliti
   (F1 può essere `skipped` con motivo); ogni oggetto dichiarato esiste con i marcatori della run e lo stato dichiarato
   (titolo, DOI, collezione, genitore, link_mode, PDF); ogni cancellazione dichiarata ha una chiave nel formato Zotero,
@@ -613,12 +623,44 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
   `collection_key` di delete_collection riuscito (lettura strutturale della trascrizione con `--transcript`, mai una
   semplice occorrenza nel testo, ad esempio in `not_found`) e risponde 404; ogni docx sta in
   `agent-out/`, passa `validateDocx` (le differenze di testo contano negli stili autore-anno) e cita solo voci create
-  dalla run; i documenti con lo stesso `compare_group` hanno lo stesso JSON; in locale non restano voci con il tag.
+  dalla run (o `ZZZZZZZZ`/`YYYYYYYY` con itemData segnaposto, verificate inesistenti); in locale non restano voci con il tag.
+  **Parità**: i documenti di uno stesso `compare_group` (uno per produttore, stesso stile, libreria e `source`) devono
+  avere lo stesso JSON di ogni campo tranne il `citationID` casuale (citationItems con uris, itemData, locator, label,
+  prefix, suffix; properties con formattedCitation), lo stesso testo visibile di ogni citazione e di ogni paragrafo e gli
+  stessi campi di bibliografia; in ogni stile serve un gruppo verificato sul documento di parità (lo script legge il
+  sorgente: multi-chiave, locator+prefix+suffix, in linea, spezzato, `num` su ogni tag negli stili numerici; nelle
+  citazioni almeno un autore istituzionale, una voce senza data né autori, metadati non ASCII), più il gruppo di test se
+  F7 è passato e i due documenti di F9. **Trascrizione obbligatoria** (`--transcript`, exit 2 senza): F9 (stesso
+  avviso per la chiave sconosciuta, stesso rifiuto per quella malformata, 0 citazioni senza zcite) e F10 (esiti attesi
+  per ogni chiamata fissa) si controllano sulle chiamate vere; ogni chiamata esplorativa dichiarata deve comparire con gli
+  stessi argomenti, massimo 5 scenari, verdetto `bug` = check fallito, `unclear` = avviso nel riepilogo.
+  **Robustezza** su tutti i risultati Zotero della trascrizione: server connesso all'avvio, ogni chiamata con un
+  risultato, nessuna connessione chiusa/timeout/crash, risultati riusciti in JSON MCP, nessun risultato con `error` senza
+  isError, nessun `[object Object]`, `undefined`, `NaN`, stack trace o errore JavaScript nel testo (esclusi i campi di
+  contenuto della libreria e i token che l'agente stesso ha inviato in quella chiamata; `undefined`/`NaN` ammessi negli
+  errori di validazione), nessun crash di inject.js. **Sicurezza** delle scritture: ogni chiave passata a un tool di
+  scrittura è ben formata e creata prima dalla run (o finta), niente scritture sul gruppo in safe mode, mai
+  delete_collection in safe mode. I messaggi riportano solo chiavi, tool e percorsi, mai contenuti della libreria.
 
 | ID | Scenario (`test/utils/verify-claims.test.ts`) | Atteso |
 |---|---|---|
 | VC-01 | trascrizione con create_collection, add_items, add_items_by_doi (con PDF), add_linked_url_attachment, delete_items, delete_collection | chiavi create e cancellate lette dai risultati dei tool |
 | VC-02 | chiave ripetuta solo in `not_found`, in un risultato d'errore o in un tool non Zotero (Write) | non attribuita né come creata né come cancellata |
+| VC-03a | trascrizione pulita: "undefined"/"TypeError"/"NaN" solo in titoli e testo pieno, errore con isError, errore di validazione "received undefined", rifiuto di inject.js | nessun problema di robustezza |
+| VC-03b | connessione chiusa, timeout, tool non più disponibile, `error` senza isError, risultato non JSON, `[object Object]`, `undefined`, `NaN`, stack trace, TypeError, crash di inject.js | un problema per caso |
+| VC-03c | `NaN` nel titolo inviato dall'agente e restituito | nessun problema |
+| VC-03d | server zotero `failed` all'avvio, chiamata senza risultato | due problemi |
+| VC-04a | scritture su chiavi create prima, chiave finta, find_and_attach_pdfs in dry_run su chiave estranea | nessun problema |
+| VC-04b | delete_items su voce preesistente, allegato a voce preesistente, find_and_attach_pdfs reale su collezione estranea, chiave malformata a delete_items, scrittura nel gruppo in safe mode, delete_collection in safe mode | un problema per caso |
+| VC-04c | fuori safe mode, gruppo diverso da quello di test / uguale | problema / nessuno |
+| VC-05a | F9 e F10 completi con gli esiti attesi | nessun problema |
+| VC-05b | inject.js accetta la chiave malformata, nessun avviso per la chiave sconosciuta, documento senza zcite non provato, 51 chiavi accettate, 50 chiavi rifiutate, limit 101 con più di 100 voci, chiamata F10 mancante | un problema per caso |
+| VC-06a/b | esplorativi ok (ordine delle chiavi indifferente, comando Bash senza description), assenti, `unclear` | nessun problema; `unclear` = avviso |
+| VC-06c | verdetto `bug`, 6 scenari, id non valido o ripetuto, chiamata mai fatta, argomenti diversi, rationale mancante, verdetto non previsto, non array | problema |
+| VC-07 | make-docx: tag in linea e spezzato riconosciuti dal sorgente, `num` su ogni tag, spazi e chiave ripetuta (F9), percorso fuori agent-out e `"` nei valori rifiutati | caratteristiche lette correttamente; exit 2 |
+| VC-08 | 5 stili: inject_citations (server con Zotero finto) e inject.js (via inject.mjs, metadata da get_items_details) sul documento di parità | docx validi, 5 citazioni, impronte identiche, copertura istituzionale/senza metadati/non ASCII, testo attorno ai tag in linea e spezzato conservato, una bibliografia |
+| VC-08b | impronta alterata: citationID diverso / locator / testo visibile / bibliografia | nessuna differenza / percorso della prima differenza |
+| VC-09a/b | script completo senza rete: senza `--transcript`; claims incompleti con una cancellazione non attribuibile | exit 2; exit 1 e `verdict.json` con scenari mancanti, sicurezza, F10, parità, F9; la chiave non compare nell'output |
 
 Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`):
 26 turni, 0,26 USD, 54 s; P0, F1-F6, F8 passati, F7 saltato (nessun gruppo); verify-claims verde (9 controlli);

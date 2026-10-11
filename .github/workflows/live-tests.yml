@@ -18,7 +18,8 @@ permissions:
 
 # One group per workflow and PR/ref: a new push supersedes the previous run of the same PR. Runs of
 # different PRs (and the agent smoke test) are serialized on the Zotero side by test/live/lock.mjs,
-# so stacked PRs never cancel each other's required checks; a queued run waits up to 25 min.
+# so stacked PRs never cancel each other's required checks; a queued run waits up to 70 min
+# (an agent smoke run holds the account for up to about 80 min).
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -66,7 +67,7 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: zotero-live
-    timeout-minutes: 60
+    timeout-minutes: 100
     # Secrets only at step level, in the steps that talk to Zotero (never during npm ci or the build).
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -93,10 +94,10 @@ jobs:
         timeout-minutes: 5
       - run: npm run build
         timeout-minutes: 3
-      # Up to 25 min waiting for the test-account lock + ~5 min of tests; shorter than the job, so the
+      # Up to 70 min waiting for the test-account lock + ~5 min of tests; shorter than the job, so the
       # always() steps below still have time to clean up and release the lock.
       - name: Live suite
-        timeout-minutes: 45
+        timeout-minutes: 85
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
           ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
@@ -105,6 +106,7 @@ jobs:
           UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
           # more than 2 cases skipped because an external service was down → the run fails
           ZOTERO_LIVE_MAX_SOFT_SKIPS: "2"
+          ZOTERO_LIVE_LOCK_WAIT_MIN: "70"
         run: npx vitest run --config vitest.live.config.ts
       - name: Clean up interrupted runs
         if: always()

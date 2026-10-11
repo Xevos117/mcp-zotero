@@ -69,7 +69,7 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: zotero-live
-    timeout-minutes: 40
+    timeout-minutes: 85
     permissions:
       contents: read
     outputs:
@@ -149,13 +149,14 @@ jobs:
           node test/live/agent/prepare.mjs --mode ci --base "$base"
           echo "run_id=$(node -p 'require("./agent-out/context.json").run_id')" >> "$GITHUB_OUTPUT"
 
-      # Same lock as the live suite: one run at a time on the Zotero test account (waits up to 25 min).
-      # Released by the agent-smoke job, always.
+      # Same lock as the live suite: one run at a time on the Zotero test account (waits up to 70 min:
+      # another agent run holds it for up to about 80 min). Released by the agent-smoke job, always.
       - name: Lock the test account
         if: steps.skill.outputs.available == 'true'
-        timeout-minutes: 27
+        timeout-minutes: 72
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_LIVE_LOCK_WAIT_MIN: "70"
           RUN_ID: ${{ steps.prepare.outputs.run_id }}
         run: node test/live/lock.mjs acquire "$RUN_ID"
 
@@ -183,7 +184,7 @@ jobs:
           path: ${{ runner.temp }}/workspace.tgz
           retention-days: 1
           if-no-files-found: error
-      # a failed or cancelled prepare must not leave the test account locked for 90 min
+      # a failed or cancelled prepare must not leave the test account locked for 180 min
       - name: Release the lock if prepare failed
         if: (failure() || cancelled()) && steps.prepare.outputs.run_id != ''
         timeout-minutes: 3
@@ -198,7 +199,7 @@ jobs:
     if: needs.prepare.outputs.available == 'true'
     runs-on: ubuntu-latest
     environment: zotero-live
-    timeout-minutes: 35
+    timeout-minutes: 55
     permissions:
       contents: read
       # Only job with an OIDC token: the Anthropic federation exchange, done by the action itself. The
@@ -251,7 +252,7 @@ jobs:
       # The two commands are wrappers that keep every path inside agent-out/.
       - name: Claude Code agent (skill test-mcp-zotero)
         id: claude
-        timeout-minutes: 25
+        timeout-minutes: 45
         uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         env:
           MCP_TIMEOUT: "30000"
@@ -269,8 +270,8 @@ jobs:
           prompt: "Carica la skill test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt."
           claude_args: >-
             --model claude-sonnet-5-5
-            --max-turns 80
-            --max-budget-usd 5
+            --max-turns 160
+            --max-budget-usd 10
             --mcp-config ${{ runner.temp }}/mcp-zotero.json
             --strict-mcp-config
             --allowedTools "Skill,mcp__zotero__*,Read(./agent-out/**),Edit(./agent-out/**),Bash(node test/live/agent/make-docx.mjs *),Bash(node test/live/agent/inject.mjs *)"

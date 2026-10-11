@@ -9,8 +9,11 @@
 import { fileURLToPath } from "node:url";
 
 export const LOCK_PREFIX = "mzt-lock ";
-/** Longer than the longest job holding it (agent smoke: 75 min), so only dead runs' locks expire. */
-export const LOCK_STALE_MS = 90 * 60 * 1000;
+/**
+ * Age of the runId (taken before waiting) after which a lock belongs to a dead run: longer than the CI wait (70 min)
+ * plus the longest holder (agent smoke: about 80 min from the lock to the release).
+ */
+export const LOCK_STALE_MS = 180 * 60 * 1000;
 export const DEFAULT_LOCK_WAIT_MS = 25 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 30_000;
 const RUN_ID_RE = /^([0-9a-z]{8,9})-([0-9a-f]{4})$/;

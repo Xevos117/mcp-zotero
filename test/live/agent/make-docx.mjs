@@ -1,38 +1,67 @@
 #!/usr/bin/env node
 // Writes a minimal valid .docx with <zcite> placeholders for the test-mcp-zotero skill, so the agent
 // needs no general-purpose shell. Output must be inside agent-out/.
-// Usage: node test/live/agent/make-docx.mjs agent-out/<name>.docx '<spec>'
+// Usage: node test/live/agent/make-docx.mjs agent-out/<name>.docx [agent-out/<other>.docx ...] '<spec>'
+// Every output gets the same content (one document per style, since inject_citations always writes <name>_cited.docx).
 // spec: JSON array of paragraphs; each paragraph is an array of runs:
-//   "plain text"  or  {"zcite": {"keys": "KEY1,KEY2", "num": "1", "locator": "p. 3", "prefix": "see ", "suffix": "x"}}
-// Each zcite gets its own run, as inject_citations and inject.js expect.
+//   "plain text"
+//   {"zcite": {"keys": "KEY1,KEY2", "num": "1", "locator": "p. 3", "prefix": "see ", "suffix": "x"}}  own run
+//   {"zcite": {...}, "before": "text ", "after": " text"}  inline: text and tag in one run, mid-sentence
+//   {"zcite": {...}, "split": true}  the tag split across three runs with different formatting, as Word does
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve, sep } from "node:path";
 import JSZip from "jszip";
 
-const [out, specText] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const specText = argv.length >= 2 ? argv[argv.length - 1] : undefined;
+const outs = argv.slice(0, -1);
 const root = resolve("agent-out");
-const target = resolve(out ?? "");
-if (!out || !specText || !target.startsWith(root + sep) || !target.endsWith(".docx")) {
-  console.error("usage: make-docx.mjs agent-out/<name>.docx '<json spec>' (output must be a .docx inside agent-out/)");
+const valid = (out) => resolve(out).startsWith(root + sep) && resolve(out).endsWith(".docx");
+if (!specText || outs.length === 0 || !outs.every(valid)) {
+  console.error("usage: make-docx.mjs agent-out/<name>.docx [agent-out/<other>.docx ...] '<json spec>' (outputs must be .docx inside agent-out/)");
   process.exit(2);
 }
-const spec = JSON.parse(specText);
-if (!Array.isArray(spec)) throw new Error("spec must be an array of paragraphs");
+let spec;
+try {
+  spec = JSON.parse(specText);
+} catch (e) {
+  console.error(`make-docx: spec is not valid JSON (${e.message})`);
+  process.exit(2);
+}
+if (!Array.isArray(spec) || !spec.every(Array.isArray)) {
+  console.error("make-docx: spec must be an array of paragraphs, each an array of runs");
+  process.exit(2);
+}
 
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const ATTRS = ["keys", "num", "locator", "prefix", "suffix"];
-const run = (text) => `<w:r><w:t xml:space="preserve">${esc(text)}</w:t></w:r>`;
-const paragraph = (runs) =>
-  `<w:p>${runs
-    .map((r) => {
-      if (typeof r === "string") return run(r);
-      const z = r?.zcite;
-      if (!z?.keys) throw new Error(`invalid run ${JSON.stringify(r)}`);
-      if (ATTRS.some((a) => String(z[a] ?? "").includes('"'))) throw new Error('zcite attribute values cannot contain "');
-      const attrs = ATTRS.filter((a) => z[a] !== undefined).map((a) => `${a}="${z[a]}"`).join(" ");
-      return run(`<zcite ${attrs}/>`);
-    })
-    .join("")}</w:p>`;
+const run = (text, rPr = "") => `<w:r>${rPr}<w:t xml:space="preserve">${esc(text)}</w:t></w:r>`;
+const SPLIT_RPR = ['<w:rPr><w:lang w:val="en-US"/></w:rPr>', '<w:rPr><w:lang w:val="it-IT"/></w:rPr>', '<w:rPr><w:noProof/></w:rPr>'];
+function tag(z) {
+  if (!z || typeof z.keys !== "string" || !z.keys) return null;
+  if (ATTRS.some((a) => String(z[a] ?? "").includes('"'))) return null;
+  return `<zcite ${ATTRS.filter((a) => z[a] !== undefined).map((a) => `${a}="${z[a]}"`).join(" ")}/>`;
+}
+function renderRun(r) {
+  if (typeof r === "string") return run(r);
+  const t = tag(r?.zcite);
+  if (!t) throw new Error(`invalid run ${JSON.stringify(r)} (zcite needs a string "keys"; attribute values cannot contain ")`);
+  if (r.split) {
+    // e.g. <zcite keys=" | "KEY1,KEY2" num="1 | "/>: the normalizer must rejoin it
+    const a = t.indexOf('"') + 1;
+    const b = t.length - 3;
+    return [t.slice(0, a), t.slice(a, b), t.slice(b)].map((part, i) => run(part, SPLIT_RPR[i])).join("");
+  }
+  if (r.before !== undefined || r.after !== undefined) return run(`${r.before ?? ""}${t}${r.after ?? ""}`);
+  return run(t);
+}
+let body;
+try {
+  body = spec.map((runs) => `<w:p>${runs.map(renderRun).join("")}</w:p>`).join("");
+} catch (e) {
+  console.error(`make-docx: ${e.message}`);
+  process.exit(2);
+}
 
 const zip = new JSZip();
 zip.file(
@@ -45,8 +74,11 @@ zip.file(
 );
 zip.file(
   "word/document.xml",
-  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${spec.map(paragraph).join("")}<w:sectPr/></w:body></w:document>`
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr/></w:body></w:document>`
 );
-mkdirSync(dirname(target), { recursive: true });
-writeFileSync(target, await zip.generateAsync({ type: "nodebuffer" }));
-console.log(JSON.stringify({ output: out, paragraphs: spec.length }));
+const buffer = await zip.generateAsync({ type: "nodebuffer" });
+for (const out of outs) {
+  mkdirSync(dirname(resolve(out)), { recursive: true });
+  writeFileSync(resolve(out), buffer);
+}
+console.log(JSON.stringify({ outputs: outs, paragraphs: spec.length }));

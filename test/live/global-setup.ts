@@ -40,7 +40,7 @@ import type { LiveInfo } from "./helpers/live.js";
  * Sull'account dedicato controlla che i conteggi tornino quelli iniziali; in safe mode avvisa se crescono.
  *
  * Run concorrenti sulla stessa libreria (anche di PR diverse o dell'agente smoke) si serializzano con il lock
- * di test/live/lock.mjs (collezione `mzt-lock <runId>`, attesa fino a 25 min, poi "test account busy").
+ * di test/live/lock.mjs (collezione `mzt-lock <runId>`, attesa fino a 25 min, 70 in CI, poi "test account busy").
  *
  * Solo pulizia (ZOTERO_LIVE_CLEANUP_ONLY=1, oppure `npm run test:live:cleanup -- [runId…]`): nessuna fixture,
  * tutti i test saltati; pulisce le run indicate in ZOTERO_LIVE_CLEANUP_RUN_IDS e quelle di cui restano in
