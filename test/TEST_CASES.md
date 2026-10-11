@@ -721,27 +721,35 @@ livello 3b (AID-28..31) e da allora la scansione di robustezza tratta quel testo
 ## Agente dipendenze (`.github/workflows/deps-update.yml`, skill `.claude/skills/deps-update`)
 
 Il primo del mese (e a mano), nell'environment `claude-deps` (solo le variabili `ANTHROPIC_*` della Workload Identity
-Federation di Anthropic, nessun secret). Esce subito se c'è già una PR
-`deps/*` aperta. L'agente (claude-code-action, `claude-opus-5-5`, `--max-turns 120`, `--max-budget-usd 15`, step 45 min)
-segue la skill: `npm outdated`, solo minor e patch con `--ignore-scripts` (i binari nativi di TypeScript 7 e
-rolldown/vitest arrivano come optionalDependencies: nel lockfile hanno script d'installazione solo `core-js-pure` e
-`fsevents`), `npm ci`, build, test, e2e, smoke, correzioni, CHANGELOG, PR in italiano; le major solo elencate. Bash
-limitato a npm, git (push solo su `deps/*`) e `gh pr create/view/list`; vietati `gh pr merge`, `npm publish`, release,
-tag, force push e modifiche a `.github/`. La PR è aperta col token della Claude GitHub App (scambio OIDC,
-`id-token: write`), quindi fa partire la CI.
+Federation di Anthropic, nessun secret). Tre job con il minimo dei permessi:
+- **agent**: esce subito se c'è già una PR `deps/*`; `npm ci --ignore-scripts` e `NPM_CONFIG_IGNORE_SCRIPTS=true` per
+  tutto il job; l'agente (claude-code-action, `claude-opus-5-5`, `--max-turns 120`, `--max-budget-usd 15`) ha il
+  `GITHUB_TOKEN` in sola lettura, può modificare solo `package.json`, `package-lock.json`, `CHANGELOG.md` e
+  `agent-out/deps-pr.md`, e usare npm e `git status/diff/log`; niente commit, push, `gh` o publish. Un aggiornamento che
+  rompe qualcosa viene rinviato, non corretto. Lo step finale produce una patch dei soli tre file (se l'agente ha
+  toccato altro il job fallisce senza PR).
+- **open-pr**: senza npm; applica la patch su `main`, ottiene il token della Claude GitHub App con lo stesso scambio OIDC
+  di claude-code-action (unico job con `id-token: write` oltre all'agente), fa push di `deps/<data>` e apre la PR (così
+  parte la CI), poi revoca il token.
+- **merge-gate**: senza npm, checkout pulito di `main`; esegue la copia di `main` di `scripts/deps-merge-gate.mjs` sulla
+  testa della PR, verifica base `main`, testa invariata, autore = la App (bot), poi aspetta fino a 60 min che
+  `test (node 22/24/26)`, `live` e `agent-smoke` siano tutti verdi su quello SHA (non si affida solo al ruleset) e solo
+  allora `gh pr merge --auto --squash --match-head-commit <sha>` col `GITHUB_TOKEN`. Altrimenti la PR resta al
+  proprietario. Il push su `main` del merge automatico non fa partire workflow; il notturno copre `main`.
 
-**Merge automatico deciso dal codice** (`scripts/deps-merge-gate.mjs`, step dopo l'agente): solo se il diff tocca
-esclusivamente `package.json`, `package-lock.json` e `CHANGELOG.md`, nessun pacchetto viene aggiunto o rimosso, i range
-in `package.json` si spostano al più di una patch e ogni versione cambiata nel lockfile (anche transitiva) è una patch
-secondo semver; allora `gh pr merge --auto --squash` col `GITHUB_TOKEN`, e GitHub unisce solo con tutti i check
-obbligatori verdi. Altrimenti la PR resta al proprietario. Il token della App viene revocato a fine action, perciò il
-merge automatico usa il `GITHUB_TOKEN`: il push su `main` che ne risulta non fa partire altri workflow.
+**Regole del gate**: solo `package.json`, `package-lock.json`, `CHANGELOG.md`; range in `package.json` spostati al più di
+una patch; campi di primo livello del lockfile e voce radice invariati; nessun pacchetto aggiunto o rimosso; ogni voce
+che cambia versione è una patch semver, risolta da `https://registry.npmjs.org/<nome>/-/…`, con integrity `sha512`, e
+non cambia `name`, `hasInstallScript`, `bin`, `os`, `cpu` né i flag dev/optional/peer; le voci con la stessa versione non
+cambiano `resolved` né `integrity`; ogni nuova versione è pubblicata da almeno 7 giorni (campo `time` del registry).
 
 | ID | Scenario (`test/utils/deps-merge-gate.test.ts`) | Atteso |
 |---|---|---|
 | DG-01 | `isPatchBump` su patch, minor, major, uguale, prerelease, 0.x | solo le patch stabili |
 | DG-02 | patch diretti e transitivi, range `^` aggiornati | mergeable |
 | DG-03 | minor nel lockfile, file di codice, pacchetto aggiunto, range allargato a una minor, `version` cambiata, lockfile invariato | lasciata al proprietario con il motivo |
+| DG-04 | aggiramenti della revisione di sicurezza: `resolved` verso un altro server + `hasInstallScript`, stessa versione ripuntata su `git+ssh`, alias npm (stesso path, altro pacchetto), nuovo `bin`, integrity assente, `resolved` del registry con un altro nome, campi di primo livello del lockfile, `os`/`cpu` | lasciata al proprietario con il motivo |
+| DG-05 | età della release: da più di 7 giorni / di ieri / registry irraggiungibile o versione senza data | accettata / lasciata al proprietario |
 
 ### Le 5 righe segnate OK a mano nel collaudo 2.0.0 (LIVE-STALE)
 
