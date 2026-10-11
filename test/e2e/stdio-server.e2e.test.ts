@@ -109,14 +109,14 @@ describe("e2e: build/server.js su stdio", () => {
   });
 
   it("E2E-06 get_collections", async () => {
-    fake.net.on("GET", `${ZBASE}/collections`, zList([collection("COL00001", "ML"), collection("COL00009", "Old", { deleted: true })]));
+    fake.net.on("GET", `${ZBASE}/collections`, zList([collection("CPLQQQQR", "ML"), collection("COL00009", "Old", { deleted: true })]));
     const out = await call(s, "get_collections", {});
-    expect(out.json.map((c: { key: string }) => c.key)).toEqual(["COL00001"]);
+    expect(out.json.map((c: { key: string }) => c.key)).toEqual(["CPLQQQQR"]);
   });
 
   it("E2E-07 get_collection_items", async () => {
-    fake.net.on("GET", `${ZBASE}/collections/COL00001/items`, zList([article("AAAARRRR"), pdfAttachment("ATT00001", "AAAARRRR")]));
-    const out = await call(s, "get_collection_items", { collectionKey: "COL00001" });
+    fake.net.on("GET", `${ZBASE}/collections/CPLQQQQR/items`, zList([article("AAAARRRR"), pdfAttachment("ATTQQQQR", "AAAARRRR")]));
+    const out = await call(s, "get_collection_items", { collectionKey: "CPLQQQQR" });
     expect(out.json).toMatchObject({ total_items: 2, returned_items: 1 });
   });
 
@@ -128,46 +128,46 @@ describe("e2e: build/server.js su stdio", () => {
 
   it("E2E-09 get_item_fulltext", async () => {
     fake.net.on("GET", `${ZBASE}/items/AAAARRRR`, zSingle(article("AAAARRRR")));
-    fake.net.on("GET", `${ZBASE}/items/AAAARRRR/children`, zList([pdfAttachment("ATT00001", "AAAARRRR")]));
-    fake.net.on("GET", `${ZBASE}/items/ATT00001/fulltext`, jsonResponse({ content: "Lorem ipsum", indexedPages: 1, totalPages: 1 }));
+    fake.net.on("GET", `${ZBASE}/items/AAAARRRR/children`, zList([pdfAttachment("ATTQQQQR", "AAAARRRR")]));
+    fake.net.on("GET", `${ZBASE}/items/ATTQQQQR/fulltext`, jsonResponse({ content: "Lorem ipsum", indexedPages: 1, totalPages: 1 }));
     const out = await call(s, "get_item_fulltext", { item_key: "AAAARRRR" });
-    expect(out.json).toMatchObject({ attachment_key: "ATT00001", text: "Lorem ipsum", truncated: false });
+    expect(out.json).toMatchObject({ attachment_key: "ATTQQQQR", text: "Lorem ipsum", truncated: false });
   });
 
   it("E2E-10 create_collection", async () => {
-    fake.net.on("POST", `${ZBASE}/collections`, zWrite({ keys: ["NEWCOL01"] }));
+    fake.net.on("POST", `${ZBASE}/collections`, zWrite({ keys: ["NEWCPLQR"] }));
     const out = await call(s, "create_collection", { name: "E2E" });
-    expect(out.json).toEqual({ collection_key: "NEWCOL01", name: "E2E" });
+    expect(out.json).toEqual({ collection_key: "NEWCPLQR", name: "E2E" });
   });
 
   it("E2E-11 add_items", async () => {
-    fake.net.on("POST", ITEMS, zWrite({ keys: ["BOOK0001"] }));
+    fake.net.on("POST", ITEMS, zWrite({ keys: ["BPPKQQQR"] }));
     const out = await call(s, "add_items", { items: [{ itemType: "book", title: "E2E Book", creators: [{ name: "ACME" }] }] });
-    expect(out.json.success).toEqual([{ index: 0, item_key: "BOOK0001", title: "E2E Book", item_type: "book" }]);
+    expect(out.json.success).toEqual([{ index: 0, item_key: "BPPKQQQR", title: "E2E Book", item_type: "book" }]);
   });
 
   it("E2E-12 add_items_by_doi (doi.org + Unpaywall closed)", async () => {
     fake.net.on("GET", /^doi\.org\//, jsonResponse({ type: "article-journal", title: "DOI Paper", DOI: "10.1/e2e", author: [{ family: "Doe", given: "J" }] }));
-    fake.net.on("POST", ITEMS, zWrite({ keys: ["DOIP0001"] }));
+    fake.net.on("POST", ITEMS, zWrite({ keys: ["DPIPQQQR"] }));
     installUnpaywall(fake.net, {});
     const out = await call(s, "add_items_by_doi", { dois: ["10.1/e2e"] });
-    expect(out.json.success).toEqual([{ doi: "10.1/e2e", item_key: "DOIP0001", title: "DOI Paper" }]);
+    expect(out.json.success).toEqual([{ doi: "10.1/e2e", item_key: "DPIPQQQR", title: "DOI Paper" }]);
     expect(out.json.pdf_results[0]).toMatchObject({ pdf_attached: false, error: "No open access PDF found" });
   });
 
   it("E2E-13 add_linked_url_attachment", async () => {
-    fake.net.on("POST", ITEMS, zWrite({ keys: ["LINK0001"] }));
+    fake.net.on("POST", ITEMS, zWrite({ keys: ["LINKQQQR"] }));
     const out = await call(s, "add_linked_url_attachment", { url: "https://example.org/a.pdf", parent_item: "AAAARRRR" });
-    expect(out.json).toMatchObject({ item_key: "LINK0001", parent_item: "AAAARRRR", link_mode: "linked_url" });
+    expect(out.json).toMatchObject({ item_key: "LINKQQQR", parent_item: "AAAARRRR", link_mode: "linked_url" });
   });
 
   it("E2E-14 import_pdf_to_zotero (download + upload + fulltext)", async () => {
     servePdf(fake.net, "https://oa.example.org/e2e.pdf");
-    fake.net.on("POST", ITEMS, zWrite({ keys: ["IMP00001"] }));
+    fake.net.on("POST", ITEMS, zWrite({ keys: ["IMPQQQQR"] }));
     installUploadPipeline(fake.net);
     const out = await call(s, "import_pdf_to_zotero", { url: "https://oa.example.org/e2e.pdf" });
     expect(out.isError).toBe(false);
-    expect(out.json).toMatchObject({ item_key: "IMP00001", filename: "e2e.pdf", link_mode: "imported_url", fulltext_indexed: true });
+    expect(out.json).toMatchObject({ item_key: "IMPQQQQR", filename: "e2e.pdf", link_mode: "imported_url", fulltext_indexed: true });
   });
 
   it("E2E-15 find_and_attach_pdfs (dry_run)", async () => {
@@ -180,11 +180,11 @@ describe("e2e: build/server.js su stdio", () => {
   });
 
   it("E2E-16 delete_collection (UNSAFE_OPERATIONS=all)", async () => {
-    fake.net.on("GET", `${ZBASE}/collections/COL00001`, zSingle(collection("COL00001", "ML"), 12));
-    fake.net.on("DELETE", `${ZBASE}/collections/COL00001`, zDeleted());
-    const out = await call(s, "delete_collection", { collection_key: "COL00001" });
-    expect(out.json).toEqual({ deleted: true, collection_key: "COL00001", name: "ML" });
-    expect(fake.net.requests("DELETE", `${ZBASE}/collections/COL00001`)[0].headers.get("if-unmodified-since-version")).toBe("12");
+    fake.net.on("GET", `${ZBASE}/collections/CPLQQQQR`, zSingle(collection("CPLQQQQR", "ML"), 12));
+    fake.net.on("DELETE", `${ZBASE}/collections/CPLQQQQR`, zDeleted());
+    const out = await call(s, "delete_collection", { collection_key: "CPLQQQQR" });
+    expect(out.json).toEqual({ deleted: true, collection_key: "CPLQQQQR", name: "ML" });
+    expect(fake.net.requests("DELETE", `${ZBASE}/collections/CPLQQQQR`)[0].headers.get("if-unmodified-since-version")).toBe("12");
   });
 
   it("E2E-17 delete_items (UNSAFE_OPERATIONS=all)", async () => {
@@ -237,7 +237,7 @@ describe("e2e: configurazione del processo", () => {
       const di = await call(s, "delete_items", { item_keys: ["AAAARRRR"] });
       expect(di.json.error).toContain("not allowed");
       expect(di.json.current_value).toBe("none");
-      const dc = await call(s, "delete_collection", { collection_key: "COL00001" });
+      const dc = await call(s, "delete_collection", { collection_key: "CPLQQQQR" });
       expect(dc.json.error).toContain("not allowed");
       expect(fake.net.calls).toHaveLength(0);
     } finally {
@@ -251,7 +251,7 @@ describe("e2e: configurazione del processo", () => {
       fake.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
       fake.net.on("DELETE", ITEMS, zDeleted());
       expect((await call(s, "delete_items", { item_keys: ["AAAARRRR"] })).json.deleted_count).toBe(1);
-      expect((await call(s, "delete_collection", { collection_key: "C" })).json.current_value).toBe("items");
+      expect((await call(s, "delete_collection", { collection_key: "CCCC2222" })).json.current_value).toBe("items");
     } finally {
       await s.close();
     }

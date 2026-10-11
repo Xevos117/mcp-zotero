@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse, formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators, formatTags } from "../utils/item-formatter.js";
@@ -9,7 +10,7 @@ export const toolConfig = {
   name: "get_collection_items",
   description: "Get all items in a specific Zotero collection. Returns item keys, titles, authors, and dates. Use the collectionKey from get_collections. Use the returned item keys with get_items_details, get_item_fulltext, or inject_citations.",
   inputSchema: {
-    collectionKey: z.string().describe("The collection key/ID"),
+    collectionKey: zoteroKey().describe("The collection key/ID"),
     excludeAttachments: z
       .boolean()
       .default(true)

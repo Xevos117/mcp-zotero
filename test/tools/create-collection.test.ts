@@ -22,18 +22,18 @@ describe("create_collection (MCP)", () => {
   });
 
   it("CC-01 POST /collections con [{name}] → collection_key e name", async () => {
-    h.net.on("POST", COLLS, zWrite({ keys: ["NEWCOL01"] }));
+    h.net.on("POST", COLLS, zWrite({ keys: ["NEWCPLQR"] }));
     const out = await h.call("create_collection", { name: "Thesis" });
     expect(out.isError).toBe(false);
-    expect(out.json).toEqual({ collection_key: "NEWCOL01", name: "Thesis" });
+    expect(out.json).toEqual({ collection_key: "NEWCPLQR", name: "Thesis" });
     const [req] = h.net.requests("POST", COLLS);
     expect(req.json()).toEqual([{ name: "Thesis" }]);
   });
 
   it("CC-02 parent_collection → parentCollection nel body", async () => {
     h.net.on("POST", COLLS, zWrite({ keys: ["NEWCOL02"] }));
-    await h.call("create_collection", { name: "Chapter 1", parent_collection: "PARENT01" });
-    expect(h.net.calls[0].json()).toEqual([{ name: "Chapter 1", parentCollection: "PARENT01" }]);
+    await h.call("create_collection", { name: "Chapter 1", parent_collection: "PARENTQR" });
+    expect(h.net.calls[0].json()).toEqual([{ name: "Chapter 1", parentCollection: "PARENTQR" }]);
   });
 
   it("CC-03 il nome viene trimmato", async () => {
@@ -56,9 +56,9 @@ describe("create_collection (MCP)", () => {
   });
 
   it("CC-06 scrittura rifiutata (failed) → errore strutturato 'Failed to create collection'", async () => {
-    h.net.on("POST", COLLS, zWrite({ fail: { 0: { code: 400, message: "Parent collection PARENT01 not found" } } }));
+    h.net.on("POST", COLLS, zWrite({ fail: { 0: { code: 400, message: "Parent collection PARENTQR not found" } } }));
     const json = expectErrorJson(
-      await h.call("create_collection", { name: "X", parent_collection: "PARENT01" }),
+      await h.call("create_collection", { name: "X", parent_collection: "PARENTQR" }),
       "Failed to create collection"
     );
     expect(json).toHaveProperty("details");
@@ -68,9 +68,9 @@ describe("create_collection (MCP)", () => {
   // errori di zotero-api-client sono oggetti {key, code, message} → details
   // diventa "[object Object]" e il messaggio del server va perso.
   it("CC-07 details riporta il messaggio d'errore del server", async () => {
-    h.net.on("POST", COLLS, zWrite({ fail: { 0: { code: 400, message: "Parent collection PARENT01 not found" } } }));
-    const out = await h.call("create_collection", { name: "X", parent_collection: "PARENT01" });
-    expect(out.json.details).toContain("Parent collection PARENT01 not found");
+    h.net.on("POST", COLLS, zWrite({ fail: { 0: { code: 400, message: "Parent collection PARENTQR not found" } } }));
+    const out = await h.call("create_collection", { name: "X", parent_collection: "PARENTQR" });
+    expect(out.json.details).toContain("Parent collection PARENTQR not found");
   });
 
   describe("validazione input", () => {

@@ -115,9 +115,9 @@ describe("add_items_by_doi (MCP)", () => {
     it("AID-04 collection_key e tags finiscono nel payload", async () => {
       h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a") }));
       h.net.on("POST", ITEMS, itemsAndAttachments());
-      await h.call("add_items_by_doi", { dois: ["10.1/a"], collection_key: "COL00001", tags: ["llm"], auto_attach_pdf: false });
+      await h.call("add_items_by_doi", { dois: ["10.1/a"], collection_key: "CPLQQQQR", tags: ["llm"], auto_attach_pdf: false });
       const body = h.net.requests("POST", ITEMS)[0].json<Array<Record<string, unknown>>>();
-      expect(body[0].collections).toEqual(["COL00001"]);
+      expect(body[0].collections).toEqual(["CPLQQQQR"]);
       expect(body[0].tags).toEqual(expect.arrayContaining([{ tag: "llm" }]));
     });
 

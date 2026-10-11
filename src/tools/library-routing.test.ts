@@ -40,14 +40,14 @@ const item = { key: "ITEMQQQR", version: 3, itemType: "journalArticle", title: "
 
 const toolCases: Array<{ tool: string; args: Record<string, unknown> }> = [
   { tool: "get_collections", args: {} },
-  { tool: "get_collection_items", args: { collectionKey: "COLL0001" } },
+  { tool: "get_collection_items", args: { collectionKey: "CPLLQQQR" } },
   { tool: "get_items_details", args: { item_keys: ["ITEMQQQR"] } },
   { tool: "search_library", args: { query: "x" } },
   { tool: "create_collection", args: { name: "New" } },
   { tool: "add_items", args: { items: [{ itemType: "book", title: "B" }] } },
   { tool: "add_linked_url_attachment", args: { url: "https://example.com/a.pdf" } },
   { tool: "delete_items", args: { item_keys: ["ITEMQQQR"] } },
-  { tool: "delete_collection", args: { collection_key: "COLL0001" } },
+  { tool: "delete_collection", args: { collection_key: "CPLLQQQR" } },
 ];
 
 describe("library routing through tools", () => {
@@ -120,7 +120,7 @@ describe("library routing through tools", () => {
   });
 
   it("get_item_fulltext fetches the fulltext from the group library URL", async () => {
-    const attachment = { key: "ATT00001", itemType: "attachment", contentType: "application/pdf" };
+    const attachment = { key: "ATTQQQQR", itemType: "attachment", contentType: "application/pdf" };
     const { api, libraryCalls } = createRecordingApi(attachment);
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ content: "hello" }), { status: 200 })
@@ -129,13 +129,13 @@ describe("library routing through tools", () => {
 
     const result = await handleToolCall(
       "get_item_fulltext",
-      { item_key: "ATT00001", library_type: "group", library_id: GROUP_ID },
+      { item_key: "ATTQQQQR", library_type: "group", library_id: GROUP_ID },
       api,
       USER_ID
     );
 
     expect(libraryCalls).toEqual([["group", GROUP_ID]]);
-    expect(fetchMock.mock.calls[0][0]).toBe(`https://api.zotero.org/groups/${GROUP_ID}/items/ATT00001/fulltext`);
+    expect(fetchMock.mock.calls[0][0]).toBe(`https://api.zotero.org/groups/${GROUP_ID}/items/ATTQQQQR/fulltext`);
     expect(JSON.parse(result.content[0].text as string).text).toBe("hello");
   });
 

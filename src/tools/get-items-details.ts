@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse, formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
-import { fetchItemsByKeys, INVALID_KEYS_MESSAGE } from "../utils/pagination.js";
+import { fetchItemsByKeys } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
@@ -11,7 +12,7 @@ export const toolConfig = {
     "Get metadata for multiple Zotero items in a single call. Accepts an array of item keys and returns a map of key → metadata. Use this instead of one call per item. Returns all type-specific fields (e.g. bookTitle for bookSection, proceedingsTitle for conferencePaper, university for thesis). Set include_abstract to include abstracts (excluded by default to keep responses lightweight).",
   inputSchema: {
     item_keys: z
-      .array(z.string())
+      .array(zoteroKey())
       .describe(
         'Array of Zotero item keys (e.g. ["EUHUT5K3", "F9UQM7N2"]). Get these from search_library, add_items_by_doi, or get_collection_items.'
       ),
@@ -47,14 +48,10 @@ export async function handleGetItemsDetails(
     return formatErrorResponse("At least one item key is required");
   }
 
-  const { items, invalidKeys } = await fetchItemsByKeys(
+  const { items } = await fetchItemsByKeys(
     (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
     item_keys
   );
-
-  if (invalidKeys.length === item_keys.length) {
-    return formatErrorResponse(INVALID_KEYS_MESSAGE, { invalid_keys: invalidKeys });
-  }
 
   if (items.length === 0) {
     return formatEmptyResult("No items found for the given keys", {

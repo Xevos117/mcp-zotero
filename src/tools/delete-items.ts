@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
-import { fetchItemsByKeys, INVALID_KEYS_MESSAGE } from "../utils/pagination.js";
+import { fetchItemsByKeys } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
@@ -11,7 +12,7 @@ export const toolConfig = {
     "Delete one or more items from your Zotero library: they are permanently deleted (not moved to the Zotero trash). Accepts up to 50 item keys per call. Requires UNSAFE_OPERATIONS environment variable set to 'items' or 'all'.",
   inputSchema: {
     item_keys: z
-      .array(z.string())
+      .array(zoteroKey())
       .min(1)
       .max(50)
       .describe(
@@ -44,17 +45,13 @@ export async function handleDeleteItems(
   }
 
   try {
-    const { items, version: libraryVersion, invalidKeys } = await fetchItemsByKeys(
+    const { items, version: libraryVersion } = await fetchItemsByKeys(
       (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
       item_keys
     );
 
-    if (invalidKeys.length === item_keys.length) {
-      return formatErrorResponse(INVALID_KEYS_MESSAGE, { invalid_keys: invalidKeys, status: "invalid_keys" });
-    }
-
     const foundKeys = new Set(items.map((item) => item.key).filter(Boolean));
-    const notFoundKeys = item_keys.filter((k) => !foundKeys.has(k) && !invalidKeys.includes(k));
+    const notFoundKeys = item_keys.filter((k) => !foundKeys.has(k));
 
     if (foundKeys.size === 0) {
       return formatErrorResponse("No items found for the given keys", {
@@ -87,9 +84,6 @@ export async function handleDeleteItems(
 
     if (notFoundKeys.length > 0) {
       result.not_found = notFoundKeys;
-    }
-    if (invalidKeys.length > 0) {
-      result.invalid_keys = invalidKeys;
     }
 
     return formatJsonResult(result);

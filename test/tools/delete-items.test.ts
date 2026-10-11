@@ -60,24 +60,19 @@ describe("delete_items (MCP)", () => {
       });
     }
 
-    it.each([["minuscole", "zzzzzzzz"], ["con 0", "ZZZZZZZ0"], ["con virgola", "KEEP2222,KEEP3333"], ["con spazio", " KEEP4444"]])(
-      "DI-16 chiave %s → errore invalid_keys, nessuna richiesta",
-      async (_l, key) => {
-        h = await startHarness({ unsafeOps: "items" });
-        libraryIgnoringFilter(h);
-        h.net.on("DELETE", ITEMS, zDeleted());
-        const json = expectErrorJson(await h.call("delete_items", { item_keys: [key] }), "Invalid item key(s)");
-        expect(json).toMatchObject({ status: "invalid_keys", invalid_keys: [key] });
-        expect(h.net.calls).toHaveLength(0);
-      }
-    );
+    it("DI-16 chiave malformata → errore di validazione prima di qualsiasi richiesta", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      libraryIgnoringFilter(h);
+      expectValidationError(await h.call("delete_items", { item_keys: ["zzzzzzzz"] }), "item_keys");
+      expect(h.net.calls).toHaveLength(0);
+    });
 
-    it("DI-17 chiave valida + malformata con API che restituisce la libreria intera → cancellata solo la valida richiesta", async () => {
+    it("DI-17 API che restituisce più voci di quelle chieste → cancellata solo la chiave richiesta", async () => {
       h = await startHarness({ unsafeOps: "items" });
       libraryIgnoringFilter(h);
       h.net.on("DELETE", ITEMS, zDeleted());
-      const out = await h.call("delete_items", { item_keys: ["KEEP2222", "zzzzzzzz"] });
-      expect(out.json).toEqual({ deleted_keys: ["KEEP2222"], deleted_count: 1, invalid_keys: ["zzzzzzzz"] });
+      const out = await h.call("delete_items", { item_keys: ["KEEP2222"] });
+      expect(out.json).toEqual({ deleted_keys: ["KEEP2222"], deleted_count: 1 });
       expect(deletedKeys(h)).toEqual(["KEEP2222"]);
     });
   });

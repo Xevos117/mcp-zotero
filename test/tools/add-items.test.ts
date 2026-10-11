@@ -25,7 +25,7 @@ describe("add_items (MCP)", () => {
   });
 
   it("AI-01 singolo book: payload completo e risultato per-item", async () => {
-    h.net.on("POST", ITEMS, zWrite({ keys: ["BOOK0001"] }));
+    h.net.on("POST", ITEMS, zWrite({ keys: ["BPPKQQQR"] }));
     const out = await h.call("add_items", {
       items: [
         {
@@ -39,7 +39,7 @@ describe("add_items (MCP)", () => {
     });
     expect(out.isError).toBe(false);
     expect(out.json).toEqual({
-      success: [{ index: 0, item_key: "BOOK0001", title: "The Art of Computer Programming", item_type: "book" }],
+      success: [{ index: 0, item_key: "BPPKQQQR", title: "The Art of Computer Programming", item_type: "book" }],
     });
     expect(posted(h)).toEqual([
       {
@@ -87,11 +87,11 @@ describe("add_items (MCP)", () => {
         { itemType: "book", title: "A" },
         { itemType: "report", title: "B" },
       ],
-      collection_key: "COL00001",
+      collection_key: "CPLQQQQR",
       tags: ["to-read", "ai"],
     });
     for (const p of posted(h)) {
-      expect(p.collections).toEqual(["COL00001"]);
+      expect(p.collections).toEqual(["CPLQQQQR"]);
       expect(p.tags).toEqual([{ tag: "to-read" }, { tag: "ai" }]);
     }
   });
@@ -150,7 +150,7 @@ describe("add_items (MCP)", () => {
   });
 
   it("AI-08 fallimento parziale sull'ultimo indice: success e failed corretti", async () => {
-    h.net.on("POST", ITEMS, zWrite({ keys: ["OK000000"], fail: { 1: { code: 400, message: "Invalid date 'xyz'" } } }));
+    h.net.on("POST", ITEMS, zWrite({ keys: ["PKQQQQQQ"], fail: { 1: { code: 400, message: "Invalid date 'xyz'" } } }));
     const out = await h.call("add_items", {
       items: [
         { itemType: "book", title: "Good" },
@@ -158,7 +158,7 @@ describe("add_items (MCP)", () => {
       ],
     });
     expect(out.isError).toBe(false);
-    expect(out.json.success).toEqual([{ index: 0, item_key: "OK000000", title: "Good", item_type: "book" }]);
+    expect(out.json.success).toEqual([{ index: 0, item_key: "PKQQQQQQ", title: "Good", item_type: "book" }]);
     expect(out.json.failed).toHaveLength(1);
     expect(out.json.failed[0]).toMatchObject({ index: 1, title: "Bad" });
     expect(JSON.stringify(out.json.failed[0].error)).toContain("Invalid date");
@@ -169,7 +169,7 @@ describe("add_items (MCP)", () => {
   // falliti senza key) → se fallisce un indice non finale, i successivi
   // ricevono item_key/title dell'item sbagliato ("unknown" / titolo del fallito).
   it("AI-09 fallimento parziale al primo indice: item_key/title assegnati all'item giusto", async () => {
-    h.net.on("POST", ITEMS, zWrite({ keys: ["SKIP", "OK000001"], fail: { 0: { code: 400, message: "Invalid date" } } }));
+    h.net.on("POST", ITEMS, zWrite({ keys: ["SKIP", "PKQQQQQR"], fail: { 0: { code: 400, message: "Invalid date" } } }));
     const out = await h.call("add_items", {
       items: [
         { itemType: "book", title: "Bad", date: "xyz" },
@@ -177,7 +177,7 @@ describe("add_items (MCP)", () => {
       ],
     });
     expect(out.isError).toBe(false); // successo parziale: non è un errore del tool
-    expect(out.json.success).toEqual([{ index: 1, item_key: "OK000001", title: "Good", item_type: "book" }]);
+    expect(out.json.success).toEqual([{ index: 1, item_key: "PKQQQQQR", title: "Good", item_type: "book" }]);
   });
 
   // BUG: add-items.ts:172 copia in `failed[].error` l'oggetto errore grezzo

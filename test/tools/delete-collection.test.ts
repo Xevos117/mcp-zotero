@@ -10,7 +10,7 @@ import { networkError, jsonResponse } from "../helpers/fake-net.js";
 import { ZBASE, zSingle, zError, zDeleted, collection, zoteroEntity } from "../helpers/zotero-fake.js";
 import { UnsafeOperationsMode } from "../../src/utils/unsafe-operations.js";
 
-const COLL = `${ZBASE}/collections/COL00001`;
+const COLL = `${ZBASE}/collections/CPLQQQQR`;
 
 describe("delete_collection (MCP)", () => {
   let h: Harness;
@@ -24,7 +24,7 @@ describe("delete_collection (MCP)", () => {
       async (mode) => {
         h = await startHarness({ unsafeOps: mode });
         const json = expectErrorJson(
-          await h.call("delete_collection", { collection_key: "COL00001" }),
+          await h.call("delete_collection", { collection_key: "CPLQQQQR" }),
           "Deletion of collections is not allowed"
         );
         expect(json).toEqual(
@@ -43,11 +43,11 @@ describe("delete_collection (MCP)", () => {
   describe("modalità 'all'", () => {
     it("DC-03 GET versione poi DELETE con If-Unmodified-Since-Version", async () => {
       h = await startHarness({ unsafeOps: "all" });
-      h.net.on("GET", COLL, zSingle(collection("COL00001", "Old stuff"), 57));
+      h.net.on("GET", COLL, zSingle(collection("CPLQQQQR", "Old stuff"), 57));
       h.net.on("DELETE", COLL, zDeleted());
-      const out = await h.call("delete_collection", { collection_key: "COL00001" });
+      const out = await h.call("delete_collection", { collection_key: "CPLQQQQR" });
       expect(out.isError).toBe(false);
-      expect(out.json).toEqual({ deleted: true, collection_key: "COL00001", name: "Old stuff" });
+      expect(out.json).toEqual({ deleted: true, collection_key: "CPLQQQQR", name: "Old stuff" });
       const [del] = h.net.requests("DELETE", COLL);
       expect(del.headers.get("If-Unmodified-Since-Version")).toBe("57");
       expect(h.net.calls.map((c) => c.method)).toEqual(["GET", "DELETE"]);
@@ -55,40 +55,40 @@ describe("delete_collection (MCP)", () => {
 
     it("DC-04 collezione senza nome → name = chiave", async () => {
       h = await startHarness({ unsafeOps: "all" });
-      h.net.on("GET", COLL, zSingle({ key: "COL00001" }, 3));
+      h.net.on("GET", COLL, zSingle({ key: "CPLQQQQR" }, 3));
       h.net.on("DELETE", COLL, zDeleted());
-      const out = await h.call("delete_collection", { collection_key: "COL00001" });
-      expect(out.json.name).toBe("COL00001");
+      const out = await h.call("delete_collection", { collection_key: "CPLQQQQR" });
+      expect(out.json.name).toBe("CPLQQQQR");
     });
 
     it("DC-05 nome unicode", async () => {
       h = await startHarness({ unsafeOps: "all" });
-      h.net.on("GET", COLL, zSingle(collection("COL00001", "Архив 🗄️"), 3));
+      h.net.on("GET", COLL, zSingle(collection("CPLQQQQR", "Архив 🗄️"), 3));
       h.net.on("DELETE", COLL, zDeleted());
-      expect((await h.call("delete_collection", { collection_key: "COL00001" })).json.name).toBe("Архив 🗄️");
+      expect((await h.call("delete_collection", { collection_key: "CPLQQQQR" })).json.name).toBe("Архив 🗄️");
     });
 
     it("DC-06 404 sulla GET → errore strutturato 'Collection not found', nessuna DELETE", async () => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, zError(404));
-      const json = expectErrorJson(await h.call("delete_collection", { collection_key: "COL00001" }), "Collection not found");
+      const json = expectErrorJson(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), "Collection not found");
       expect(json.status).toBe("not_found");
       expect(h.net.requests("DELETE", COLL)).toHaveLength(0);
     });
 
     it("DC-07 404 sulla DELETE → errore strutturato 'Collection not found'", async () => {
       h = await startHarness({ unsafeOps: "all" });
-      h.net.on("GET", COLL, zSingle(collection("COL00001", "X"), 3));
+      h.net.on("GET", COLL, zSingle(collection("CPLQQQQR", "X"), 3));
       h.net.on("DELETE", COLL, zError(404));
-      expectErrorJson(await h.call("delete_collection", { collection_key: "COL00001" }), "Collection not found");
+      expectErrorJson(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), "Collection not found");
     });
 
     it("DC-08 412 sulla DELETE → errore strutturato version_conflict", async () => {
       h = await startHarness({ unsafeOps: "all" });
-      h.net.on("GET", COLL, zSingle(collection("COL00001", "X"), 3));
+      h.net.on("GET", COLL, zSingle(collection("CPLQQQQR", "X"), 3));
       h.net.on("DELETE", COLL, zError(412, "Library has been modified since specified version"));
       const json = expectErrorJson(
-        await h.call("delete_collection", { collection_key: "COL00001" }),
+        await h.call("delete_collection", { collection_key: "CPLQQQQR" }),
         "modified by another client"
       );
       expect(json.status).toBe("version_conflict");
@@ -96,9 +96,9 @@ describe("delete_collection (MCP)", () => {
 
     it("DC-09 versione non determinabile (nessun header) → errore strutturato, nessuna DELETE", async () => {
       h = await startHarness({ unsafeOps: "all" });
-      h.net.on("GET", COLL, jsonResponse(zoteroEntity(collection("COL00001", "X"))));
+      h.net.on("GET", COLL, jsonResponse(zoteroEntity(collection("CPLQQQQR", "X"))));
       expectErrorJson(
-        await h.call("delete_collection", { collection_key: "COL00001" }),
+        await h.call("delete_collection", { collection_key: "CPLQQQQR" }),
         "Could not determine collection version"
       );
       expect(h.net.requests("DELETE", COLL)).toHaveLength(0);
@@ -107,20 +107,20 @@ describe("delete_collection (MCP)", () => {
     it.each([403, 429, 500, 503])("DC-10 HTTP %i sulla GET → isError", async (status) => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, zError(status));
-      expectToolError(await h.call("delete_collection", { collection_key: "COL00001" }), String(status));
+      expectToolError(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), String(status));
     });
 
     it.each([403, 429, 500])("DC-11 HTTP %i sulla DELETE → isError", async (status) => {
       h = await startHarness({ unsafeOps: "all" });
-      h.net.on("GET", COLL, zSingle(collection("COL00001", "X"), 3));
+      h.net.on("GET", COLL, zSingle(collection("CPLQQQQR", "X"), 3));
       h.net.on("DELETE", COLL, zError(status));
-      expectToolError(await h.call("delete_collection", { collection_key: "COL00001" }), String(status));
+      expectToolError(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), String(status));
     });
 
     it("DC-12 errore di rete → isError", async () => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, networkError());
-      expectToolError(await h.call("delete_collection", { collection_key: "COL00001" }));
+      expectToolError(await h.call("delete_collection", { collection_key: "CPLQQQQR" }));
     });
 
     it.each([

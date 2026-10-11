@@ -188,6 +188,12 @@ export async function injectCitations(
 
   // Collect all unique item keys
   const uniqueKeys = new Set(matches.flatMap((m) => m.keys));
+  // Keys from the document go into API URL paths (one GET per key): only letters and digits, so a crafted
+  // <zcite> cannot point the request at another endpoint ("../", "?", "&"); unknown keys still give a 404
+  const invalid = [...uniqueKeys].filter((k) => !/^[A-Za-z0-9]{1,32}$/.test(k));
+  if (invalid.length > 0) {
+    throw new Error(`Invalid Zotero item key(s) in <zcite>: ${invalid.join(", ")} (letters and digits only)`);
+  }
 
   // Fetch CSL data from Zotero
   const cslData = await fetchCslData(uniqueKeys, zoteroApi, libraryType, userId);

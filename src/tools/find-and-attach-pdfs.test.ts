@@ -54,8 +54,8 @@ describe("FindAndAttachPdfsSchema", () => {
   });
 
   it("accepts collection_key string", () => {
-    const result = FindAndAttachPdfsSchema.parse({ collection_key: "COL001" });
-    expect(result.collection_key).toBe("COL001");
+    const result = FindAndAttachPdfsSchema.parse({ collection_key: "CPLQQRZZ" });
+    expect(result.collection_key).toBe("CPLQQRZZ");
   });
 
   it("defaults skip_if_attachment_exists to true", () => {
@@ -86,7 +86,7 @@ describe("find_and_attach_pdfs handler", () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { item_keys: ["KEYRZZZZ"], collection_key: "COL001" },
+      { item_keys: ["KEYRZZZZ"], collection_key: "CPLQQRZZ" },
       mock,
       TEST_USER_ID
     );
@@ -294,7 +294,7 @@ describe("find_and_attach_pdfs handler", () => {
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { collection_key: "COL001" },
+      { collection_key: "CPLQQRZZ" },
       mock,
       TEST_USER_ID
     );

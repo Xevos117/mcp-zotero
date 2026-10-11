@@ -19,7 +19,7 @@ import {
   manyArticles,
 } from "../helpers/zotero-fake.js";
 
-const COLL_ITEMS = `${ZBASE}/collections/COL00001/items`;
+const COLL_ITEMS = `${ZBASE}/collections/CPLQQQQR/items`;
 
 describe("get_collection_items (MCP)", () => {
   let h: Harness;
@@ -42,7 +42,7 @@ describe("get_collection_items (MCP)", () => {
         }),
       ])
     );
-    const out = await h.call("get_collection_items", { collectionKey: "COL00001" });
+    const out = await h.call("get_collection_items", { collectionKey: "CPLQQQQR" });
     expect(out.isError).toBe(false);
     expect(out.json).toEqual({
       total_items: 1,
@@ -61,30 +61,30 @@ describe("get_collection_items (MCP)", () => {
         },
       ],
     });
-    expect(h.net.calls[0].url.pathname).toBe("/users/424242/collections/COL00001/items");
+    expect(h.net.calls[0].url.pathname).toBe("/users/424242/collections/CPLQQQQR/items");
   });
 
   it("GCI-02 esclude allegati e note di default; total_items riflette Total-Results", async () => {
     h.net.on(
       "GET",
       COLL_ITEMS,
-      zList([article("AAAA1111"), pdfAttachment("ATT00001", "AAAA1111"), { key: "NOTE0001", itemType: "note", note: "<p>x</p>" }])
+      zList([article("AAAA1111"), pdfAttachment("ATTQQQQR", "AAAA1111"), { key: "NOTE0001", itemType: "note", note: "<p>x</p>" }])
     );
-    const out = await h.call("get_collection_items", { collectionKey: "COL00001" });
+    const out = await h.call("get_collection_items", { collectionKey: "CPLQQQQR" });
     expect(out.json.total_items).toBe(3);
     expect(out.json.returned_items).toBe(1);
     expect(out.json.items.map((i: { key: string }) => i.key)).toEqual(["AAAA1111"]);
   });
 
   it("GCI-03 excludeAttachments=false include allegati e note", async () => {
-    h.net.on("GET", COLL_ITEMS, zList([article("AAAA1111"), pdfAttachment("ATT00001", "AAAA1111")]));
-    const out = await h.call("get_collection_items", { collectionKey: "COL00001", excludeAttachments: false });
+    h.net.on("GET", COLL_ITEMS, zList([article("AAAA1111"), pdfAttachment("ATTQQQQR", "AAAA1111")]));
+    const out = await h.call("get_collection_items", { collectionKey: "CPLQQQQR", excludeAttachments: false });
     expect(out.json.returned_items).toBe(2);
   });
 
   it("GCI-04 fallback per item minimali", async () => {
     h.net.on("GET", COLL_ITEMS, zList([{ key: "MIN00001", itemType: "book" }]));
-    const out = await h.call("get_collection_items", { collectionKey: "COL00001" });
+    const out = await h.call("get_collection_items", { collectionKey: "CPLQQQQR" });
     expect(out.json.items[0]).toEqual({
       title: "Untitled",
       authors: "No authors listed",
@@ -100,15 +100,15 @@ describe("get_collection_items (MCP)", () => {
 
   it("GCI-05 collezione vuota → risultato vuoto status 'empty'", async () => {
     h.net.on("GET", COLL_ITEMS, zList([]));
-    const json = expectEmptyResult(await h.call("get_collection_items", { collectionKey: "COL00001" }), "Collection is empty");
+    const json = expectEmptyResult(await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }), "Collection is empty");
     expect(json.status).toBe("empty");
-    expect(json.collectionKey).toBe("COL00001");
+    expect(json.collectionKey).toBe("CPLQQQQR");
   });
 
   it("GCI-06 solo allegati → risultato vuoto status 'invalid_items'", async () => {
-    h.net.on("GET", COLL_ITEMS, zList([pdfAttachment("ATT00001", "X")]));
+    h.net.on("GET", COLL_ITEMS, zList([pdfAttachment("ATTQQQQR", "X")]));
     const json = expectEmptyResult(
-      await h.call("get_collection_items", { collectionKey: "COL00001" }),
+      await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }),
       "No valid items found in collection"
     );
     expect(json.status).toBe("invalid_items");
@@ -116,7 +116,7 @@ describe("get_collection_items (MCP)", () => {
 
   it("GCI-07 paginazione: 230 item su 3 pagine", async () => {
     h.net.on("GET", COLL_ITEMS, zLibraryQuery(manyArticles(230)));
-    const out = await h.call("get_collection_items", { collectionKey: "COL00001" });
+    const out = await h.call("get_collection_items", { collectionKey: "CPLQQQQR" });
     expect(out.json.total_items).toBe(230);
     expect(out.json.returned_items).toBe(230);
     expect(h.net.calls.map((c) => c.url.searchParams.get("start") ?? "0")).toEqual(["0", "100", "200"]);
@@ -125,7 +125,7 @@ describe("get_collection_items (MCP)", () => {
   it("GCI-08 404 → errore strutturato status 'not_found'", async () => {
     h.net.on("GET", COLL_ITEMS, zCollectionNotFound());
     const json = expectErrorJson(
-      await h.call("get_collection_items", { collectionKey: "COL00001" }),
+      await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }),
       "Collection is empty or not accessible"
     );
     expect(json.status).toBe("not_found");
@@ -133,17 +133,17 @@ describe("get_collection_items (MCP)", () => {
 
   it.each([403, 412, 429, 500, 503])("GCI-09 HTTP %i → isError", async (status) => {
     h.net.on("GET", COLL_ITEMS, zError(status));
-    expectToolError(await h.call("get_collection_items", { collectionKey: "COL00001" }), String(status));
+    expectToolError(await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }), String(status));
   });
 
   it("GCI-10 errore di rete → isError", async () => {
     h.net.on("GET", COLL_ITEMS, networkError());
-    expectToolError(await h.call("get_collection_items", { collectionKey: "COL00001" }));
+    expectToolError(await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }));
   });
 
   it("GCI-11 unicode in titoli e tag", async () => {
     h.net.on("GET", COLL_ITEMS, zList([article("UNI00001", { title: "Ψυχολογία 心理学", tags: [{ tag: "ñ-tag" }] })]));
-    const out = await h.call("get_collection_items", { collectionKey: "COL00001" });
+    const out = await h.call("get_collection_items", { collectionKey: "CPLQQQQR" });
     expect(out.json.items[0].title).toBe("Ψυχολογία 心理学");
     expect(out.json.items[0].tags).toEqual(["ñ-tag"]);
   });
@@ -158,7 +158,7 @@ describe("get_collection_items (MCP)", () => {
     });
     it("GCI-14 excludeAttachments non booleano", async () => {
       expectValidationError(
-        await h.call("get_collection_items", { collectionKey: "COL00001", excludeAttachments: "no" }),
+        await h.call("get_collection_items", { collectionKey: "CPLQQQQR", excludeAttachments: "no" }),
         "excludeAttachments"
       );
     });

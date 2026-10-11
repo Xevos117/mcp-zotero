@@ -89,8 +89,8 @@ describe("get_items_details (MCP)", () => {
     expect(out.json.NPCREATR).not.toHaveProperty("creators");
   });
 
-  it("GID-16 chiavi malformate → errore invalid_keys senza richieste; risposta con voci in più → solo quelle richieste", async () => {
-    expectErrorJson(await h.call("get_items_details", { item_keys: ["zzzzzzzz", "ZZZZZZZ0"] }), "Invalid item key(s)");
+  it("GID-16 chiavi malformate → errore di validazione senza richieste; risposta con voci in più → solo quelle richieste", async () => {
+    expectValidationError(await h.call("get_items_details", { item_keys: ["zzzzzzzz", "ZZZZZZZ0"] }), "item_keys");
     expect(h.net.calls).toHaveLength(0);
     // API che ignora il filtro e restituisce la libreria intera
     h.net.on("GET", ITEMS, (req, hit) => {
@@ -98,7 +98,7 @@ describe("get_items_details (MCP)", () => {
       u.searchParams.delete("itemKey");
       return zLibraryQuery([article("BBBB2222"), article("AAAARRRR")])({ ...req, url: u }, hit);
     });
-    const out = await h.call("get_items_details", { item_keys: ["BBBB2222", "CCCC3333", "zzzzzzzz"] });
+    const out = await h.call("get_items_details", { item_keys: ["BBBB2222", "CCCC3333"] });
     expect(Object.keys(out.json)).toEqual(["BBBB2222"]);
   });
 

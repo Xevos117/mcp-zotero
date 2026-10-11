@@ -143,7 +143,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
   });
 
   it("FA-02 item_keys e collection_key insieme → errore strutturato, nessuna rete", async () => {
-    expectErrorJson(await h.call("find_and_attach_pdfs", { item_keys: ["A"], collection_key: "C" }), "not both");
+    expectErrorJson(await h.call("find_and_attach_pdfs", { item_keys: ["AAAA2222"], collection_key: "CCCC2222" }), "not both");
     expect(h.net.calls).toHaveLength(0);
   });
 
@@ -160,16 +160,16 @@ describe("find_and_attach_pdfs (MCP)", () => {
     const articles = manyArticles(20, "C");
     const coll = [...articles, pdfAttachment("ATTX0001", "C0000000"), { key: "NOTEX001", itemType: "note" }];
     // 2 pagine lato collezione: 15 + 7 (Total-Results 22)
-    h.net.on("GET", `${ZBASE}/collections/COL00001/items`, (req) => {
+    h.net.on("GET", `${ZBASE}/collections/CPLQQQQR/items`, (req) => {
       const start = Number(req.url.searchParams.get("start") ?? 0);
       return zList(coll.slice(start, start === 0 ? 15 : 22), { total: coll.length });
     });
     library(h, articles);
     installUnpaywall(h.net, {});
-    const out = await h.call("find_and_attach_pdfs", { collection_key: "COL00001", skip_if_attachment_exists: false });
+    const out = await h.call("find_and_attach_pdfs", { collection_key: "CPLQQQQR", skip_if_attachment_exists: false });
     expect(out.json.processed).toBe(20);
     expect(out.json.not_found).toBe(20);
-    expect(h.net.requests("GET", `${ZBASE}/collections/COL00001/items`)).toHaveLength(2);
+    expect(h.net.requests("GET", `${ZBASE}/collections/CPLQQQQR/items`)).toHaveLength(2);
     expect(h.net.requests("GET", ITEMS)[0].url.searchParams.get("itemKey")!.split(",")).toHaveLength(20);
   });
 
@@ -177,22 +177,21 @@ describe("find_and_attach_pdfs (MCP)", () => {
   // restituisce al massimo 100 per pagina → 20 item finivano in "Item not found".
   it("FA-25 collection_key con 120 item: tutti processati", async () => {
     const articles = manyArticles(120, "C");
-    h.net.on("GET", `${ZBASE}/collections/COL00001/items`, zLibraryQuery(articles));
+    h.net.on("GET", `${ZBASE}/collections/CPLQQQQR/items`, zLibraryQuery(articles));
     library(h, articles);
     installUnpaywall(h.net, {});
-    const out = await h.call("find_and_attach_pdfs", { collection_key: "COL00001", skip_if_attachment_exists: false });
+    const out = await h.call("find_and_attach_pdfs", { collection_key: "CPLQQQQR", skip_if_attachment_exists: false });
     expect(out.json.processed).toBe(120);
     expect(out.json.not_found).toBe(120);
   });
 
   it("FA-06 collezione vuota → risultato vuoto 'No items to process'", async () => {
-    h.net.on("GET", `${ZBASE}/collections/COL00001/items`, zList([]));
-    expectEmptyResult(await h.call("find_and_attach_pdfs", { collection_key: "COL00001" }), "No items to process");
+    h.net.on("GET", `${ZBASE}/collections/CPLQQQQR/items`, zList([]));
+    expectEmptyResult(await h.call("find_and_attach_pdfs", { collection_key: "CPLQQQQR" }), "No items to process");
   });
 
-  it("FA-30 chiave malformata → 'Invalid item key', nessuna richiesta né allegati a voci estranee", async () => {
-    const out = await h.call("find_and_attach_pdfs", { item_keys: ["zzzzzzzz"], dry_run: true });
-    expect(out.json.results).toEqual([expect.objectContaining({ item_key: "zzzzzzzz", status: "error", reason: "Invalid item key" })]);
+  it("FA-30 chiave malformata → errore di validazione, nessuna richiesta né allegati a voci estranee", async () => {
+    expectValidationError(await h.call("find_and_attach_pdfs", { item_keys: ["zzzzzzzz"], dry_run: true }), "item_keys");
     expect(h.net.calls).toHaveLength(0);
   });
 
@@ -207,7 +206,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
   });
 
   it("FA-08 skip_if_attachment_exists (default) con PDF figlio → skipped, nessun lookup", async () => {
-    library(h, [article("AAAARRRR")], { AAAARRRR: [pdfAttachment("ATT00001", "AAAARRRR")] });
+    library(h, [article("AAAARRRR")], { AAAARRRR: [pdfAttachment("ATTQQQQR", "AAAARRRR")] });
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAARRRR"] });
     expect(out.json.results[0]).toMatchObject({ status: "skipped" });
     expect(out.json.skipped).toBe(1);
@@ -222,7 +221,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
   });
 
   it("FA-10 skip_if_attachment_exists=false → nessuna richiesta children", async () => {
-    library(h, [article("AAAARRRR")], { AAAARRRR: [pdfAttachment("ATT00001", "AAAARRRR")] });
+    library(h, [article("AAAARRRR")], { AAAARRRR: [pdfAttachment("ATTQQQQR", "AAAARRRR")] });
     installUnpaywall(h.net, {});
     await h.call("find_and_attach_pdfs", { item_keys: ["AAAARRRR"], skip_if_attachment_exists: false });
     expect(h.net.requests("GET", CHILDREN)).toHaveLength(0);
@@ -321,8 +320,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
   });
 
   it("FA-19 errore di rete sulla collezione → errore strutturato con details", async () => {
-    h.net.on("GET", `${ZBASE}/collections/COL00001/items`, networkError("ETIMEDOUT"));
-    const json = expectErrorJson(await h.call("find_and_attach_pdfs", { collection_key: "COL00001" }), "find_and_attach_pdfs failed");
+    h.net.on("GET", `${ZBASE}/collections/CPLQQQQR/items`, networkError("ETIMEDOUT"));
+    const json = expectErrorJson(await h.call("find_and_attach_pdfs", { collection_key: "CPLQQQQR" }), "find_and_attach_pdfs failed");
     expect(json.details).toContain("ETIMEDOUT");
   });
 
@@ -363,7 +362,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
   it("FA-23 ZOTERO_API_KEY assente → errore strutturato senza rete", async () => {
     await h.close();
     h = await startHarness({ unpaywallEmail: UNPAYWALL_EMAIL, envApiKey: "" });
-    expectErrorJson(await h.call("find_and_attach_pdfs", { item_keys: ["A"] }), "ZOTERO_API_KEY");
+    expectErrorJson(await h.call("find_and_attach_pdfs", { item_keys: ["AAAA2222"] }), "ZOTERO_API_KEY");
     expect(h.net.calls).toHaveLength(0);
   });
 

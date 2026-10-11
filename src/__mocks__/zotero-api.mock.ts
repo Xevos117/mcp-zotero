@@ -16,7 +16,7 @@ export const fullItemFixture = {
   url: "https://example.com/paper",
   publicationTitle: "Journal of Machine Learning",
   tags: [{ tag: "deep-learning" }, { tag: "NLP" }],
-  collections: ["COL001", "COL002"],
+  collections: ["CPLQQRZZ", "CPLQQ2ZZ"],
 };
 
 // Fixture: minimal item (tests fallback values)
@@ -27,7 +27,7 @@ export const minimalItemFixture = {
 
 // Fixture: collection data
 export const collectionFixture = {
-  key: "COL001",
+  key: "CPLQQRZZ",
   name: "Machine Learning Papers",
   parentCollection: false,
   numItems: 42,

@@ -112,7 +112,7 @@ test normali. Non restano `it.fails` nella suite.
 | GID-12 | item_keys mancante/stringa/numeri, include_abstract non booleano | isError |
 | GID-13/14 | HTTP 4xx/5xx, rete | isError |
 | GID-15 | creators strutturati (cognomi multiparola, editor istituzionale) | `creators` come in Zotero accanto ad `authors`; assente se vuoto |
-| GID-16 | chiavi malformate / risposta con voci non richieste | errore `invalid_keys` senza richieste / solo le voci richieste |
+| GID-16 | chiavi malformate / risposta con voci non richieste | errore di validazione senza richieste / solo le voci richieste |
 
 ## get_item_fulltext (`get-item-fulltext.test.ts`)
 | ID | Scenario | Atteso |
@@ -241,8 +241,8 @@ test normali. Non restano `it.fails` nella suite.
 | DI-10/11/12 | 4xx/5xx su GET o DELETE, rete | isError |
 | DI-13/14 | mancante, `[]`, stringa, 51 chiavi / esattamente 50 | isError / accettato |
 | DI-15 | validazione prima del guard | isError |
-| DI-16 | chiave minuscola, con `0`, con virgola o spazio | errore `invalid_keys` ("Invalid item key(s)…"), **nessuna richiesta** (prima della 2.0.1 l'API ignorava il filtro e delete_items cancellava voci estranee) |
-| DI-17 | chiave valida + malformata, API che restituisce la libreria intera | cancellata solo la chiave valida richiesta, `invalid_keys` per l'altra |
+| DI-16 | chiave malformata | errore di validazione, **nessuna richiesta** (prima della 2.0.1 l'API ignorava il filtro e delete_items cancellava voci estranee) |
+| DI-17 | API che restituisce più voci di quelle chieste (filtro ignorato) | cancellata solo la chiave richiesta |
 
 ## import_pdf_to_zotero (`import-pdf-to-zotero.test.ts`)
 | ID | Scenario | Atteso |
@@ -291,7 +291,7 @@ test normali. Non restano `it.fails` nella suite.
 | FA-27 | URL senza .pdf con Content-Disposition | filename dall'header |
 | FA-28 | solo landing page dell'editore | landing_page_only, il motivo nomina l'editore |
 | FA-29 | stesso scenario della pipeline condivisa | campi per PDF identici a `attachOpenAccessPdf` chiamata direttamente |
-| FA-30 | chiave malformata | `Invalid item key`, nessuna richiesta |
+| FA-30 | chiave malformata | errore di validazione, nessuna richiesta |
 
 ## Pipeline PDF open access condivisa (`test/utils/oa-pdf.test.ts`)
 `attachOpenAccessPdf` (src/utils/oa-pdf.ts) è l'unico percorso usato da add_items_by_doi e find_and_attach_pdfs.
@@ -337,6 +337,14 @@ test normali. Non restano `it.fails` nella suite.
 | SK-06 | argomenti mancanti, libreria non valida, stile `mla`, file inesistenti | exit 1 con messaggio |
 | SK-07 | copia `inject.mjs` sotto `package.json` `"type": "commonjs"` | esegue senza SyntaxError/warning |
 | SK-08 | metadata.json da get_items_details (cognomi multiparola, nome istituzionale, nessun autore) | itemData e testo identici a inject_citations |
+
+## Validazione delle chiavi (`key-validation.test.ts`)
+Le chiavi finiscono nei path dell'API senza codifica (e l'URL risolve `..`) o nei filtri itemKey (ignorati dall'API se
+nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `zoteroKey()` (`src/utils/zotero-keys.ts`).
+| ID | Scenario | Atteso |
+|---|---|---|
+| KV-01 | per ogni tool e argomento chiave (item_keys, item_key, collection_key, collectionKey, parent_item, parent_collection, collections): `../tags?tag=X&`, `../collections?collectionKey=A,B`, `../../groups/777/…`, minuscole, con 0, 7 caratteri, con virgola | errore di validazione col nome del campo, nessuna richiesta |
+| KV-02 | `<zcite>` con `../`, `?`, `%2F` (inject_citations) | errore "Invalid Zotero item key(s)", nessuna richiesta |
 
 ## tools/list (`tools-list.test.ts`)
 | ID | Scenario | Atteso |

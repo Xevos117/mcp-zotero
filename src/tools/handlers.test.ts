@@ -80,17 +80,17 @@ describe("get_collections", () => {
   });
 
   it("filters out trashed collections by default", async () => {
-    const trashedCollection = { key: "COL002", name: "Old Stuff", deleted: true };
+    const trashedCollection = { key: "CPLQQ2ZZ", name: "Old Stuff", deleted: true };
     const { mock } = createZoteroApiMock([collectionFixture, trashedCollection]);
     const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed).toHaveLength(1);
-    expect(parsed[0].key).toBe("COL001");
+    expect(parsed[0].key).toBe("CPLQQRZZ");
   });
 
   it("includes trashed collections when include_trashed is true", async () => {
-    const trashedCollection = { key: "COL002", name: "Old Stuff", deleted: true };
+    const trashedCollection = { key: "CPLQQ2ZZ", name: "Old Stuff", deleted: true };
     const { mock } = createZoteroApiMock([collectionFixture, trashedCollection]);
     const result = await handleToolCall(
       "get_collections",
@@ -104,7 +104,7 @@ describe("get_collections", () => {
   });
 
   it("returns error when all collections are trashed", async () => {
-    const trashedOnly = { key: "COL002", name: "Trashed", deleted: true };
+    const trashedOnly = { key: "CPLQQ2ZZ", name: "Trashed", deleted: true };
     const { mock } = createZoteroApiMock([trashedOnly]);
     const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
 
@@ -121,7 +121,7 @@ describe("get_collection_items", () => {
     const { mock } = createZoteroApiMock([fullItemFixture]);
     const result = await handleToolCall(
       "get_collection_items",
-      { collectionKey: "COL001" },
+      { collectionKey: "CPLQQRZZ" },
       mock,
       TEST_USER_ID
     );
@@ -142,7 +142,7 @@ describe("get_collection_items", () => {
     const { mock } = createZoteroApiMock([minimalItemFixture]);
     const result = await handleToolCall(
       "get_collection_items",
-      { collectionKey: "COL001" },
+      { collectionKey: "CPLQQRZZ" },
       mock,
       TEST_USER_ID
     );
@@ -159,7 +159,7 @@ describe("get_collection_items", () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall(
       "get_collection_items",
-      { collectionKey: "EMPTY" },
+      { collectionKey: "EMPTYZZZ" },
       mock,
       TEST_USER_ID
     );
@@ -175,7 +175,7 @@ describe("get_collection_items", () => {
     const { mock } = createZoteroApiMock([fullItemFixture, attachmentItem, noteItem]);
     const result = await handleToolCall(
       "get_collection_items",
-      { collectionKey: "COL001" },
+      { collectionKey: "CPLQQRZZ" },
       mock,
       TEST_USER_ID
     );
@@ -192,7 +192,7 @@ describe("get_collection_items", () => {
     const { mock } = createZoteroApiMock([fullItemFixture, attachmentItem]);
     const result = await handleToolCall(
       "get_collection_items",
-      { collectionKey: "COL001", excludeAttachments: false },
+      { collectionKey: "CPLQQRZZ", excludeAttachments: false },
       mock,
       TEST_USER_ID
     );
@@ -211,7 +211,7 @@ describe("get_collection_items", () => {
 
     const result = await handleToolCall(
       "get_collection_items",
-      { collectionKey: "MISSING" },
+      { collectionKey: "MISSINGZ" },
       mock,
       TEST_USER_ID
     );
@@ -491,19 +491,19 @@ describe("create_collection", () => {
   it("creates collection with parent_collection", async () => {
     const writeData = {
       isSuccess: true,
-      data: [{ key: "SUB001", name: "Sub Collection", parentCollection: "PARENT01" }],
+      data: [{ key: "SUB001", name: "Sub Collection", parentCollection: "PARENTQR" }],
       errors: {},
     };
     const { mock, postStub } = createZoteroApiMock([], writeData);
     await handleToolCall(
       "create_collection",
-      { name: "Sub Collection", parent_collection: "PARENT01" },
+      { name: "Sub Collection", parent_collection: "PARENTQR" },
       mock,
       TEST_USER_ID
     );
 
     expect(postStub).toHaveBeenCalledWith([
-      { name: "Sub Collection", parentCollection: "PARENT01" },
+      { name: "Sub Collection", parentCollection: "PARENTQR" },
     ]);
   });
 
@@ -563,7 +563,7 @@ describe("add_items_by_doi", () => {
 
     const writeData = {
       isSuccess: true,
-      data: [{ key: "ITEM001", title: "Test Paper" }],
+      data: [{ key: "ITEMQQRZ", title: "Test Paper" }],
       errors: {},
     };
     const { mock } = createZoteroApiMock([], writeData);
@@ -577,7 +577,7 @@ describe("add_items_by_doi", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.success).toHaveLength(1);
     expect(parsed.success[0].doi).toBe("10.1234/test");
-    expect(parsed.success[0].item_key).toBe("ITEM001");
+    expect(parsed.success[0].item_key).toBe("ITEMQQRZ");
     expect(parsed.failed).toHaveLength(0);
   });
 
@@ -678,13 +678,13 @@ describe("add_items_by_doi", () => {
     const { mock, postStub } = createZoteroApiMock([], writeData);
     await handleToolCall(
       "add_items_by_doi",
-      { dois: ["10.1234/test"], collection_key: "COL001", tags: ["ai"] },
+      { dois: ["10.1234/test"], collection_key: "CPLQQRZZ", tags: ["ai"] },
       mock,
       TEST_USER_ID
     );
 
     const postedData = postStub.mock.calls[0][0] as Record<string, unknown>[];
-    expect(postedData[0]).toHaveProperty("collections", ["COL001"]);
+    expect(postedData[0]).toHaveProperty("collections", ["CPLQQRZZ"]);
     expect(postedData[0]).toHaveProperty("tags", [{ tag: "ai" }]);
   });
 
@@ -1071,7 +1071,7 @@ describe("get_item_fulltext", () => {
   it("returns fulltext successfully", async () => {
     const parentItem = { ...fullItemFixture, itemType: "journalArticle" };
     const pdfChild = {
-      key: "ATTACH01",
+      key: "ATTACHQR",
       itemType: "attachment",
       contentType: "application/pdf",
       title: "Full Text PDF",
@@ -1106,7 +1106,7 @@ describe("get_item_fulltext", () => {
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.item_key).toBe("ABCR2345");
-    expect(parsed.attachment_key).toBe("ATTACH01");
+    expect(parsed.attachment_key).toBe("ATTACHQR");
     expect(parsed.text).toBe("This is the full text of the paper.");
     expect(parsed.truncated).toBe(false);
     expect(parsed.pages).toBe(10);
@@ -1115,7 +1115,7 @@ describe("get_item_fulltext", () => {
   it("returns error when fulltext not indexed (404)", async () => {
     const parentItem = { ...fullItemFixture, itemType: "journalArticle" };
     const pdfChild = {
-      key: "ATTACH01",
+      key: "ATTACHQR",
       itemType: "attachment",
       contentType: "application/pdf",
     };
@@ -1184,7 +1184,7 @@ describe("get_item_fulltext", () => {
 
   it("returns URL suggestion for webpage itemType", async () => {
     const webpageItem = {
-      key: "WEB001",
+      key: "WEBQQRZZ",
       itemType: "webpage",
       title: "Some Blog Post",
       url: "https://example.com/blog",
@@ -1196,7 +1196,7 @@ describe("get_item_fulltext", () => {
 
     const result = await handleToolCall(
       "get_item_fulltext",
-      { item_key: "WEB001" },
+      { item_key: "WEBQQRZZ" },
       mock,
       TEST_USER_ID
     );
@@ -1207,7 +1207,7 @@ describe("get_item_fulltext", () => {
 
   it("handles direct attachment key", async () => {
     const attachmentItem = {
-      key: "ATTACH01",
+      key: "ATTACHQR",
       itemType: "attachment",
       contentType: "application/pdf",
       title: "Full Text PDF",
@@ -1227,21 +1227,21 @@ describe("get_item_fulltext", () => {
 
     const result = await handleToolCall(
       "get_item_fulltext",
-      { item_key: "ATTACH01" },
+      { item_key: "ATTACHQR" },
       mock,
       TEST_USER_ID
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.item_key).toBe("ATTACH01");
-    expect(parsed.attachment_key).toBe("ATTACH01");
+    expect(parsed.item_key).toBe("ATTACHQR");
+    expect(parsed.attachment_key).toBe("ATTACHQR");
     expect(parsed.text).toBe("Direct attachment text.");
   });
 
   it("truncates text when exceeding max_characters", async () => {
     const parentItem = { ...fullItemFixture, itemType: "journalArticle" };
     const pdfChild = {
-      key: "ATTACH01",
+      key: "ATTACHQR",
       itemType: "attachment",
       contentType: "application/pdf",
     };
@@ -1388,7 +1388,7 @@ describe("add_linked_url_attachment", () => {
       {
         url: "https://arxiv.org/pdf/2301.00001.pdf",
         title: "Paper PDF",
-        parent_item: "PARENT1",
+        parent_item: "PARENTRZ",
         content_type: "application/pdf",
       },
       mock,
@@ -1397,10 +1397,10 @@ describe("add_linked_url_attachment", () => {
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.item_key).toBe("ATT002");
-    expect(parsed.parent_item).toBe("PARENT1");
+    expect(parsed.parent_item).toBe("PARENTRZ");
 
     const postedData = postStub.mock.calls[0][0] as Record<string, unknown>[];
-    expect(postedData[0]).toHaveProperty("parentItem", "PARENT1");
+    expect(postedData[0]).toHaveProperty("parentItem", "PARENTRZ");
     expect(postedData[0]).toHaveProperty("contentType", "application/pdf");
     expect(postedData[0]).toHaveProperty("linkMode", "linked_url");
   });
@@ -1432,13 +1432,13 @@ describe("add_linked_url_attachment", () => {
     const { mock, postStub } = createZoteroApiMock([], writeData);
     await handleToolCall(
       "add_linked_url_attachment",
-      { url: "https://example.com", collections: ["COL001", "COL002"] },
+      { url: "https://example.com", collections: ["CPLQQRZZ", "CPLQQ2ZZ"] },
       mock,
       TEST_USER_ID
     );
 
     const postedData = postStub.mock.calls[0][0] as Record<string, unknown>[];
-    expect(postedData[0]).toHaveProperty("collections", ["COL001", "COL002"]);
+    expect(postedData[0]).toHaveProperty("collections", ["CPLQQRZZ", "CPLQQ2ZZ"]);
   });
 
   it("forces collections=[] when parent_item is present", async () => {
@@ -1452,8 +1452,8 @@ describe("add_linked_url_attachment", () => {
       "add_linked_url_attachment",
       {
         url: "https://example.com",
-        parent_item: "PARENT1",
-        collections: ["COL001"],
+        parent_item: "PARENTRZ",
+        collections: ["CPLQQRZZ"],
       },
       mock,
       TEST_USER_ID
@@ -1461,7 +1461,7 @@ describe("add_linked_url_attachment", () => {
 
     const postedData = postStub.mock.calls[0][0] as Record<string, unknown>[];
     expect(postedData[0]).toHaveProperty("collections", []);
-    expect(postedData[0]).toHaveProperty("parentItem", "PARENT1");
+    expect(postedData[0]).toHaveProperty("parentItem", "PARENTRZ");
   });
 
   it("converts tags to Zotero format", async () => {
@@ -1571,7 +1571,7 @@ describe("add_items", () => {
       "add_items",
       {
         items: [{ itemType: "book", title: "Test" }],
-        collection_key: "COL001",
+        collection_key: "CPLQQRZZ",
         tags: ["ai", "nlp"],
       },
       mock,
@@ -1579,7 +1579,7 @@ describe("add_items", () => {
     );
 
     const postedData = postStub.mock.calls[0][0] as Record<string, unknown>[];
-    expect(postedData[0]).toHaveProperty("collections", ["COL001"]);
+    expect(postedData[0]).toHaveProperty("collections", ["CPLQQRZZ"]);
     expect(postedData[0]).toHaveProperty("tags", [
       { tag: "ai" },
       { tag: "nlp" },
@@ -1616,7 +1616,7 @@ describe("add_items", () => {
   it("returns per-item success with item_key, title, item_type", async () => {
     const writeData = {
       isSuccess: true,
-      data: [{ key: "RES01", title: "Result" }],
+      data: [{ key: "RESQRZZZ", title: "Result" }],
       errors: {},
     };
     const { mock } = createZoteroApiMock([], writeData);
@@ -1632,7 +1632,7 @@ describe("add_items", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.success[0]).toEqual({
       index: 0,
-      item_key: "RES01",
+      item_key: "RESQRZZZ",
       title: "Result",
       item_type: "report",
     });
@@ -1811,8 +1811,8 @@ describe("import_pdf_to_zotero", () => {
       "import_pdf_to_zotero",
       {
         url: "https://example.com/paper.pdf",
-        parent_item: "PARENT1",
-        collections: ["COL001"],
+        parent_item: "PARENTRZ",
+        collections: ["CPLQQRZZ"],
         tags: ["ai"],
         filename: "custom.pdf",
         title: "Custom Title",
@@ -1828,8 +1828,8 @@ describe("import_pdf_to_zotero", () => {
       "test-api-key",
       {
         url: "https://example.com/paper.pdf",
-        parentItem: "PARENT1",
-        collections: ["COL001"],
+        parentItem: "PARENTRZ",
+        collections: ["CPLQQRZZ"],
         tags: ["ai"],
         filename: "custom.pdf",
         title: "Custom Title",
@@ -2046,7 +2046,7 @@ describe("delete_collection", () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall(
       "delete_collection",
-      { collection_key: "COL001" },
+      { collection_key: "CPLQQRZZ" },
       mock,
       TEST_USER_ID,
       "none"
@@ -2063,7 +2063,7 @@ describe("delete_collection", () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall(
       "delete_collection",
-      { collection_key: "COL001" },
+      { collection_key: "CPLQQRZZ" },
       mock,
       TEST_USER_ID,
       "items"
@@ -2078,7 +2078,7 @@ describe("delete_collection", () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall(
       "delete_collection",
-      { collection_key: "COL001" },
+      { collection_key: "CPLQQRZZ" },
       mock,
       TEST_USER_ID
     );
@@ -2088,11 +2088,11 @@ describe("delete_collection", () => {
   });
 
   it("deletes collection successfully with 'all' mode", async () => {
-    const collectionData = { key: "COL001", name: "Test Collection", version: 5 };
+    const collectionData = { key: "CPLQQRZZ", name: "Test Collection", version: 5 };
     const { mock, deleteStub } = createZoteroApiMock(collectionData);
     const result = await handleToolCall(
       "delete_collection",
-      { collection_key: "COL001" },
+      { collection_key: "CPLQQRZZ" },
       mock,
       TEST_USER_ID,
       "all"
@@ -2100,7 +2100,7 @@ describe("delete_collection", () => {
 
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.deleted).toBe(true);
-    expect(parsed.collection_key).toBe("COL001");
+    expect(parsed.collection_key).toBe("CPLQQRZZ");
     expect(parsed.name).toBe("Test Collection");
     expect(deleteStub).toHaveBeenCalled();
   });
@@ -2113,7 +2113,7 @@ describe("delete_collection", () => {
 
     const result = await handleToolCall(
       "delete_collection",
-      { collection_key: "MISSING" },
+      { collection_key: "MISSINGZ" },
       mock,
       TEST_USER_ID,
       "all"
@@ -2132,7 +2132,7 @@ describe("delete_collection", () => {
 
     const result = await handleToolCall(
       "delete_collection",
-      { collection_key: "COL001" },
+      { collection_key: "CPLQQRZZ" },
       mock,
       TEST_USER_ID,
       "all"
@@ -2309,7 +2309,7 @@ describe("pagination: get_collection_items", () => {
 
     const result = await handleToolCall(
       "get_collection_items",
-      { collectionKey: "COL001" },
+      { collectionKey: "CPLQQRZZ" },
       mock,
       TEST_USER_ID
     );
@@ -2377,7 +2377,7 @@ describe("pagination: find_and_attach_pdfs with collection_key", () => {
 
     const result = await handleToolCall(
       "find_and_attach_pdfs",
-      { collection_key: "COL001", dry_run: true, skip_if_attachment_exists: false },
+      { collection_key: "CPLQQRZZ", dry_run: true, skip_if_attachment_exists: false },
       mock,
       TEST_USER_ID
     );

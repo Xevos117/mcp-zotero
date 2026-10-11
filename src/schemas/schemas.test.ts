@@ -30,8 +30,8 @@ const DeleteItemsSchema = z.object(deleteItemsConfig.inputSchema);
 
 describe("GetCollectionItemsSchema", () => {
   it("accepts valid collectionKey", () => {
-    const result = GetCollectionItemsSchema.parse({ collectionKey: "ABC123" });
-    expect(result.collectionKey).toBe("ABC123");
+    const result = GetCollectionItemsSchema.parse({ collectionKey: "ABCR23ZZ" });
+    expect(result.collectionKey).toBe("ABCR23ZZ");
   });
 
   it("rejects missing collectionKey", () => {
@@ -43,13 +43,13 @@ describe("GetCollectionItemsSchema", () => {
   });
 
   it("defaults excludeAttachments to true", () => {
-    const result = GetCollectionItemsSchema.parse({ collectionKey: "ABC123" });
+    const result = GetCollectionItemsSchema.parse({ collectionKey: "ABCR23ZZ" });
     expect(result.excludeAttachments).toBe(true);
   });
 
   it("accepts excludeAttachments as boolean", () => {
     const result = GetCollectionItemsSchema.parse({
-      collectionKey: "ABC123",
+      collectionKey: "ABCR23ZZ",
       excludeAttachments: false,
     });
     expect(result.excludeAttachments).toBe(false);
@@ -58,12 +58,12 @@ describe("GetCollectionItemsSchema", () => {
 
 describe("GetItemsDetailsSchema", () => {
   it("accepts valid item_keys array", () => {
-    const result = GetItemsDetailsSchema.parse({ item_keys: ["ITEM001", "ITEM002"] });
-    expect(result.item_keys).toEqual(["ITEM001", "ITEM002"]);
+    const result = GetItemsDetailsSchema.parse({ item_keys: ["ITEMQQRZ", "ITEMQQ2Z"] });
+    expect(result.item_keys).toEqual(["ITEMQQRZ", "ITEMQQ2Z"]);
   });
 
   it("accepts single item key", () => {
-    const result = GetItemsDetailsSchema.parse({ item_keys: ["ITEM001"] });
+    const result = GetItemsDetailsSchema.parse({ item_keys: ["ITEMQQRZ"] });
     expect(result.item_keys).toHaveLength(1);
   });
 
@@ -72,21 +72,21 @@ describe("GetItemsDetailsSchema", () => {
   });
 
   it("rejects non-array item_keys", () => {
-    expect(() => GetItemsDetailsSchema.parse({ item_keys: "ITEM001" })).toThrow();
+    expect(() => GetItemsDetailsSchema.parse({ item_keys: "ITEMQQRZ" })).toThrow();
   });
 
   it("defaults include_abstract to false", () => {
-    const result = GetItemsDetailsSchema.parse({ item_keys: ["ITEM001"] });
+    const result = GetItemsDetailsSchema.parse({ item_keys: ["ITEMQQRZ"] });
     expect(result.include_abstract).toBe(false);
   });
 
   it("accepts include_abstract as true", () => {
-    const result = GetItemsDetailsSchema.parse({ item_keys: ["ITEM001"], include_abstract: true });
+    const result = GetItemsDetailsSchema.parse({ item_keys: ["ITEMQQRZ"], include_abstract: true });
     expect(result.include_abstract).toBe(true);
   });
 
   it("rejects non-boolean include_abstract", () => {
-    expect(() => GetItemsDetailsSchema.parse({ item_keys: ["ITEM001"], include_abstract: "yes" })).toThrow();
+    expect(() => GetItemsDetailsSchema.parse({ item_keys: ["ITEMQQRZ"], include_abstract: "yes" })).toThrow();
   });
 });
 
@@ -160,9 +160,9 @@ describe("CreateCollectionSchema", () => {
   it("accepts optional parent_collection", () => {
     const result = CreateCollectionSchema.parse({
       name: "Sub Collection",
-      parent_collection: "PARENT01",
+      parent_collection: "PARENTQR",
     });
-    expect(result.parent_collection).toBe("PARENT01");
+    expect(result.parent_collection).toBe("PARENTQR");
   });
 });
 
@@ -181,10 +181,10 @@ describe("AddItemsByDoiSchema", () => {
   it("accepts optional collection_key and tags", () => {
     const result = AddItemsByDoiSchema.parse({
       dois: ["10.1234/test"],
-      collection_key: "COL001",
+      collection_key: "CPLQQRZZ",
       tags: ["ai", "nlp"],
     });
-    expect(result.collection_key).toBe("COL001");
+    expect(result.collection_key).toBe("CPLQQRZZ");
     expect(result.tags).toEqual(["ai", "nlp"]);
   });
 
@@ -241,8 +241,8 @@ describe("InjectCitationsSchema", () => {
 
 describe("GetItemFulltextSchema", () => {
   it("accepts valid item_key", () => {
-    const result = GetItemFulltextSchema.parse({ item_key: "ABC12345" });
-    expect(result.item_key).toBe("ABC12345");
+    const result = GetItemFulltextSchema.parse({ item_key: "ABCR2345" });
+    expect(result.item_key).toBe("ABCR2345");
   });
 
   it("rejects missing item_key", () => {
@@ -250,7 +250,7 @@ describe("GetItemFulltextSchema", () => {
   });
 
   it("defaults max_characters to 50000", () => {
-    const result = GetItemFulltextSchema.parse({ item_key: "ABC12345" });
+    const result = GetItemFulltextSchema.parse({ item_key: "ABCR2345" });
     expect(result.max_characters).toBe(50000);
   });
 });
@@ -286,17 +286,17 @@ describe("AddLinkedUrlAttachmentSchema", () => {
   it("accepts optional parent_item", () => {
     const result = AddLinkedUrlAttachmentSchema.parse({
       url: "https://example.com/paper.pdf",
-      parent_item: "ITEM001",
+      parent_item: "ITEMQQRZ",
     });
-    expect(result.parent_item).toBe("ITEM001");
+    expect(result.parent_item).toBe("ITEMQQRZ");
   });
 
   it("accepts optional collections", () => {
     const result = AddLinkedUrlAttachmentSchema.parse({
       url: "https://example.com/paper.pdf",
-      collections: ["COL001", "COL002"],
+      collections: ["CPLQQRZZ", "CPLQQ2ZZ"],
     });
-    expect(result.collections).toEqual(["COL001", "COL002"]);
+    expect(result.collections).toEqual(["CPLQQRZZ", "CPLQQ2ZZ"]);
   });
 
   it("accepts optional tags", () => {
@@ -390,10 +390,10 @@ describe("AddItemsSchema", () => {
   it("collection_key and tags are optional", () => {
     const result = AddItemsSchema.parse({
       items: [{ itemType: "book", title: "Test" }],
-      collection_key: "COL001",
+      collection_key: "CPLQQRZZ",
       tags: ["ai", "nlp"],
     });
-    expect(result.collection_key).toBe("COL001");
+    expect(result.collection_key).toBe("CPLQQRZZ");
     expect(result.tags).toEqual(["ai", "nlp"]);
   });
 
@@ -458,25 +458,25 @@ describe("ImportPdfToZoteroSchema", () => {
   it("accepts optional parent_item, collections, and tags", () => {
     const result = ImportPdfToZoteroSchema.parse({
       url: "https://example.com/paper.pdf",
-      parent_item: "PARENT01",
-      collections: ["COL001"],
+      parent_item: "PARENTQR",
+      collections: ["CPLQQRZZ"],
       tags: ["ai", "nlp"],
     });
-    expect(result.parent_item).toBe("PARENT01");
-    expect(result.collections).toEqual(["COL001"]);
+    expect(result.parent_item).toBe("PARENTQR");
+    expect(result.collections).toEqual(["CPLQQRZZ"]);
     expect(result.tags).toEqual(["ai", "nlp"]);
   });
 });
 
 describe("FindAndAttachPdfsSchema", () => {
   it("accepts item_keys array", () => {
-    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEY1", "KEY2"] });
-    expect(result.item_keys).toEqual(["KEY1", "KEY2"]);
+    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEYRZZZZ", "KEY2ZZZZ"] });
+    expect(result.item_keys).toEqual(["KEYRZZZZ", "KEY2ZZZZ"]);
   });
 
   it("accepts collection_key string", () => {
-    const result = FindAndAttachPdfsSchema.parse({ collection_key: "COL001" });
-    expect(result.collection_key).toBe("COL001");
+    const result = FindAndAttachPdfsSchema.parse({ collection_key: "CPLQQRZZ" });
+    expect(result.collection_key).toBe("CPLQQRZZ");
   });
 
   it("accepts empty args (validation of mutual exclusion is in handler)", () => {
@@ -486,18 +486,18 @@ describe("FindAndAttachPdfsSchema", () => {
   });
 
   it("defaults skip_if_attachment_exists to true", () => {
-    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEY1"] });
+    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEYRZZZZ"] });
     expect(result.skip_if_attachment_exists).toBe(true);
   });
 
   it("defaults dry_run to false", () => {
-    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEY1"] });
+    const result = FindAndAttachPdfsSchema.parse({ item_keys: ["KEYRZZZZ"] });
     expect(result.dry_run).toBe(false);
   });
 
   it("accepts all params together", () => {
     const result = FindAndAttachPdfsSchema.parse({
-      item_keys: ["KEY1"],
+      item_keys: ["KEYRZZZZ"],
       skip_if_attachment_exists: false,
       dry_run: true,
     });
@@ -508,8 +508,8 @@ describe("FindAndAttachPdfsSchema", () => {
 
 describe("DeleteCollectionSchema", () => {
   it("accepts valid collection_key", () => {
-    const result = DeleteCollectionSchema.parse({ collection_key: "COL001" });
-    expect(result.collection_key).toBe("COL001");
+    const result = DeleteCollectionSchema.parse({ collection_key: "CPLQQRZZ" });
+    expect(result.collection_key).toBe("CPLQQRZZ");
   });
 
   it("rejects missing collection_key", () => {
@@ -527,12 +527,12 @@ describe("DeleteCollectionSchema", () => {
 
 describe("DeleteItemsSchema", () => {
   it("accepts valid item_keys array", () => {
-    const result = DeleteItemsSchema.parse({ item_keys: ["KEY1", "KEY2"] });
-    expect(result.item_keys).toEqual(["KEY1", "KEY2"]);
+    const result = DeleteItemsSchema.parse({ item_keys: ["KEYRZZZZ", "KEY2ZZZZ"] });
+    expect(result.item_keys).toEqual(["KEYRZZZZ", "KEY2ZZZZ"]);
   });
 
   it("accepts single item key", () => {
-    const result = DeleteItemsSchema.parse({ item_keys: ["KEY1"] });
+    const result = DeleteItemsSchema.parse({ item_keys: ["KEYRZZZZ"] });
     expect(result.item_keys).toHaveLength(1);
   });
 
@@ -545,7 +545,7 @@ describe("DeleteItemsSchema", () => {
   });
 
   it("rejects non-array item_keys", () => {
-    expect(() => DeleteItemsSchema.parse({ item_keys: "KEY1" })).toThrow();
+    expect(() => DeleteItemsSchema.parse({ item_keys: "KEYRZZZZ" })).toThrow();
   });
 
   it("rejects more than 50 item keys", () => {
@@ -554,7 +554,7 @@ describe("DeleteItemsSchema", () => {
   });
 
   it("accepts exactly 50 item keys", () => {
-    const keys = Array.from({ length: 50 }, (_, i) => `KEY${i}`);
+    const keys = Array.from({ length: 50 }, (_, i) => `KEY${"23456789ABCDEFGHIJKLMNPQRSTUVWXYZ"[Math.floor(i / 33)]}${"23456789ABCDEFGHIJKLMNPQRSTUVWXYZ"[i % 33]}222`);
     const result = DeleteItemsSchema.parse({ item_keys: keys });
     expect(result.item_keys).toHaveLength(50);
   });

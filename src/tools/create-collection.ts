@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { formatWriteErrors } from "../utils/write-results.js";
@@ -10,8 +11,7 @@ export const toolConfig = {
     "Create a new collection (folder) in your Zotero library. Optionally nest it under a parent collection. Returns the new collection key and name. Use the key with add_items_by_doi to organize imported papers.",
   inputSchema: {
     name: z.string().describe("Name of the new collection"),
-    parent_collection: z
-      .string()
+    parent_collection: zoteroKey()
       .optional()
       .describe(
         "Zotero collection key of the parent collection. Get this from get_collections."

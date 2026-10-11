@@ -34,14 +34,14 @@ describe("import_pdf_to_zotero (MCP)", () => {
   it("IP-01 flusso completo: download → item → auth → upload → register → fulltext", async () => {
     const pdf = makePdf("Attention is all you need");
     servePdf(h.net, PDF_URL, pdf);
-    h.net.on("POST", ITEMS, zWrite({ keys: ["IMP00001"] }));
+    h.net.on("POST", ITEMS, zWrite({ keys: ["IMPQQQQR"] }));
     installUploadPipeline(h.net);
 
     const out = await h.call("import_pdf_to_zotero", { url: PDF_URL });
 
     expect(out.isError).toBe(false);
     expect(out.json).toEqual({
-      item_key: "IMP00001",
+      item_key: "IMPQQQQR",
       filename: "attention.pdf",
       title: "attention.pdf",
       url: PDF_URL,
@@ -70,7 +70,7 @@ describe("import_pdf_to_zotero (MCP)", () => {
     ]);
     // auth con md5/filesize corretti e If-None-Match
     const [auth, register] = h.net.requests("POST", FILE_ROUTE);
-    expect(auth.url.pathname).toBe("/users/424242/items/IMP00001/file");
+    expect(auth.url.pathname).toBe("/users/424242/items/IMPQQQQR/file");
     expect(carriesApiKey(auth.headers)).toBe(true);
     expect(auth.headers.get("If-None-Match")).toBe("*");
     const form = auth.form();
@@ -85,7 +85,7 @@ describe("import_pdf_to_zotero (MCP)", () => {
     expect(register.form().get("upload")).toBe(UPLOAD_KEY);
     // fulltext con il testo estratto
     const ft = h.net.requests("PUT", FULLTEXT_ROUTE)[0];
-    expect(ft.url.pathname).toBe("/users/424242/items/IMP00001/fulltext");
+    expect(ft.url.pathname).toBe("/users/424242/items/IMPQQQQR/fulltext");
     expect(ft.json()).toMatchObject({ content: expect.stringContaining("Attention is all you need"), totalPages: 1 });
   });
 
@@ -105,16 +105,16 @@ describe("import_pdf_to_zotero (MCP)", () => {
     installUploadPipeline(h.net);
     const out = await h.call("import_pdf_to_zotero", {
       url: PDF_URL,
-      parent_item: "PAR00001",
-      collections: ["COL00001"],
+      parent_item: "PARQQQQR",
+      collections: ["CPLQQQQR"],
       tags: ["oa"],
       title: "Publisher PDF",
       filename: "custom.pdf",
     });
-    expect(out.json).toMatchObject({ parent_item: "PAR00001", title: "Publisher PDF", filename: "custom.pdf" });
+    expect(out.json).toMatchObject({ parent_item: "PARQQQQR", title: "Publisher PDF", filename: "custom.pdf" });
     expect(h.net.requests("POST", ITEMS)[0].json()).toEqual([
       expect.objectContaining({
-        parentItem: "PAR00001",
+        parentItem: "PARQQQQR",
         collections: [],
         tags: [{ tag: "oa" }],
         title: "Publisher PDF",
@@ -127,8 +127,8 @@ describe("import_pdf_to_zotero (MCP)", () => {
     servePdf(h.net, PDF_URL);
     h.net.on("POST", ITEMS, zWrite({ keys: ["IMP00004"] }));
     installUploadPipeline(h.net);
-    await h.call("import_pdf_to_zotero", { url: PDF_URL, collections: ["COL00001"] });
-    expect(h.net.requests("POST", ITEMS)[0].json()).toEqual([expect.objectContaining({ collections: ["COL00001"] })]);
+    await h.call("import_pdf_to_zotero", { url: PDF_URL, collections: ["CPLQQQQR"] });
+    expect(h.net.requests("POST", ITEMS)[0].json()).toEqual([expect.objectContaining({ collections: ["CPLQQQQR"] })]);
   });
 
   it("IP-05 filename dall'URL: percent-decoding unicode; fallback document.pdf senza estensione", async () => {
@@ -199,7 +199,7 @@ describe("import_pdf_to_zotero (MCP)", () => {
     it("IP-12 creazione item rifiutata (failed) → errore strutturato 'import_pdf_to_zotero failed'", async () => {
       servePdf(h.net, PDF_URL);
       h.net.on("POST", ITEMS, zWrite({ fail: { 0: { code: 400, message: "Parent item not found" } } }));
-      expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL, parent_item: "NOPE" }), "import_pdf_to_zotero failed");
+      expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL, parent_item: "NPPEZZZZ" }), "import_pdf_to_zotero failed");
       expect(h.net.requests("POST", FILE_ROUTE)).toHaveLength(0);
     });
 
@@ -212,10 +212,10 @@ describe("import_pdf_to_zotero (MCP)", () => {
 
     it("IP-14 quota storage piena (413 in auth) → errore strutturato con item_key orfano e nota", async () => {
       servePdf(h.net, PDF_URL);
-      h.net.on("POST", ITEMS, zWrite({ keys: ["ORPHAN01"] }));
+      h.net.on("POST", ITEMS, zWrite({ keys: ["PRPHANQR"] }));
       installUploadPipeline(h.net, { authStatus: 413 });
       const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "storage quota exceeded");
-      expect(json).toMatchObject({ status: 413, item_key: "ORPHAN01" });
+      expect(json).toMatchObject({ status: 413, item_key: "PRPHANQR" });
       expect(json.suggestion).toContain("zotero.org/settings/storage");
       expect(json.note).toContain("delete_items");
       expect(h.net.toHost(UPLOAD_HOST)).toHaveLength(0);

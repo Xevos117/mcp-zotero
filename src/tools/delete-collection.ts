@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { UnsafeOperationsMode, canDeleteCollections } from "../utils/unsafe-operations.js";
@@ -9,9 +10,7 @@ export const toolConfig = {
   description:
     "Delete a collection (folder) from your Zotero library. Items inside the collection are NOT deleted — they remain in your library. Requires UNSAFE_OPERATIONS environment variable set to 'all'.",
   inputSchema: {
-    collection_key: z
-      .string()
-      .min(1)
+    collection_key: zoteroKey()
       .describe("Zotero collection key to delete. Get this from get_collections."),
     ...libraryArgsSchema,
   },

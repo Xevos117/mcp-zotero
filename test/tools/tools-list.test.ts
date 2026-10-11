@@ -85,11 +85,11 @@ describe("tools/list (MCP)", () => {
     }
   });
 
-  it("TL-04 vincoli di cardinalità: delete_items 1..50, add_items min 1, delete_collection minLength 1", () => {
+  it("TL-04 vincoli di cardinalità: delete_items 1..50, add_items min 1, delete_collection con il formato delle chiavi", () => {
     const props = (n: string) => tools.find((t) => t.name === n)!.inputSchema.properties;
     expect(props("delete_items").item_keys).toMatchObject({ type: "array", minItems: 1, maxItems: 50 });
     expect(props("add_items").items).toMatchObject({ type: "array", minItems: 1 });
-    expect(props("delete_collection").collection_key).toMatchObject({ type: "string", minLength: 1 });
+    expect(props("delete_collection").collection_key).toMatchObject({ type: "string", pattern: "^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$" });
   });
 
   it("TL-05 add_items: itemType è un enum con tutti i 37 tipi Zotero", () => {
