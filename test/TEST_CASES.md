@@ -568,7 +568,11 @@ scaduto termina "cancelled"); passa senza la suite solo se `changes` è riuscito
 fork e Dependabot. Concurrency per workflow e PR/ref senza `cancel-in-progress` (anche per l'agente smoke): una
 run in corso non viene annullata da un push più recente, che resta in coda; un annullamento a metà suite aveva lasciato
 voci e collezioni sull'account di test (2026-10-12, run mv4hpbf7-d515: 2 collezioni rimosse dalla pulizia degli avanzi più vecchi di 6 h
-alla prima run dopo le 6 h, base tornata a `collections:1`); le run di PR diverse e dell'agente si serializzano sul lato Zotero con
+alla prima run dopo le 6 h, base tornata a `collections:1`). Riprodotto con un annullamento voluto (run
+mv4wuscp-4e2f: 5 voci e 2 collezioni rimaste): i processi della suite sopravvivevano allo step annullato e creavano
+voci mentre la pulizia era già passata. Ora lo step di pulizia ferma prima i processi `node` della suite
+(SIGINT, poi SIGKILL dopo 15 s), la pulizia (teardown e solo pulizia) ripete le passate finché non restano voci con il
+tag né collezioni con il prefisso della run (al massimo 4, a 5 s), e il lock viene liberato solo dopo la pulizia; le run di PR diverse e dell'agente si serializzano sul lato Zotero con
 `test/live/lock.mjs` (attesa fino a 70 min, poi "test account busy": l'agente smoke tiene l'account fino a circa 80 min), così le PR in stack non si annullano a vicenda i
 check obbligatori. Job di 100 min, step dei test di 85 (attesa del lock compresa). Il filtro sui file è un job
 (`changes`), non `on.paths`; con file non rilevanti il job `live-tests` passa senza la suite.

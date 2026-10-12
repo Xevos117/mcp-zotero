@@ -236,6 +236,35 @@ async function cleanupRun(z: ZoteroWeb, runId: string, runTag: string, prefix: s
   return { items: keys.length, collections: colls.length, refused: refused.length };
 }
 
+const CLEANUP_PASSES = 4;
+const CLEANUP_PAUSE_MS = 5_000;
+
+/**
+ * cleanupRun ripetuta finché non restano voci con il tag né collezioni con il prefisso della run (al massimo
+ * CLEANUP_PASSES passate, CLEANUP_PAUSE_MS fra l'una e l'altra): dopo un annullamento a metà suite una chiamata
+ * ancora in corso può creare qualcosa mentre la pulizia è già passata (run mv4wuscp-4e2f, 2026-10-12).
+ */
+async function cleanupUntilClean(z: ZoteroWeb, runId: string, tag: string, prefix: string, label: string) {
+  const removed = { items: 0, collections: 0, refused: 0 };
+  let left = { items: 0, collections: 0 };
+  for (let pass = 1; pass <= CLEANUP_PASSES; pass++) {
+    const r = await withBound(label, cleanupRun(z, runId, tag, prefix));
+    removed.items += r.items;
+    removed.collections += r.collections;
+    removed.refused += r.refused;
+    left = {
+      items: await z.totalResults(`items?tag=${encodeURIComponent(tag)}`),
+      collections: (await z.getAll<any>("collections")).filter((c) => String(c.data.name).startsWith(prefix)).length,
+    };
+    if (!left.items && !left.collections) break;
+    if (pass < CLEANUP_PASSES) {
+      log(`${label}: restano ${left.items} voci e ${left.collections} collezioni della run, nuova passata fra ${CLEANUP_PAUSE_MS / 1000} s`);
+      await sleep(CLEANUP_PAUSE_MS);
+    }
+  }
+  return { removed, left };
+}
+
 /** runId = `<timestamp base36>-<4 hex>` (vedi setup); il timestamp dice quando è iniziata la run. */
 const RUN_ID_RE = /^([0-9a-z]{8,9})-([0-9a-f]{4})$/;
 const RUN_NAME_RE = /^mzt-([0-9a-z]{8,9})-([0-9a-f]{4})(?: |$)/;
@@ -314,12 +343,16 @@ async function cleanupOnly(z: ZoteroWeb, disposable: boolean): Promise<void> {
   for (const runId of ids) {
     const prefix = `${RUN_PREFIX}${runId}`;
     const tag = `mzt-run:${runId}`;
-    if (groupId) await withBound("pulizia gruppo", cleanupRun(z.withLibrary(`groups/${groupId}`), runId, tag, prefix));
-    const removed = await withBound("pulizia", cleanupRun(z, runId, tag, prefix));
-    await releaseLock({ key: apiKey, lib: z.libraryPath, runId });
-    const leftover = await z.totalResults(`items?tag=${encodeURIComponent(tag)}`);
-    log(`pulizia run ${runId}: rimossi ${removed.items} voci e ${removed.collections} collezioni, avanzi ${leftover}`);
-    if (leftover) throw new Error(`pulizia run ${runId}: restano ${leftover} voci`);
+    // the lock is released only after the cleanup (also when it fails): a waiting run must not start on top
+    // of what this run is still removing
+    try {
+      if (groupId) await cleanupUntilClean(z.withLibrary(`groups/${groupId}`), runId, tag, prefix, "pulizia gruppo");
+      const { removed, left } = await cleanupUntilClean(z, runId, tag, prefix, "pulizia");
+      log(`pulizia run ${runId}: rimossi ${removed.items} voci e ${removed.collections} collezioni, avanzi ${left.items}/${left.collections}`);
+      if (left.items || left.collections) throw new Error(`pulizia run ${runId}: restano ${left.items} voci e ${left.collections} collezioni`);
+    } finally {
+      await releaseLock({ key: apiKey, lib: z.libraryPath, runId });
+    }
     rmSync(runMarker(runId), { force: true });
     rmSync(registryPath(runId), { force: true });
     rmSync(softSkipsPath(runId), { force: true });
@@ -422,12 +455,12 @@ export default async function setup(project: TestProject) {
   async function teardown() {
     await fixtureServer?.close();
     if (groupId) {
-      const g = await withBound("teardown gruppo", cleanupRun(z.withLibrary(`groups/${groupId}`), runId, runTag, prefix));
-      log(`teardown gruppo: rimossi ${g.items} voci e ${g.collections} collezioni`);
+      const g = await cleanupUntilClean(z.withLibrary(`groups/${groupId}`), runId, runTag, prefix, "teardown gruppo");
+      log(`teardown gruppo: rimossi ${g.removed.items} voci e ${g.removed.collections} collezioni`);
     }
-    const removed = await withBound("teardown", cleanupRun(z, runId, runTag, prefix));
-    const leftoverItems = await z.totalResults(`items?tag=${encodeURIComponent(runTag)}`);
-    const leftoverColls = (await z.getAll<any>("collections")).filter((c) => String(c.data.name).startsWith(prefix)).length;
+    const { removed, left } = await cleanupUntilClean(z, runId, runTag, prefix, "teardown");
+    const leftoverItems = left.items;
+    const leftoverColls = left.collections;
     const after = await counts(z);
     const summary = {
       runId,
