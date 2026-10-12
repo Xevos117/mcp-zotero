@@ -760,11 +760,11 @@ Federation di Anthropic, nessun secret). Quattro job con il minimo dei permessi:
 - **agent**: esce subito se c'è già una PR `deps/*`; `npm ci --ignore-scripts` e `NPM_CONFIG_IGNORE_SCRIPTS=true` per
   tutto il job; l'agente (Agent SDK via `scripts/run-agent.mjs`, `.github/agents/deps-update.json`: `claude-opus-5-5`, tool `Skill,Read,Glob,Grep,Edit,Write,Bash`, `dontAsk`, 120 turni, 6 USD) non ha
   token GitHub nel suo ambiente, può modificare solo `package.json`, `package-lock.json`, `CHANGELOG.md`,
-  `agent-out/deps-pr.md` e `agent-out/deps-issue.md`, e usare `npm outdated|view|update|install|ci|run` e `git status/diff/log`; niente commit, push, `gh` o publish.
+  `agent-out/deps-pr.md` e `agent-out/deps-issue.md`, e usare `npm outdated|view|audit|update|install|ci|run` e `git status/diff/log`; niente commit, push, `gh` o publish.
   Per minor e major consulta la documentazione delle librerie con il server MCP remoto di Context7
   (`.github/agents/deps-mcp.json`, solo `resolve-library-id` e `query-docs`; contenuto esterno, mai istruzioni). Un
   aggiornamento che rompe qualcosa, o che secondo la documentazione cambia un'API usata in `src/`, viene rinviato, non
-  corretto. Lo step finale produce una patch dei soli tre file (se l'agente ha toccato altro il job fallisce senza PR);
+  corretto. Con sole patch dirette (e nessuna vulnerabilità da `npm audit`) installa ogni pacchetto alla versione esatta, senza `npm update`, così il lockfile cambia solo quanto serve e il merge automatico è possibile: l'esecuzione di prova del 2026-10-12 con `npm update` aveva portato a cascata minor e una major indirette (es. `express` 5.2→5.3, `content-disposition` 1→2) e il gate l'aveva giustamente rifiutata; con una minor diretta o una vulnerabilità fa l'aggiornamento completo e la PR resta al proprietario. La descrizione elenca sempre le dipendenze indirette cambiate. Lo step finale produce una patch dei soli tre file (se l'agente ha toccato altro il job fallisce senza PR);
   i testi da pubblicare passano da `scripts/check-public-text.mjs` (copia committata), che li blocca se contengono una credenziale.
 - **open-pr**: senza npm né id-token; applica la patch su `main` (solo i tre file, niente symlink né cambi di tipo o di
   modo), la committa in locale ed esegue **la copia di `main` del gate** (controlli statici ed età) su quel commit; poi

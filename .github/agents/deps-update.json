@@ -24,6 +24,7 @@
     "Edit(./agent-out/**)",
     "Bash(npm outdated *)",
     "Bash(npm view *)",
+    "Bash(npm audit *)",
     "Bash(npm update *)",
     "Bash(npm install *)",
     "Bash(npm ci *)",
