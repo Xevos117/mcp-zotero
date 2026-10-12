@@ -26,7 +26,7 @@ npm run build
 export ZOTERO_TEST_API_KEY=… ZOTERO_TEST_USER_ID=… UNPAYWALL_EMAIL=…   # UNSAFE_OPERATIONS defaults to items
 ZOTERO_LIVE_SAFE_MODE=1 node test/live/agent/prepare.mjs --mode local --base main
 MCP_TIMEOUT=30000 MCP_TOOL_TIMEOUT=120000 timeout 2700 claude -p "Carica la skill test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt." \
-  --model claude-sonnet-5-5 --max-turns 160 --max-budget-usd 10 \
+  --model claude-sonnet-5-5 --max-turns 160 --max-budget-usd 3 \
   --mcp-config test/live/agent/mcp.template.json --strict-mcp-config \
   --setting-sources project --settings .claude/agent-smoke/settings.json \
   --tools "Skill,Read,Edit,Write,Bash" --permission-mode dontAsk \

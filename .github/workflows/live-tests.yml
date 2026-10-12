@@ -118,7 +118,16 @@ jobs:
           ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
           UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
-        run: npm run test:live:cleanup
+        # After a cancellation the suite's processes (vitest and the MCP servers it spawned) can outlive the
+        # step and keep creating items while the cleanup runs (run mv4wuscp-4e2f left 5 items and 2
+        # collections): stop them first, then clean up.
+        run: |
+          # node processes only (the pattern never matches a shell whose command line contains it)
+          pattern='^[^ ]*node (.* )?[^ ]*(vitest\.live\.config\.ts|node_modules/vitest/|/build/server\.js)'
+          pkill -INT -f "$pattern" || true
+          for _ in $(seq 1 15); do pgrep -f "$pattern" > /dev/null || break; sleep 1; done
+          pkill -KILL -f "$pattern" || true
+          npm run test:live:cleanup
       - name: Scrub report
         if: always()
         timeout-minutes: 2
