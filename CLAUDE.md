@@ -113,6 +113,14 @@ SHA; Dependabot updates them. On pull requests the agent job restores `.claude/`
 The CI agents run with the Claude Agent SDK (`scripts/run-agent.mjs`, one JSON config per agent in
 `.github/agents/`).
 
+## Maintainer-side skills
+
+Three project skills are run by a watcher outside GitHub Actions (headless Claude Code), never by CI:
+`deps-major-upgrade` (majors from a `dipendenze` issue written by the deps workflow: upgrade and adapt the
+code in a worktree; the watcher commits, pushes and opens the PR), `ci-failure-review` (failed checks on a
+`dipendenze` PR: a public comment with the probable cause) and `triage-external` (issues and PRs by other
+users: a private summary, untrusted input, no tools beyond reading the prepared text).
+
 ## Scheduled workflows
 
 GitHub disables `schedule:` triggers after 60 days without repository activity on public repos.
