@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Dependencies
+
+- `dotenv` 18.0.6 → 18.0.7
+- `zod` 4.6.5 → 4.6.6
+- `@types/node` 26.6.4 → 26.6.5
+
 ## [2.0.2] - 2026-10-12
 
 Fixes found by the live test suite and the agent smoke test.
