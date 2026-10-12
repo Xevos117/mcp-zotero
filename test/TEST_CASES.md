@@ -523,7 +523,7 @@ la libreria intera.
 collezione `mzt-lock <runId>`; se ne trova una più vecchia e non scaduta di un'altra run (di un'altra PR, dell'agente,
 di un altro worktree), aspetta con backoff (15 s, 30 s, poi ogni 60 s) fino a 25 min (`ZOTERO_LIVE_LOCK_WAIT_MIN`; 70 min in CI) e poi
 si ferma con "test account busy". I lock con runId più vecchio di 180 min (attesa in CI più la run più lunga, l'agente smoke) sono di run morte e vengono rimossi.
-I log riportano `[lock] acquired <runId>` e `[lock] released <runId>` (LK-01, `test/utils/lock.test.ts`). A parità di corsa vince il runId più vecchio. Le collezioni di lock sono escluse dai conteggi prima/dopo (una run in attesa
+I log riportano `[lock] acquired <runId>` e `[lock] released <runId>` (LK-01, `test/utils/lock.test.ts`). Vince il lock creato per primo, ordinato per `version` Zotero della collezione (versione della libreria alla scrittura, sempre crescente). L'ordine per runId lasciava vincere entrambe le run quando quella con il runId più vecchio creava il lock un attimo dopo (live-tests e agente smoke della PR #26, 2026-10-12: l'agente ha lavorato durante la suite e i conteggi finali sono cresciuti di 6 voci e 2 collezioni). LK-02: la run con il runId più vecchio che crea il lock dopo aspetta; LK-03: versione letta dall'elenco se manca nella risposta di creazione. Le collezioni di lock sono escluse dai conteggi prima/dopo (una run in attesa
 crea la sua mentre un'altra è fra i due conteggi). Rilascio a fine teardown (sempre) e nella modalità solo pulizia. I DELETE
 ritentano fino a 8 volte con jitter sui 412 (versione della libreria cambiata nel frattempo).
 

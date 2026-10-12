@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 // Serializes access to the Zotero test library across runs (live suite, agent smoke, different PRs,
-// worktrees or machines): a collection named "mzt-lock <runId>" is the lock. The oldest unexpired lock
-// wins; others poll with backoff up to the wait bound, then fail with "test account busy". Locks older
-// than the expiry belong to dead runs and are removed. runId = "<timestamp base36>-<4 hex>", so a
-// lock's age comes from its name.
+// worktrees or machines): a collection named "mzt-lock <runId>" is the lock. The lock created first wins,
+// ordered by the collection's Zotero `version` (the library version of the write that created it, strictly
+// increasing per library; lock collections are never modified). Ordering by runId instead let two runs both
+// win: a run whose runId was older but whose lock was created a moment later saw the other lock as newer.
+// Others poll with backoff up to the wait bound, then fail with "test account busy". Locks older than the
+// expiry belong to dead runs and are removed. runId = "<timestamp base36>-<4 hex>", so a lock's age comes
+// from its name.
 //   node test/live/lock.mjs acquire <runId>    (env ZOTERO_TEST_API_KEY, optional ZOTERO_LIVE_LOCK_WAIT_MIN)
 //   node test/live/lock.mjs release <runId>
 import { fileURLToPath } from "node:url";
@@ -65,7 +68,7 @@ async function listLocks(key, lib) {
   }
   return out
     .filter((c) => String(c.data.name).startsWith(LOCK_PREFIX))
-    .map((c) => ({ key: c.key, runId: String(c.data.name).slice(LOCK_PREFIX.length) }))
+    .map((c) => ({ key: c.key, version: Number(c.version ?? c.data.version), runId: String(c.data.name).slice(LOCK_PREFIX.length) }))
     .filter((l) => Number.isFinite(runIdTime(l.runId)));
 }
 
@@ -96,15 +99,20 @@ export async function acquireLock({ key, lib, runId, waitMs = DEFAULT_LOCK_WAIT_
   const created = await api(key, "POST", `${lib}/collections`, [{ name: `${LOCK_PREFIX}${runId}` }]);
   const lockKey = created.data?.successful?.["0"]?.key;
   if (!lockKey) throw new Error(`create lock: HTTP ${created.status}`);
+  // the creation version orders the locks; read it back from the listing if the write response lacks it
+  let lockVersion = Number(created.data.successful["0"].version);
   const deadline = Date.now() + waitMs;
   for (let round = 0; ; round++) {
-    const others = (await listLocks(key, lib)).filter((l) => l.key !== lockKey);
+    const locks = await listLocks(key, lib);
+    if (!Number.isFinite(lockVersion)) lockVersion = locks.find((l) => l.key === lockKey)?.version;
+    if (!Number.isFinite(lockVersion)) throw new Error("lock collection without a version");
+    const others = locks.filter((l) => l.key !== lockKey);
     const stale = others.filter((o) => Date.now() - runIdTime(o.runId) > LOCK_STALE_MS);
     if (stale.length) {
       log(`[lock] removing expired lock(s) of run(s) ${stale.map((s) => s.runId).join(", ")}`);
       await deleteCollections(key, lib, stale.map((s) => s.key));
     }
-    const older = others.filter((o) => !stale.includes(o) && o.runId < runId);
+    const older = others.filter((o) => !stale.includes(o) && (!Number.isFinite(o.version) || o.version < lockVersion));
     if (older.length === 0) {
       log(`[lock] acquired ${runId}`);
       return lockKey;
