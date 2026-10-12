@@ -534,7 +534,8 @@ marcatore `live-run-<runId>.json` o il registro `live-created-<runId>.jsonl`; st
 
 **Pulizia degli avanzi** (solo account dedicato: sentinella + username, mai in safe mode): run più vecchie di 6 h
 riconosciute dal nome stretto `mzt-<8-9 caratteri base36>-<4 hex>` di collezioni e titoli o dal tag `mzt-run:<runId>`;
-si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standalone).
+si cancellano anche le voci delle loro collezioni (voci da DOI, allegati standalone). Stessa pulizia nella libreria del
+gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perché una run interrotta lascia avanzi anche lì.
 
 | File | Casi |
 |---|---|
@@ -566,8 +567,8 @@ saltato vale come superato): fallisce se `changes` non è riuscito o se `live-te
 scaduto termina "cancelled"); passa senza la suite solo se `changes` è riuscito e non ha trovato file rilevanti, o per
 fork e Dependabot. Concurrency per workflow e PR/ref senza `cancel-in-progress` (anche per l'agente smoke): una
 run in corso non viene annullata da un push più recente, che resta in coda; un annullamento a metà suite aveva lasciato
-voci e collezioni sull'account di test (2026-10-12, run mv4hpbf7-d515: le rimuove la pulizia degli avanzi più vecchi di 6 h
-alla prima run successiva); le run di PR diverse e dell'agente si serializzano sul lato Zotero con
+voci e collezioni sull'account di test (2026-10-12, run mv4hpbf7-d515: 2 collezioni rimosse dalla pulizia degli avanzi più vecchi di 6 h
+alla prima run dopo le 6 h, base tornata a `collections:1`); le run di PR diverse e dell'agente si serializzano sul lato Zotero con
 `test/live/lock.mjs` (attesa fino a 70 min, poi "test account busy": l'agente smoke tiene l'account fino a circa 80 min), così le PR in stack non si annullano a vicenda i
 check obbligatori. Job di 100 min, step dei test di 85 (attesa del lock compresa). Il filtro sui file è un job
 (`changes`), non `on.paths`; con file non rilevanti il job `live-tests` passa senza la suite.
