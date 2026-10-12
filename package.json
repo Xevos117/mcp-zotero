@@ -47,16 +47,16 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
-    "dotenv": "^18.0.6",
+    "dotenv": "^18.0.7",
     "fast-xml-parser": "^5.11.2",
     "jszip": "^3.10.2",
     "unpdf": "^1.8.1",
-    "zod": "^4.6.5",
+    "zod": "^4.6.6",
     "zotero-api-client": "^0.51.0"
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.296",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "ajv": "^8.20.0",
     "citeproc": "^2.4.63",
     "typescript": "^7.0.2",
