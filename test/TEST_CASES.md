@@ -572,7 +572,7 @@ alla prima run dopo le 6 h, base tornata a `collections:1`). Riprodotto con un a
 mv4wuscp-4e2f: 5 voci e 2 collezioni rimaste): i processi della suite sopravvivevano allo step annullato e creavano
 voci mentre la pulizia era già passata. Ora lo step di pulizia ferma prima i processi `node` della suite
 (SIGINT, poi SIGKILL dopo 15 s), la pulizia (teardown e solo pulizia) ripete le passate finché non restano voci con il
-tag né collezioni con il prefisso della run (al massimo 4, a 5 s), e il lock viene liberato solo dopo la pulizia; le run di PR diverse e dell'agente si serializzano sul lato Zotero con
+tag né collezioni con il prefisso della run (al massimo 4, a 5 s), e il lock viene liberato solo dopo la pulizia. Una run che trova l'account dedicato non pulito all'avvio (voci, o collezioni oltre la sentinella) lo scrive nel log e come avviso GitHub (`::warning`): una pulizia fallita dopo un annullamento altrimenti si vedrebbe solo come "cancelled" nella sua run; le run di PR diverse e dell'agente si serializzano sul lato Zotero con
 `test/live/lock.mjs` (attesa fino a 70 min, poi "test account busy": l'agente smoke tiene l'account fino a circa 80 min), così le PR in stack non si annullano a vicenda i
 check obbligatori. Job di 100 min, step dei test di 85 (attesa del lock compresa). Il filtro sui file è un job
 (`changes`), non `on.paths`; con file non rilevanti il job `live-tests` passa senza la suite.

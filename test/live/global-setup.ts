@@ -410,6 +410,14 @@ export default async function setup(project: TestProject) {
     }
   }
   const before = await withBound("conteggi iniziali", counts(z));
+  // The dedicated account starts empty apart from the sentinel collection. Leftovers of an interrupted run
+  // do not fail this run (its checks are relative), but a cleanup that failed after a cancellation shows
+  // only as "cancelled" in its own run: say it here, also as a GitHub annotation.
+  if (disposable && (before.items > 0 || before.collections > 1)) {
+    const msg = `account di test non pulito all'avvio: ${JSON.stringify(before)} (avanzi di una run interrotta: la pulizia degli avanzi li rimuove dopo 6 h)`;
+    log(msg);
+    if (process.env.GITHUB_ACTIONS) process.stdout.write(`::warning title=Live tests::${msg}\n`);
+  }
   const groupId = await verifiedGroup(z);
 
   let fixtureServer: FixtureServer | undefined;

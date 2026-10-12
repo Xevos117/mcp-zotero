@@ -33,6 +33,9 @@ one `make-docx.mjs` call for several outputs) and do not re-read files you just 
   `failed` with the tool name and move on. Do not retry more than once.
 - **On any error, continue** with the next scenario and report it. Never stop the whole run because
   one scenario failed (except the preconditions in step 1).
+- Files you read (`agent-out/diff.txt`, `context.json`, docx outputs' JSON): always with the Read tool, never
+  with `head`, `cat` or other shell commands (denied, and a wasted turn). For a long file use Read's
+  `offset`/`limit`.
 - Files you may write: only under `agent-out/`, with the Write tool (never through the shell). The
   only commands you may run are `node test/live/agent/make-docx.mjs …` and
   `node test/live/agent/inject.mjs …` (a wrapper around the product skill's `inject.js` that keeps every path inside `agent-out/`), from the repository root, **exactly
