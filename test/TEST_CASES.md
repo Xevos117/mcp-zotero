@@ -564,11 +564,13 @@ secret), su `main`, ogni notte e a mano (anche avviato da deps-update.yml sul br
 workflow è annullato (una run sostituita risulta "cancelled", non rossa) e non viene mai saltato (un check obbligatorio
 saltato vale come superato): fallisce se `changes` non è riuscito o se `live-tests-run` è fallito o scaduto (un job
 scaduto termina "cancelled"); passa senza la suite solo se `changes` è riuscito e non ha trovato file rilevanti, o per
-fork e Dependabot. Concurrency per workflow e PR/ref (`cancel-in-progress` solo sulle PR: un nuovo push
-sostituisce la run precedente della stessa PR); le run di PR diverse e dell'agente si serializzano sul lato Zotero con
+fork e Dependabot. Concurrency per workflow e PR/ref senza `cancel-in-progress` (anche per l'agente smoke): una
+run in corso non viene annullata da un push più recente, che resta in coda; un annullamento a metà suite aveva lasciato
+voci e collezioni sull'account di test (2026-10-12, run mv4hpbf7-d515: le rimuove la pulizia degli avanzi più vecchi di 6 h
+alla prima run successiva); le run di PR diverse e dell'agente si serializzano sul lato Zotero con
 `test/live/lock.mjs` (attesa fino a 70 min, poi "test account busy": l'agente smoke tiene l'account fino a circa 80 min), così le PR in stack non si annullano a vicenda i
 check obbligatori. Job di 100 min, step dei test di 85 (attesa del lock compresa). Il filtro sui file è un job
-(`changes`), non `on.paths`, così una PR di sola documentazione ha il check "saltato" (che vale come superato).
+(`changes`), non `on.paths`; con file non rilevanti il job `live-tests` passa senza la suite.
 Senza i secret lo step "Require the test account" fallisce invece di far passare una suite tutta saltata;
 con più di 2 casi soft saltati (`ZOTERO_LIVE_MAX_SOFT_SKIPS`) la run fallisce.
 Lo step dei test (18 min) è più corto del job (30 min); poi, sempre:
@@ -590,8 +592,13 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
 Gira sulle PR (contestuale alle modifiche) e a mano (`workflow_dispatch`, ad esempio su `main` dopo un merge); niente
 `push`: claude-code-action non supporta quell'evento ("Unsupported event type: push", prima run su `main`).
 `prepare.mjs` svuota `agent-out/` e `agent-audit/` prima di scrivere il contesto, gli hook marcano ogni riga di audit
-e di negazione con il runId e verify-claims rifiuta righe di un'altra run; la verifica gira solo se il job
-dell'agente è riuscito in quella stessa run.
+e di negazione con il runId e verify-claims rifiuta righe di un'altra run. Il contesto di riferimento è la copia scritta
+da prepare in `agent-audit/` (in CI portata accanto all'audit come `audit-context.json`): `agent-out/context.json`, che
+l'agente potrebbe modificare, deve essere identico, altrimenti la run non è verificata; con l'audit nella cartella
+dell'agente (CI) solo `audit-context.json` vale come copia fidata. La verifica gira sempre dopo un job dell'agente
+riuscito (un audit mancante la fa fallire: mai verde senza evidenze) e, dopo un job fallito, solo se esiste l'audit,
+per riportare i problemi di sicurezza e robustezza delle chiamate fatte (il check `agent-smoke` resta rosso); dopo un
+job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurito) lo step la salta con un avviso.
 
 - **Job, credenziali separate**: `agent-smoke-prepare` (nessun id-token) fa `npm ci --ignore-scripts`, build,
   `prepare.mjs --mode ci` e prende il lock; `agent-smoke-run` è l'unico job con `id-token: write` (scambio della
@@ -698,6 +705,9 @@ dell'agente è riuscito in quella stessa run.
 | VC-08b | impronta alterata: citationID diverso / locator / testo visibile / bibliografia | nessuna differenza / percorso della prima differenza |
 | VC-09a/b | script completo senza rete: senza `--audit`; claims incompleti, cancellazione non attribuibile, chiamata della trascrizione assente dall'audit | exit 2; exit 1 e `verdict.json` con scenari mancanti, sicurezza, sonde F0, buco dell'audit, F10, parità, F9; la chiave non compare nell'output |
 | VC-09c | riga d'audit con un runId diverso | problema "evidence from another run" (in VC-09b) |
+| VC-11 | `agent-out/context.json` identico alla copia degli hook / modificato (cleanup) | nessun problema sul contesto / "differs from the copy written before the agent started" |
+| VC-11b | nessuna copia del contesto accanto all'audit | "run context missing next to the audit" |
+| VC-12 | audit nella cartella dell'agente (come in CI) senza / con `audit-context.json` | "trusted run context missing" / nessun problema sul contesto |
 | VC-10a | audit degli hook → chiamate: chiavi create, robustezza, chiamata esplorativa Bash | come dalla trascrizione |
 | VC-10b | chiamata Zotero della trascrizione assente da audit e negazioni / negata | problema / nessuno |
 | VC-10c | sonde F0 negate; altra negazione; nessuna negazione | nessun problema; avviso; due problemi |
@@ -716,8 +726,11 @@ dell'agente è riuscito in quella stessa run.
 | AH-03c | audit.mjs (PostToolUse, PostToolUseFailure, tool non registrato) poi delete-guard | audit con le due chiamate Zotero; chiave creata ammessa, altra negata |
 | AH-03d | delete-guard senza `agent-audit/context.json` | negato |
 | AH-03e | `.claude/agent-smoke/settings.json` | tre hook sugli eventi e matcher giusti, comandi via `$CLAUDE_PROJECT_DIR`, timeout |
-| TA-01 | percorsi tracciati sotto `agent-out/`, `agent-audit/`, `.vitest/`, `live-artifacts/`; file spostati con righe d'audit o contesto dell'agente | segnalati (solo percorso e motivo) |
-| TA-02 | codice e test che costruiscono gli stessi campi come oggetti, voce illeggibile | nessun problema |
+| TA-01 | percorsi tracciati sotto `agent-out/`, `agent-audit/`, `.vitest/`, `live-artifacts/` a qualunque profondità; file spostati: riga d'audit, contesto dell'agente, log delle negazioni (anche solo Bash), claims, trascrizione (`session_id` + tool Zotero), riepilogo e report dal vivo, forme con virgolette escape | segnalati (solo percorso e motivo) |
+| TA-02 | codice e test che costruiscono gli stessi campi come oggetti, esempio di claims nella skill, voce illeggibile | nessun problema |
+| WL-01 | condizioni dello step di verify-claims e dell'avviso "nessuna chiamata" (`test/utils/workflow-logic.test.ts`) | verify sempre dopo un agente riuscito, dopo un fallito solo con l'audit |
+| WL-02 | job obbligatori `live-tests` e `agent-smoke` | `!cancelled()`, controllo su `changes`, verdetto dell'agente che richiede verify riuscito |
+| WL-03 | concurrency di live-tests e agente smoke | `cancel-in-progress: false` |
 | RM-01..03 | template MCP: variabili e default, node e server assoluti, opzionali vuote omesse; variabile obbligatoria mancante; nessun valore nel template | config concreta; errore che la nomina; solo segnaposto |
 
 Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`, stessa

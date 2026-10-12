@@ -2,25 +2,35 @@
 // CI guard: fails if run outputs are tracked by git. Local live/agent runs write library content (titles, keys,
 // collection names, user ids) to agent-out/, agent-audit/, .vitest/ and live-artifacts/; .gitignore excludes them,
 // but a branch that predates the ignore entries (or a `git add -f`) can still commit them.
-// Two checks: no tracked path under those directories, and no tracked file that looks like agent evidence
-// (an audit log line or an agent context file), wherever it was moved.
+// Two checks: no tracked path under those directories (at any depth), and no tracked file that looks like run
+// evidence (audit or denial log, agent context, claims, transcript, live report or summary), wherever it was moved.
 // Usage: node scripts/check-tracked-artifacts.mjs   (exit 1 with the offending paths, never their content)
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export const FORBIDDEN_DIRS = ["agent-out/", "agent-audit/", ".vitest/", "live-artifacts/"];
-// written by the hooks of .claude/agent-smoke and by test/live/agent/prepare.mjs, as JSON with quoted keys
-// (source and tests build these objects in code, never as JSON text)
-const EVIDENCE = [/"tool_name":\s*"mcp__zotero__/, /"run_tag":\s*"mzt-run:/];
+const FORBIDDEN_DIR = /(?:^|\/)(agent-out|agent-audit|\.vitest|live-artifacts)\//;
+// Files the runs write, recognised by JSON text with quoted keys (also escaped inside another JSON string);
+// source and tests build these objects in code, never as JSON text. Each entry: reason, patterns that must all match.
+const Q = '\\\\?"'; // " or \"
+const key = (k) => `${Q}${k}${Q}:\\s*`;
+const EVIDENCE = [
+  ["audit log line", [new RegExp(`${key("tool_name")}${Q}mcp__zotero__`)]],
+  ["agent context", [new RegExp(`${key("run_tag")}${Q}mzt-run:`)]],
+  ["hook denial log", [new RegExp(`${key("reason")}${Q}Denied by the agent smoke harness`)]],
+  ["agent claims", [new RegExp(key("schema_version")), new RegExp(key("scenarios")), new RegExp(`${key("run_id")}${Q}[0-9a-z]{8,9}-[0-9a-f]{4}${Q}`)]],
+  ["agent transcript", [new RegExp(key("session_id")), /mcp__zotero__/]],
+  ["live summary", [new RegExp(key("disposable")), new RegExp(key("leftover"))]],
+  ["live report", [new RegExp(key("numTotalTestSuites")), /\.live\.test\.ts/]],
+];
 
 /** Offending tracked paths, each with the reason. `read(path)` returns the file content as text. */
 export function trackedArtifactProblems(files, read) {
   const problems = [];
   for (const f of files) {
-    const dir = FORBIDDEN_DIRS.find((d) => f.startsWith(d));
+    const dir = FORBIDDEN_DIR.exec(f);
     if (dir) {
-      problems.push(`${f}: run output under ${dir}`);
+      problems.push(`${f}: run output under ${dir[1]}/`);
       continue;
     }
     let text;
@@ -29,7 +39,8 @@ export function trackedArtifactProblems(files, read) {
     } catch {
       continue; // unreadable (e.g. a submodule entry): nothing to scan
     }
-    if (EVIDENCE.some((re) => re.test(text))) problems.push(`${f}: looks like agent run evidence (audit log or agent context)`);
+    const hit = EVIDENCE.find(([, patterns]) => patterns.every((re) => re.test(text)));
+    if (hit) problems.push(`${f}: looks like run evidence (${hit[0]})`);
   }
   return problems;
 }

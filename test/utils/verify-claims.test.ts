@@ -398,6 +398,75 @@ describe("verify-claims: script completo senza rete (VC-09)", () => {
   });
 });
 
+describe("verify-claims: contesto della run fidato (VC-11)", () => {
+  const SCRIPT = join(ROOT, "test", "live", "verify-claims.mjs");
+  const env = { ...process.env, ZOTERO_TEST_API_KEY: "not-a-real-key", GITHUB_STEP_SUMMARY: "" };
+  const ctx = { run_id: "r1", run_tag: "mzt-run:r1", prefix: "mzt-r1", cleanup: "verifier", safe_mode: false, group_id: null };
+  const audit = JSON.stringify({ run_id: "r1", tool_use_id: "t0", tool_name: "mcp__zotero__get_user_id", tool_input: {}, is_error: false, text: "{}" }) + "\n";
+
+  it.each<[string, Record<string, unknown> | null, boolean]>([
+    ["copia identica", ctx, false],
+    ["agent-out/context.json modificato dall'agente (cleanup)", { ...ctx, cleanup: "agent" }, true],
+  ])("VC-11 %s", async (_label, agentCtx, differs) => {
+    const dir = await tempDir();
+    try {
+      await mkdir(join(dir.path, "out"));
+      await mkdir(join(dir.path, "audit"));
+      await writeFile(join(dir.path, "out", "context.json"), JSON.stringify(agentCtx));
+      await writeFile(join(dir.path, "audit", "audit-context.json"), JSON.stringify(ctx));
+      await writeFile(join(dir.path, "audit", "audit.jsonl"), audit);
+      const r = await node(SCRIPT, [join(dir.path, "out"), "--audit", join(dir.path, "audit", "audit.jsonl")], { env });
+      expect(r.code, r.stderr).toBe(1);
+      const verdict = JSON.parse(await readFile(join(dir.path, "out", "verdict.json"), "utf8"));
+      const problem = verdict.problems.find((p: string) => p.includes("differs from the copy written before the agent started"));
+      expect(Boolean(problem)).toBe(differs);
+    } finally {
+      await dir.cleanup();
+    }
+  });
+
+  it("VC-11b nessuna copia del contesto accanto all'audit → problema", async () => {
+    const dir = await tempDir();
+    try {
+      await mkdir(join(dir.path, "out"));
+      await mkdir(join(dir.path, "audit"));
+      await writeFile(join(dir.path, "out", "context.json"), JSON.stringify(ctx));
+      await writeFile(join(dir.path, "audit", "audit.jsonl"), audit);
+      await node(SCRIPT, [join(dir.path, "out"), "--audit", join(dir.path, "audit", "audit.jsonl")], { env });
+      const verdict = JSON.parse(await readFile(join(dir.path, "out", "verdict.json"), "utf8"));
+      expect(verdict.problems).toEqual(expect.arrayContaining([expect.stringMatching(/^trusted run context missing/)]));
+    } finally {
+      await dir.cleanup();
+    }
+  });
+});
+
+describe("verify-claims: contesto fidato con l'audit nella cartella dell'agente, come in CI (VC-12)", () => {
+  const SCRIPT = join(ROOT, "test", "live", "verify-claims.mjs");
+  const env = { ...process.env, ZOTERO_TEST_API_KEY: "not-a-real-key", GITHUB_STEP_SUMMARY: "" };
+  const ctx = { run_id: "r1", run_tag: "mzt-run:r1", prefix: "mzt-r1", cleanup: "verifier", safe_mode: false, group_id: null };
+  const audit = JSON.stringify({ run_id: "r1", tool_use_id: "t0", tool_name: "mcp__zotero__get_user_id", tool_input: {}, is_error: false, text: "{}" }) + "\n";
+
+  it.each<[string, boolean, RegExp | null]>([
+    ["senza audit-context.json: context.json dell'agente non vale come copia fidata", false, /^trusted run context missing/],
+    ["con audit-context.json identico", true, null],
+  ])("VC-12 %s", async (_label, withCopy, expected) => {
+    const dir = await tempDir();
+    try {
+      await writeFile(join(dir.path, "context.json"), JSON.stringify(ctx));
+      await writeFile(join(dir.path, "audit.jsonl"), audit);
+      if (withCopy) await writeFile(join(dir.path, "audit-context.json"), JSON.stringify(ctx));
+      await node(SCRIPT, [dir.path, "--audit", join(dir.path, "audit.jsonl")], { env });
+      const problems: string[] = JSON.parse(await readFile(join(dir.path, "verdict.json"), "utf8")).problems;
+      const contextProblems = problems.filter((p) => /trusted run context|differs from the copy/.test(p));
+      if (expected) expect(contextProblems).toEqual([expect.stringMatching(expected)]);
+      else expect(contextProblems).toEqual([]);
+    } finally {
+      await dir.cleanup();
+    }
+  });
+});
+
 describe("verify-claims: evidenza dagli hook (VC-10)", () => {
   const entry = (id: string, tool: string, input: unknown, text: string, isError = false) => ({ tool_use_id: id, tool_name: tool, tool_input: input, is_error: isError, text });
 

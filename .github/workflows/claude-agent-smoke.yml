@@ -21,10 +21,12 @@ on:
 permissions:
   contents: read
 
-# Same scheme as live-tests.yml: per-PR group, cross-PR serialization by the Zotero-side lock.
+# Same scheme as live-tests.yml: per-PR group, no cancellation of a running agent (it writes to the test
+# account; a newer push queues), cross-PR serialization by the Zotero-side lock. agent-smoke-cleanup still runs
+# with always() if a run is cancelled by hand.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   changes:
@@ -61,7 +63,7 @@ jobs:
   prepare:
     name: agent-smoke-prepare
     needs: changes
-    # same-repo PRs, main, manual runs; Dependabot gets no secrets; only the owner's or a bot's changes
+    # same-repo PRs and manual runs (workflow_dispatch, e.g. on main); Dependabot gets no secrets; only the owner's or a bot's changes
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.actor != 'dependabot[bot]' &&
@@ -311,6 +313,8 @@ jobs:
           if [ -n "$AGENT_REPORT" ]; then printf '%s' "$AGENT_REPORT" > agent-out/agent-report.json; else echo '{}' > agent-out/agent-report.json; fi
           if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" agent-out/execution.json; fi
           for f in audit.jsonl denials.jsonl; do if [ -f "agent-audit/$f" ]; then cp "agent-audit/$f" "agent-out/$f"; fi; done
+          # the context the hooks read (the agent cannot edit it): verify-claims compares agent-out/context.json with it
+          if [ -f agent-audit/context.json ]; then cp agent-audit/context.json agent-out/audit-context.json; fi
       # Passed to the verifier with identifiers replaced by placeholders (restored there); the step fails,
       # and nothing is uploaded, if any identifier or secret survives.
       - name: Redact the agent output
@@ -390,11 +394,19 @@ jobs:
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
         run: node test/live/agent/redact.mjs restore agent-out
 
-      # Deterministic verdict: this step, not the agent, decides the check. Only on the output of an agent step
-      # that ran in this workflow run (the claims, audit and transcript are also checked against its run id).
+      # Deterministic verdict on the claims, audit and transcript of this workflow run (entries are checked
+      # against its run id). Always after a successful agent step: a missing audit then fails verify-claims (no
+      # green check without evidence). After a failed agent step only if an audit exists, for the per-call safety
+      # and robustness report (the agent-smoke check is red anyway); without one there is nothing to report.
+      - name: No agent calls recorded
+        if: needs.prepare.outputs.run_id != '' && hashFiles('agent-out/audit.jsonl') == '' && needs.agent-run.result != 'success'
+        timeout-minutes: 1
+        env:
+          AGENT: ${{ needs.agent-run.result }}
+        run: echo "::notice::no audit log (agent step ${AGENT}, no recorded call) - nothing to verify"
       - name: Verify the agent's claims
         id: verify
-        if: needs.prepare.outputs.run_id != '' && needs.agent-run.result == 'success'
+        if: needs.prepare.outputs.run_id != '' && (hashFiles('agent-out/audit.jsonl') != '' || needs.agent-run.result == 'success')
         timeout-minutes: 5
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
