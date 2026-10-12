@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-10-12
+
+Fixes found by the live test suite and the agent smoke test.
+
 ### Fixed
 
 - **Every network call is bounded** (`src/utils/timeouts.ts`): Zotero Web API requests made through `zotero-api-client` (each request gets its own `AbortSignal.timeout`), fulltext GET/PUT, upload authorization and registration: 30 s; doi.org and Unpaywall: 30 s per attempt; PDF download (body included) and upload to Zotero storage: 180 s. Before, a server that accepted the connection and never answered blocked the tool until the MCP client gave up. A timeout is reported with the operation, bound and host (e.g. `PDF download timed out after 180 s (example.org)`); `import_pdf_to_zotero` now includes the network detail for authorization, upload and registration failures.
