@@ -61,7 +61,7 @@ jobs:
   prepare:
     name: agent-smoke-prepare
     needs: changes
-    # same-repo PRs, main, manual runs; Dependabot gets no secrets; only the owner's or a bot's changes
+    # same-repo PRs and manual runs (workflow_dispatch, e.g. on main); Dependabot gets no secrets; only the owner's or a bot's changes
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.actor != 'dependabot[bot]' &&
