@@ -25,7 +25,7 @@ decide that, and you never merge.
   `NPM_CONFIG_IGNORE_SCRIPTS=true`; the native binaries of TypeScript 7 and rolldown/vitest come as
   optionalDependencies and need no install scripts).
 - Run commands exactly as written here, one per call, without `timeout`, `&&`, pipes or redirections:
-  only `npm outdated|view|update|install|ci|run …` and `git status|diff|log …` are allowed.
+  only `npm outdated|view|audit|update|install|ci|run …` and `git status|diff|log …` are allowed.
 - Every command runs through the Bash tool, which bounds it; give long commands (`npm ci`, tests) a
   Bash timeout of at most 10 minutes. A command that hits its bound is a failure to report.
 - Commit messages, the PR title and description are in **Italian**. Code comments stay English.
@@ -61,9 +61,18 @@ migration notes, changed defaults.
    Then, for each **minor** update and each **major** of a direct dependency, look up in Context7 what
    changes between `current` and the target version (see the Context7 section), and with Grep which of
    those APIs `src/` uses.
-3. **Update.** `npm update --save --ignore-scripts` (respects the
-   `^` ranges and moves them to the new versions). If a wanted minor is still missing, install it
-   explicitly: `npm install --save[-dev] --ignore-scripts <name>@^<version>`.
+3. **Update.** Two modes; the lockfile must change no more than the mode needs, because the merge gate
+   accepts a PR only if **every** changed lockfile entry (direct or transitive) is a patch:
+   - **Patch only** (every direct update is a patch, and `npm audit --json` reports no vulnerability): install
+     each one on its own, exactly, without `npm update` (which also refreshes transitive dependencies, often by
+     minor or major versions):
+     `npm install --save[-dev] --ignore-scripts <name>@^<new patch version>` (the `^` keeps the range style of
+     `package.json`). This PR can be merged automatically.
+   - **Full** (at least one direct minor update, or `npm audit` reports a vulnerability): `npm update --save
+     --ignore-scripts`, then install any wanted minor still missing explicitly
+     (`npm install --save[-dev] --ignore-scripts <name>@^<version>`). This PR is always left to the owner.
+   Then compare the lockfile with `git diff --stat package-lock.json` and `git diff package-lock.json`, and
+   note the **transitive** entries whose version changed (name, old → new, patch/minor/major).
 4. **Verify from scratch.** `npm ci --ignore-scripts`, then `npm run build`, `npm run test`,
    `npm run test:e2e`, `npm run smoke`. All must pass.
 5. **What breaks is postponed, not fixed.** If an update breaks the build or the tests, put that single
@@ -76,7 +85,11 @@ migration notes, changed defaults.
    direct dependency, `name` old → new (postponed packages are listed only in the PR text).
 7. **PR text.** Write `agent-out/deps-pr.md` (Write tool): the **first line** is the title,
    `Dipendenze: aggiornamenti minor e patch (<YYYY-MM>)`; the rest is the description, in Italian:
+   - the mode used (patch only / full, and why);
    - a table of the direct dependencies updated (old → new, patch or minor);
+   - "Dipendenze indirette": how many lockfile entries changed version and every one that is a minor or
+     major (or "solo patch" / "nessuna"). Never write "solo patch" for the PR when a transitive entry moved
+     by a minor or major;
    - "Major non applicate": name, current, latest; the breaking changes found in Context7 and the files of
      `src/` that use the affected APIs (or "Context7: nessuna informazione");
    - "Note dalle documentazioni" (if any): deprecations or changes in the applied minor updates that do not
