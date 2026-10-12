@@ -43,7 +43,7 @@
     "Bash(npm publish *)"
   ],
   "maxTurns": 120,
-  "maxBudgetUsd": 15,
+  "maxBudgetUsd": 6,
   "timeoutMinutes": 42,
   "transcript": "${RUNNER_TEMP}/agent/deps-execution.json",
   "mcpConfig": ".github/agents/deps-mcp.json"

@@ -632,7 +632,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 - **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
   comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
   docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
-  negati; `--max-turns 160`, `--max-budget-usd 10`, `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min (costo atteso: vedi
+  negati; 160 turni, tetto di 3 USD (`maxBudgetUsd`; una run costa circa 0,35-0,45 USD), `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min (costo atteso: vedi
   il collaudo locale sotto; i limiti sono circa il doppio). La chiave Zotero sta solo nel file
   di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente. Gli artifact fra i job
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
@@ -741,7 +741,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 
 Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`, stessa
 configurazione della CI: template MCP, `--tools`, `dontAsk`, hook): 78 turni, 0,69 USD, 2 min 20 s (i limiti in CI,
-160 turni e 10 USD, lasciano ampio margine). P0, F0-F6, F8-F10 e 8 righe T passati, F7 saltato (nessun gruppo);
+160 turni e 3 USD, lasciano margine). P0, F0-F6, F8-F10 e 8 righe T passati, F7 saltato (nessun gruppo);
 18 docx in 9 `compare_group` (parità nei 5 stili, edge, nozcite, nonum-ieee, bare-id) tutti identici fra i due
 produttori; 4 esplorativi (1 ok, 3 unclear, nessun bug). Hook: 69 chiamate nell'audit, esattamente 2 negazioni, le
 due sonde F0 (`… && ls` e `delete_items` di `XXXXXXXX`), nessuna sul percorso normale. verify-claims con `--audit` e
@@ -754,7 +754,7 @@ livello 3b (AID-28..31) e da allora la scansione di robustezza tratta quel testo
 Il primo del mese (e a mano), nell'environment `claude-deps` (solo le variabili `ANTHROPIC_*` della Workload Identity
 Federation di Anthropic, nessun secret). Quattro job con il minimo dei permessi:
 - **agent**: esce subito se c'è già una PR `deps/*`; `npm ci --ignore-scripts` e `NPM_CONFIG_IGNORE_SCRIPTS=true` per
-  tutto il job; l'agente (Agent SDK via `scripts/run-agent.mjs`, `.github/agents/deps-update.json`: `claude-opus-5-5`, tool `Skill,Read,Glob,Grep,Edit,Write,Bash`, `dontAsk`, 120 turni, 15 USD) non ha
+  tutto il job; l'agente (Agent SDK via `scripts/run-agent.mjs`, `.github/agents/deps-update.json`: `claude-opus-5-5`, tool `Skill,Read,Glob,Grep,Edit,Write,Bash`, `dontAsk`, 120 turni, 6 USD) non ha
   token GitHub nel suo ambiente, può modificare solo `package.json`, `package-lock.json`, `CHANGELOG.md`,
   `agent-out/deps-pr.md` e `agent-out/deps-issue.md`, e usare `npm outdated|view|update|install|ci|run` e `git status/diff/log`; niente commit, push, `gh` o publish.
   Per minor e major consulta la documentazione delle librerie con il server MCP remoto di Context7
