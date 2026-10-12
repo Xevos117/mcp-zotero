@@ -249,7 +249,7 @@ const runIdTime = (runId: string) => {
  * dal nome stretto `mzt-<runId>` delle collezioni e dei titoli o dal tag `mzt-run:<runId>`; si cancellano
  * anche le voci delle sue collezioni (voci da DOI, allegati standalone) prima delle collezioni.
  */
-async function sweepStale(z: ZoteroWeb) {
+async function sweepStale(z: ZoteroWeb, label = "pulizia avanzi") {
   const cutoff = Date.now() - STALE_AFTER_MS;
   const stale = (runId: string | undefined) => !!runId && runIdTime(runId) < cutoff;
   const nameRun = (name: string) => {
@@ -269,7 +269,13 @@ async function sweepStale(z: ZoteroWeb) {
   }
   if (keys.size) await z.deleteKeys("items", [...keys]);
   if (staleColls.length) await z.deleteKeys("collections", staleColls.map((c) => c.key));
-  log(`pulizia avanzi: ${keys.size} voci, ${staleColls.length} collezioni più vecchie di 6 h`);
+  log(`${label}: ${keys.size} voci, ${staleColls.length} collezioni più vecchie di 6 h`);
+}
+
+/** Avanzi nella libreria utente e, se verificata, in quella del gruppo `mzt-test…` (una run interrotta li lascia in entrambe). */
+async function sweepStaleAll(z: ZoteroWeb, groupId: string | null) {
+  await withBound("pulizia avanzi", sweepStale(z));
+  if (groupId) await withBound("pulizia avanzi gruppo", sweepStale(z.withLibrary(`groups/${groupId}`), "pulizia avanzi gruppo"));
 }
 
 // Lock tra run concorrenti sulla stessa libreria: test/live/lock.mjs (lo usa anche l'agente smoke in CI).
@@ -318,7 +324,7 @@ async function cleanupOnly(z: ZoteroWeb, disposable: boolean): Promise<void> {
     rmSync(registryPath(runId), { force: true });
     rmSync(softSkipsPath(runId), { force: true });
   }
-  if (disposable) await withBound("pulizia avanzi", sweepStale(z));
+  if (disposable) await sweepStaleAll(z, groupId);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -357,7 +363,7 @@ export default async function setup(project: TestProject) {
   await withBound("lock", acquireLock({ key: apiKey, lib: z.libraryPath, runId, waitMs: LOCK_WAIT_MS, log }), LOCK_WAIT_MS + 120_000);
   const unlock = () => releaseLock({ key: apiKey, lib: z.libraryPath, runId }).catch((e: unknown) => log(`lock non rimosso: ${scrub(String(e))}`));
   try {
-    if (disposable) await withBound("pulizia avanzi", sweepStale(z));
+    if (disposable) await sweepStaleAll(z, await verifiedGroup(z));
   } catch (e) {
     await unlock();
     throw e;
