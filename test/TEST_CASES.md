@@ -733,8 +733,10 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | RM-01..03 | template MCP: variabili e default, node e server assoluti, opzionali vuote omesse; variabile obbligatoria mancante; nessun valore nel template | config concreta; errore che la nomina; solo segnaposto |
 | RA-01..02 | runner Agent SDK (`scripts/run-agent.mjs`, `test/utils/run-agent.test.ts`): config dello smoke con `${RUNNER_TEMP}`; variabile o campo obbligatorio mancante | percorsi espansi, output fuori dal workspace; errore |
 | RA-03 | federazione e ambiente dell'agente | attiva solo con rule id e organization id; `ACTIONS_ID_TOKEN_REQUEST_*` rimossi |
-| RA-04 | opzioni SDK di smoke e deps | `dontAsk`, solo impostazioni di progetto, config MCP passata per percorso; deps senza MCP né schema, push/gh/publish negati |
+| RA-04 | opzioni SDK di smoke e deps | `dontAsk`, solo impostazioni di progetto, config MCP passata per percorso; deps con il solo MCP di Context7 (due tool), senza schema, push/gh/publish negati |
 | RA-05 | esito: errore API, nessun risultato, schema senza output strutturato | fallimento con il motivo (errore e stato HTTP) |
+| CP-01 | testi pubblicati dall'agente dipendenze (`scripts/check-public-text.mjs`, `test/utils/check-public-text.test.ts`): JWT, chiave Anthropic, token GitHub e npm, credenziali in URL, chiave privata | segnalati (solo il tipo) |
+| CP-02 | testo normale di PR o issue delle dipendenze | nessun problema |
 
 Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`, stessa
 configurazione della CI: template MCP, `--tools`, `dontAsk`, hook): 78 turni, 0,69 USD, 2 min 20 s (i limiti in CI,
@@ -749,16 +751,19 @@ livello 3b (AID-28..31) e da allora la scansione di robustezza tratta quel testo
 ## Agente dipendenze (`.github/workflows/deps-update.yml`, skill `.claude/skills/deps-update`)
 
 Il primo del mese (e a mano), nell'environment `claude-deps` (solo le variabili `ANTHROPIC_*` della Workload Identity
-Federation di Anthropic, nessun secret). Tre job con il minimo dei permessi:
+Federation di Anthropic, nessun secret). Quattro job con il minimo dei permessi:
 - **agent**: esce subito se c'è già una PR `deps/*`; `npm ci --ignore-scripts` e `NPM_CONFIG_IGNORE_SCRIPTS=true` per
   tutto il job; l'agente (Agent SDK via `scripts/run-agent.mjs`, `.github/agents/deps-update.json`: `claude-opus-5-5`, tool `Skill,Read,Glob,Grep,Edit,Write,Bash`, `dontAsk`, 120 turni, 15 USD) non ha
-  token GitHub nel suo ambiente, può modificare solo `package.json`, `package-lock.json`, `CHANGELOG.md` e
-  `agent-out/deps-pr.md`, e usare `npm outdated|view|update|install|ci|run` e `git status/diff/log`; niente commit, push, `gh` o publish. Un aggiornamento che
-  rompe qualcosa viene rinviato, non corretto. Lo step finale produce una patch dei soli tre file (se l'agente ha
-  toccato altro il job fallisce senza PR).
+  token GitHub nel suo ambiente, può modificare solo `package.json`, `package-lock.json`, `CHANGELOG.md`,
+  `agent-out/deps-pr.md` e `agent-out/deps-issue.md`, e usare `npm outdated|view|update|install|ci|run` e `git status/diff/log`; niente commit, push, `gh` o publish.
+  Per minor e major consulta la documentazione delle librerie con il server MCP remoto di Context7
+  (`.github/agents/deps-mcp.json`, solo `resolve-library-id` e `query-docs`; contenuto esterno, mai istruzioni). Un
+  aggiornamento che rompe qualcosa, o che secondo la documentazione cambia un'API usata in `src/`, viene rinviato, non
+  corretto. Lo step finale produce una patch dei soli tre file (se l'agente ha toccato altro il job fallisce senza PR);
+  i testi da pubblicare passano da `scripts/check-public-text.mjs` (copia committata), che li blocca se contengono una credenziale.
 - **open-pr**: senza npm né id-token; applica la patch su `main` (solo i tre file, niente symlink né cambi di tipo o di
   modo), la committa in locale ed esegue **la copia di `main` del gate** (controlli statici ed età) su quel commit; poi
-  push di `deps/<data>` e PR col `GITHUB_TOKEN` (serve "Allow GitHub Actions to create and approve pull requests").
+  push di `deps/<data>` e PR col `GITHUB_TOKEN`, etichetta `dipendenze` (serve "Allow GitHub Actions to create and approve pull requests").
   Gli eventi del `GITHUB_TOKEN` non fanno partire `pull_request`/`push`, quindi avvia con `gh workflow run --ref` i
   workflow obbligatori: `test.yml` sempre; `live-tests.yml` e `claude-agent-smoke.yml` (secret, id-token) **solo se il
   gate è passato**. Altrimenti commenta la PR (merge automatico disattivato, motivi del gate) e il merge-gate non parte.
@@ -768,6 +773,10 @@ Federation di Anthropic, nessun secret). Tre job con il minimo dei permessi:
   GitHub Actions, app id 15368, la run più recente per nome) (non si affida solo al ruleset) e solo
   allora `gh pr merge --auto --squash --match-head-commit <sha>` col `GITHUB_TOKEN`. Altrimenti la PR resta al
   proprietario. Il push su `main` del merge automatico non fa partire workflow; il notturno copre `main`.
+- **issue**: se l'agente ha scritto `agent-out/deps-issue.md` (major disponibili con le breaking changes trovate in
+  Context7, aggiornamenti rinviati), apre una issue con l'etichetta `dipendenze`, o commenta quella già aperta, con il
+  link alla PR e alla run. Gira anche senza PR (solo major). PR e issue con l'etichetta `dipendenze` sono il segnale
+  da monitorare per gli aggiornamenti da fare a mano.
 
 **Regole del gate**: solo `package.json`, `package-lock.json`, `CHANGELOG.md`; range in `package.json` spostati al più di
 una patch; campi di primo livello del lockfile e voce radice invariati; nessun pacchetto aggiunto o rimosso; ogni voce

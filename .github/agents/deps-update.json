@@ -30,7 +30,9 @@
     "Bash(npm run *)",
     "Bash(git status *)",
     "Bash(git diff *)",
-    "Bash(git log *)"
+    "Bash(git log *)",
+    "mcp__context7__resolve-library-id",
+    "mcp__context7__query-docs"
   ],
   "disallowedTools": [
     "WebFetch",
@@ -43,5 +45,6 @@
   "maxTurns": 120,
   "maxBudgetUsd": 15,
   "timeoutMinutes": 42,
-  "transcript": "${RUNNER_TEMP}/agent/deps-execution.json"
+  "transcript": "${RUNNER_TEMP}/agent/deps-execution.json",
+  "mcpConfig": ".github/agents/deps-mcp.json"
 }

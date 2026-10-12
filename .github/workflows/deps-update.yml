@@ -40,6 +40,7 @@ jobs:
       NPM_CONFIG_IGNORE_SCRIPTS: "true" # also for every npm command the agent runs
     outputs:
       has_patch: ${{ steps.patch.outputs.has_patch }}
+      has_issue: ${{ steps.issue.outputs.has_issue }}
     steps:
       - name: Skip if a deps/* PR is already open
         id: open
@@ -105,6 +106,9 @@ jobs:
             echo "::error::the agent did not write agent-out/deps-pr.md (PR title and description)"
             exit 1
           fi
+          # published text: the committed copy of the guard (the agent could have edited the working tree)
+          git show HEAD:scripts/check-public-text.mjs > "$RUNNER_TEMP/check-public-text.mjs"
+          node "$RUNNER_TEMP/check-public-text.mjs" agent-out/deps-pr.md
           cp agent-out/deps-pr.md "$RUNNER_TEMP/deps/deps-pr.md"
           echo "has_patch=true" >> "$GITHUB_OUTPUT"
       - if: steps.patch.outputs.has_patch == 'true'
@@ -116,6 +120,28 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+      # Majors or postponed updates: the agent's analysis (Context7) becomes an issue labelled `dipendenze`,
+      # opened by the `issue` job. Only after the patch step accepted the working tree.
+      - name: Issue text for the owner
+        id: issue
+        if: steps.open.outputs.count == '0' && steps.claude.outcome == 'success' && steps.patch.outcome == 'success'
+        timeout-minutes: 2
+        run: |
+          if [ ! -s agent-out/deps-issue.md ]; then echo "has_issue=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git show HEAD:scripts/check-public-text.mjs > "$RUNNER_TEMP/check-public-text.mjs"
+          node "$RUNNER_TEMP/check-public-text.mjs" agent-out/deps-issue.md
+          mkdir -p "$RUNNER_TEMP/deps-issue"
+          cp agent-out/deps-issue.md "$RUNNER_TEMP/deps-issue/deps-issue.md"
+          echo "has_issue=true" >> "$GITHUB_OUTPUT"
+      - if: steps.issue.outputs.has_issue == 'true'
+        timeout-minutes: 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: deps-issue
+          path: ${{ runner.temp }}/deps-issue/
+          retention-days: 7
+          if-no-files-found: error
+
   open-pr:
     needs: agent
     if: needs.agent.outputs.has_patch == 'true'
@@ -124,6 +150,7 @@ jobs:
     permissions:
       contents: write # push deps/<date>
       pull-requests: write
+      issues: write # the `dipendenze` label
       actions: write # workflow_dispatch of the required workflows
     outputs:
       number: ${{ steps.pr.outputs.number }}
@@ -185,7 +212,8 @@ jobs:
           tail -n +2 "$RUNNER_TEMP/deps/deps-pr.md" > "$RUNNER_TEMP/deps/body.md"
           git switch -c "$branch"
           git push -q "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/$branch"
-          url=$(gh pr create --repo "$REPO" --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/deps/body.md")
+          gh label create dipendenze --repo "$REPO" --color 0366d6 --description "Aggiornamenti delle dipendenze" --force
+          url=$(gh pr create --repo "$REPO" --base main --head "$branch" --title "$title" --body-file "$RUNNER_TEMP/deps/body.md" --label dipendenze)
           number=$(gh pr view "$url" --repo "$REPO" --json number --jq .number)
           {
             echo "number=$number"
@@ -315,3 +343,52 @@ jobs:
           NUMBER: ${{ needs.open-pr.outputs.number }}
           HEAD_SHA: ${{ needs.open-pr.outputs.head_sha }}
         run: gh pr merge "$NUMBER" --repo "$REPO" --auto --squash --match-head-commit "$HEAD_SHA"
+
+  # One open issue labelled `dipendenze` collects what the owner has to decide (majors with their breaking
+  # changes, postponed updates): a new one if none is open, otherwise a comment on it. Runs also when no PR was
+  # opened (only majors) or open-pr failed; no npm, no id-token.
+  issue:
+    needs: [agent, open-pr]
+    if: always() && needs.agent.result == 'success' && needs.agent.outputs.has_issue == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        timeout-minutes: 3
+        with:
+          name: deps-issue
+          path: ${{ runner.temp }}/deps-issue
+      - name: Open or update the `dipendenze` issue
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ needs.open-pr.outputs.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          file="$RUNNER_TEMP/deps-issue/deps-issue.md"
+          node scripts/check-public-text.mjs "$file"
+          title=$(head -n 1 "$file")
+          {
+            tail -n +2 "$file"
+            echo
+            if [ -n "$PR_NUMBER" ]; then echo "PR degli aggiornamenti applicabili: #$PR_NUMBER"; fi
+            echo "Run: $RUN_URL"
+          } > "$RUNNER_TEMP/issue-body.md"
+          gh label create dipendenze --repo "$REPO" --color 0366d6 --description "Aggiornamenti delle dipendenze" --force
+          open=$(gh issue list --repo "$REPO" --label dipendenze --state open --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            { echo "## $title"; echo; cat "$RUNNER_TEMP/issue-body.md"; } > "$RUNNER_TEMP/comment.md"
+            gh issue comment "$open" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md"
+            echo "commented on issue #$open"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body-file "$RUNNER_TEMP/issue-body.md" --label dipendenze
+          fi
