@@ -590,8 +590,12 @@ test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non
 Gira sulle PR (contestuale alle modifiche) e a mano (`workflow_dispatch`, ad esempio su `main` dopo un merge); niente
 `push`: claude-code-action non supporta quell'evento ("Unsupported event type: push", prima run su `main`).
 `prepare.mjs` svuota `agent-out/` e `agent-audit/` prima di scrivere il contesto, gli hook marcano ogni riga di audit
-e di negazione con il runId e verify-claims rifiuta righe di un'altra run; la verifica gira solo se il job
-dell'agente è riuscito in quella stessa run.
+e di negazione con il runId e verify-claims rifiuta righe di un'altra run. Il contesto di riferimento è la copia scritta
+da prepare in `agent-audit/` (in CI portata accanto all'audit come `audit-context.json`): `agent-out/context.json`, che
+l'agente potrebbe modificare, deve essere identico, altrimenti la run non è verificata. La verifica gira anche dopo un
+job dell'agente fallito, se esiste l'audit, per riportare i problemi di sicurezza e robustezza delle chiamate fatte (il
+check `agent-smoke` resta rosso); senza audit (nessuna chiamata registrata, ad esempio credito esaurito) lo step la
+salta con un avviso.
 
 - **Job, credenziali separate**: `agent-smoke-prepare` (nessun id-token) fa `npm ci --ignore-scripts`, build,
   `prepare.mjs --mode ci` e prende il lock; `agent-smoke-run` è l'unico job con `id-token: write` (scambio della
@@ -698,6 +702,8 @@ dell'agente è riuscito in quella stessa run.
 | VC-08b | impronta alterata: citationID diverso / locator / testo visibile / bibliografia | nessuna differenza / percorso della prima differenza |
 | VC-09a/b | script completo senza rete: senza `--audit`; claims incompleti, cancellazione non attribuibile, chiamata della trascrizione assente dall'audit | exit 2; exit 1 e `verdict.json` con scenari mancanti, sicurezza, sonde F0, buco dell'audit, F10, parità, F9; la chiave non compare nell'output |
 | VC-09c | riga d'audit con un runId diverso | problema "evidence from another run" (in VC-09b) |
+| VC-11 | `agent-out/context.json` identico alla copia degli hook / modificato (cleanup) | nessun problema sul contesto / "differs from the copy written before the agent started" |
+| VC-11b | nessuna copia del contesto accanto all'audit | "run context missing next to the audit" |
 | VC-10a | audit degli hook → chiamate: chiavi create, robustezza, chiamata esplorativa Bash | come dalla trascrizione |
 | VC-10b | chiamata Zotero della trascrizione assente da audit e negazioni / negata | problema / nessuno |
 | VC-10c | sonde F0 negate; altra negazione; nessuna negazione | nessun problema; avviso; due problemi |
@@ -716,8 +722,8 @@ dell'agente è riuscito in quella stessa run.
 | AH-03c | audit.mjs (PostToolUse, PostToolUseFailure, tool non registrato) poi delete-guard | audit con le due chiamate Zotero; chiave creata ammessa, altra negata |
 | AH-03d | delete-guard senza `agent-audit/context.json` | negato |
 | AH-03e | `.claude/agent-smoke/settings.json` | tre hook sugli eventi e matcher giusti, comandi via `$CLAUDE_PROJECT_DIR`, timeout |
-| TA-01 | percorsi tracciati sotto `agent-out/`, `agent-audit/`, `.vitest/`, `live-artifacts/`; file spostati con righe d'audit o contesto dell'agente | segnalati (solo percorso e motivo) |
-| TA-02 | codice e test che costruiscono gli stessi campi come oggetti, voce illeggibile | nessun problema |
+| TA-01 | percorsi tracciati sotto `agent-out/`, `agent-audit/`, `.vitest/`, `live-artifacts/` a qualunque profondità; file spostati: riga d'audit, contesto dell'agente, log delle negazioni (anche solo Bash), claims, trascrizione (`session_id` + tool Zotero), riepilogo e report dal vivo, forme con virgolette escape | segnalati (solo percorso e motivo) |
+| TA-02 | codice e test che costruiscono gli stessi campi come oggetti, esempio di claims nella skill, voce illeggibile | nessun problema |
 | RM-01..03 | template MCP: variabili e default, node e server assoluti, opzionali vuote omesse; variabile obbligatoria mancante; nessun valore nel template | config concreta; errore che la nomina; solo segnaposto |
 
 Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`, stessa

@@ -588,9 +588,17 @@ async function main() {
     return 2;
   }
   const readLines = (path) => (existsSync(path) ? parseTranscript(readFileSync(path, "utf8")) : null);
+  const auditDir = dirname(resolve(AUDIT));
   const auditEntries = readLines(AUDIT);
-  const denials = readLines(join(dirname(resolve(AUDIT)), "denials.jsonl")) ?? [];
-  // evidence of this run only: every entry carries the run id of agent-audit/context.json
+  const denials = readLines(join(auditDir, "denials.jsonl")) ?? [];
+  // The context the hooks used: prepare.mjs writes it to agent-audit/context.json, outside the agent's reach (CI
+  // copies it next to the audit as audit-context.json). agent-out/context.json, which the agent could edit, must
+  // be identical; when the copy is missing or differs, the run is not verified.
+  const trustedPath = [join(auditDir, "audit-context.json"), join(auditDir, "context.json")].find((p) => existsSync(p));
+  const trusted = trustedPath ? JSON.parse(readFileSync(trustedPath, "utf8")) : null;
+  if (!trusted) fail(`run context missing next to the audit (${join(auditDir, "audit-context.json")} or context.json)`);
+  else if (canonical(trusted) !== canonical(context)) fail(`${join(DIR, "context.json")} differs from the copy written before the agent started`);
+  // evidence of this run only: every entry carries the run id of the context the hooks read
   const foreign = [...(auditEntries ?? []), ...denials].filter((e) => e?.run_id !== context.run_id).length;
   if (foreign) fail(`audit: ${foreign} entr${foreign === 1 ? "y" : "ies"} without this run's id (${context.run_id}): evidence from another run`);
   const calls = auditEntries ? auditCalls(auditEntries.filter((e) => e?.run_id === context.run_id)) : null;
