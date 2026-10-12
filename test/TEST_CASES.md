@@ -614,7 +614,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   agente solo se `changes` non ha trovato file rilevanti, se prepare è saltato (PR da fork, Dependabot, o attore umano
   diverso dal proprietario: il riepilogo indica quale condizione) o su una PR il cui branch di base non ha ancora la
   skill. Fuori dalle PR una skill mancante è un errore, e sulle PR anche un branch di base non risolvibile.
-  Gira solo per modifiche del proprietario del repo o di un bot (escluso Dependabot).
+  Gira in automatico solo per modifiche del proprietario del repo o del workflow delle dipendenze (`github-actions[bot]`): l'agente consuma credito API, quindi le modifiche di altri si collaudano a mano, dopo la revisione. Le PR da fork non ricevono secret e richiedono comunque l'approvazione del proprietario prima di far partire qualsiasi workflow.
 - **Preparazione** (`test/live/agent/prepare.mjs`, uguale in CI e in locale): `agent-out/context.json` (runId, tag,
   prefisso, modalità, safe mode, gruppo, chi pulisce) e `agent-out/diff.txt` (file cambiati e patch troncata). In CI
   si ferma con errore, prima che l'agente parta, se la chiave non è di `ZOTERO_TEST_USERNAME` o se manca la sentinella
