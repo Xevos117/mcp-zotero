@@ -70,7 +70,7 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 |---|---|---|
 | `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging on Node 22/24/26 |
 | `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `live-tests-run`: `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; `live-tests` (required check) decides from it; nightly failures open/update one issue |
-| `claude-agent-smoke.yml` | same-repo PRs by the owner or a bot, manual (run it by hand on `main` after a merge) | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
+| `claude-agent-smoke.yml` | same-repo PRs by the owner or `github-actions[bot]` (the agent costs API credits: other people's changes only by hand, after review), manual (run it by hand on `main` after a merge) | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
 | `deps-update.yml` | 1st of the month, manual | agent (no GitHub token, no install scripts, Context7 MCP for library docs, leaves a patch and optionally an issue text) → open-pr (no npm, no id-token: pushes `deps/<date>` and opens the PR labelled `dipendenze` with `GITHUB_TOKEN`, then starts test/live-tests/agent-smoke on the branch with `workflow_dispatch`) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for those checks on the exact SHA, `--match-head-commit`); issue (majors and postponed updates: opens or comments the open issue labelled `dipendenze`). Published agent text goes through `scripts/check-public-text.mjs` |
 | `release.yml` | GitHub release published, manual | tests, npm publish, skill zips (owner only) |
 
@@ -100,8 +100,9 @@ Path filters are a `changes` job, not `on.paths` (a workflow filtered by `on.pat
 required check pending). The required-name jobs (`live-tests`, `agent-smoke`) are never skipped, since
 a skipped required check counts as passed: they run with `!cancelled()`, fail when `changes` or the
 real jobs failed or timed out, and pass without testing only when nothing relevant changed (or for
-fork PRs and Dependabot, which get no secrets; the agent smoke test also skips runs started by a human
-other than the owner, and its notice names the condition). `test.yml` cancels a superseded run (cancelled,
+fork PRs and Dependabot, which get no secrets; the agent smoke test also skips runs started by anyone
+other than the owner or `github-actions[bot]`, and its notice names the condition). Fork PRs need the owner's
+approval before any workflow runs (repository setting: approval for all external contributors). `test.yml` cancels a superseded run (cancelled,
 not red); `live-tests.yml` and `claude-agent-smoke.yml` never cancel a running run (a cancel mid-suite left
 data on the test account): a newer push queues.
 Verified with a scratch workflow: a job that hits `timeout-minutes` concludes `cancelled`, and a dependent

@@ -62,11 +62,12 @@ jobs:
   prepare:
     name: agent-smoke-prepare
     needs: changes
-    # same-repo PRs and manual runs (workflow_dispatch, e.g. on main); Dependabot gets no secrets; only the owner's or a bot's changes
+    # same-repo PRs and manual runs (workflow_dispatch, e.g. on main); Dependabot gets no secrets; the agent costs API credits, so only
+    # the owner's changes and the deps workflow's runs (github-actions[bot]) start it automatically
     if: >-
       needs.changes.outputs.relevant == 'true' &&
       github.actor != 'dependabot[bot]' &&
-      (github.actor == github.repository_owner || endsWith(github.actor, '[bot]')) &&
+      (github.actor == github.repository_owner || github.actor == 'github-actions[bot]') &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: zotero-live
@@ -472,7 +473,7 @@ jobs:
             # same conditions as the prepare job's `if`, to name the one that applied
             if [ "$ACTOR" = "dependabot[bot]" ]; then reason="Dependabot runs get no secrets"
             elif [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" != "$REPO" ]; then reason="fork PR ($HEAD_REPO): no secrets"
-            elif [ "$ACTOR" != "$OWNER" ] && [ "${ACTOR%\[bot\]}" = "$ACTOR" ]; then reason="actor $ACTOR is neither the repository owner nor a bot"
+            elif [ "$ACTOR" != "$OWNER" ] && [ "$ACTOR" != "github-actions[bot]" ]; then reason="actor $ACTOR is not the repository owner: the agent costs API credits, so it runs automatically only on the owner's changes (and the deps workflow's); start it by hand after review"
             else reason="prepare skipped by its conditions"; fi
             echo "::notice::agent smoke not run for this event: $reason"
             exit 0
