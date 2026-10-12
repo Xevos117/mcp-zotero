@@ -100,7 +100,9 @@ required check pending). The required-name jobs (`live-tests`, `agent-smoke`) ar
 a skipped required check counts as passed: they run with `!cancelled()`, fail when `changes` or the
 real jobs failed or timed out, and pass without testing only when nothing relevant changed (or for
 fork PRs and Dependabot, which get no secrets; the agent smoke test also skips runs started by a human
-other than the owner, and its notice names the condition). A superseded run is cancelled, not red.
+other than the owner, and its notice names the condition). `test.yml` cancels a superseded run (cancelled,
+not red); `live-tests.yml` and `claude-agent-smoke.yml` never cancel a running run (a cancel mid-suite left
+data on the test account): a newer push queues.
 Verified with a scratch workflow: a job that hits `timeout-minutes` concludes `cancelled`, and a dependent
 job with `if: !cancelled()` still runs and sees `needs.<job>.result == 'cancelled'`, so a timeout turns
 the verdict red instead of skipping it. Actions in the new workflows are pinned by

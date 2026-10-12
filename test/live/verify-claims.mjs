@@ -594,9 +594,12 @@ async function main() {
   // The context the hooks used: prepare.mjs writes it to agent-audit/context.json, outside the agent's reach (CI
   // copies it next to the audit as audit-context.json). agent-out/context.json, which the agent could edit, must
   // be identical; when the copy is missing or differs, the run is not verified.
-  const trustedPath = [join(auditDir, "audit-context.json"), join(auditDir, "context.json")].find((p) => existsSync(p));
+  // context.json next to the audit counts only when the audit is not in the agent's own directory (locally
+  // agent-audit/); next to agent-out/context.json it would be that same, agent-editable file
+  const candidates = [join(auditDir, "audit-context.json"), ...(auditDir === DIR ? [] : [join(auditDir, "context.json")])];
+  const trustedPath = candidates.find((p) => existsSync(p));
   const trusted = trustedPath ? JSON.parse(readFileSync(trustedPath, "utf8")) : null;
-  if (!trusted) fail(`run context missing next to the audit (${join(auditDir, "audit-context.json")} or context.json)`);
+  if (!trusted) fail(`trusted run context missing (${candidates.join(" or ")})`);
   else if (canonical(trusted) !== canonical(context)) fail(`${join(DIR, "context.json")} differs from the copy written before the agent started`);
   // evidence of this run only: every entry carries the run id of the context the hooks read
   const foreign = [...(auditEntries ?? []), ...denials].filter((e) => e?.run_id !== context.run_id).length;

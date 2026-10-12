@@ -21,10 +21,12 @@ on:
 permissions:
   contents: read
 
-# Same scheme as live-tests.yml: per-PR group, cross-PR serialization by the Zotero-side lock.
+# Same scheme as live-tests.yml: per-PR group, no cancellation of a running agent (it writes to the test
+# account; a newer push queues), cross-PR serialization by the Zotero-side lock. agent-smoke-cleanup still runs
+# with always() if a run is cancelled by hand.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   changes:
@@ -393,17 +395,18 @@ jobs:
         run: node test/live/agent/redact.mjs restore agent-out
 
       # Deterministic verdict on the claims, audit and transcript of this workflow run (entries are checked
-      # against its run id). Also after a failed agent step, for the per-call safety and robustness report (the
-      # agent-smoke check is red anyway when the agent step failed); skipped when the agent made no recorded call.
+      # against its run id). Always after a successful agent step: a missing audit then fails verify-claims (no
+      # green check without evidence). After a failed agent step only if an audit exists, for the per-call safety
+      # and robustness report (the agent-smoke check is red anyway); without one there is nothing to report.
       - name: No agent calls recorded
-        if: needs.prepare.outputs.run_id != '' && hashFiles('agent-out/audit.jsonl') == ''
+        if: needs.prepare.outputs.run_id != '' && hashFiles('agent-out/audit.jsonl') == '' && needs.agent-run.result != 'success'
         timeout-minutes: 1
         env:
           AGENT: ${{ needs.agent-run.result }}
         run: echo "::notice::no audit log (agent step ${AGENT}, no recorded call) - nothing to verify"
       - name: Verify the agent's claims
         id: verify
-        if: needs.prepare.outputs.run_id != '' && hashFiles('agent-out/audit.jsonl') != ''
+        if: needs.prepare.outputs.run_id != '' && (hashFiles('agent-out/audit.jsonl') != '' || needs.agent-run.result == 'success')
         timeout-minutes: 5
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}

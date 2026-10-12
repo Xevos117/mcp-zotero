@@ -16,13 +16,14 @@ on:
 permissions:
   contents: read
 
-# One group per workflow and PR/ref: a new push supersedes the previous run of the same PR. Runs of
-# different PRs (and the agent smoke test) are serialized on the Zotero side by test/live/lock.mjs,
-# so stacked PRs never cancel each other's required checks; a queued run waits up to 70 min
+# One group per workflow and PR/ref. A running suite is never cancelled by a newer push: a cancel in the
+# middle of a run left items and collections on the test account (its cleanup was cut short), so the newer
+# run queues instead (GitHub keeps only the newest pending run of the group). Runs of different PRs (and the
+# agent smoke test) are serialized on the Zotero side by test/live/lock.mjs; a queued run waits up to 70 min
 # (an agent smoke run holds the account for up to about 80 min).
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   # Path filter at job level (not `on.paths`): a required check that never starts would block
