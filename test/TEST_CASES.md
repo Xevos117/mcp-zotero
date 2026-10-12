@@ -523,7 +523,7 @@ la libreria intera.
 collezione `mzt-lock <runId>`; se ne trova una più vecchia e non scaduta di un'altra run (di un'altra PR, dell'agente,
 di un altro worktree), aspetta con backoff (15 s, 30 s, poi ogni 60 s) fino a 25 min (`ZOTERO_LIVE_LOCK_WAIT_MIN`; 70 min in CI) e poi
 si ferma con "test account busy". I lock con runId più vecchio di 180 min (attesa in CI più la run più lunga, l'agente smoke) sono di run morte e vengono rimossi.
-I log riportano `[lock] acquired <runId>` e `[lock] released <runId>` (LK-01, `test/utils/lock.test.ts`). A parità di corsa vince il runId più vecchio. Le collezioni di lock sono escluse dai conteggi prima/dopo (una run in attesa
+I log riportano `[lock] acquired <runId>` e `[lock] released <runId>` (LK-01, `test/utils/lock.test.ts`). Vince il lock creato per primo, ordinato per `version` Zotero della collezione (versione della libreria alla scrittura, sempre crescente). L'ordine per runId lasciava vincere entrambe le run quando quella con il runId più vecchio creava il lock un attimo dopo (live-tests e agente smoke della PR #26, 2026-10-12: l'agente ha lavorato durante la suite e i conteggi finali sono cresciuti di 6 voci e 2 collezioni). LK-02: la run con il runId più vecchio che crea il lock dopo aspetta; LK-03: versione letta dall'elenco se manca nella risposta di creazione. Le collezioni di lock sono escluse dai conteggi prima/dopo (una run in attesa
 crea la sua mentre un'altra è fra i due conteggi). Rilascio a fine teardown (sempre) e nella modalità solo pulizia. I DELETE
 ritentano fino a 8 volte con jitter sui 412 (versione della libreria cambiata nel frattempo).
 
@@ -568,7 +568,11 @@ scaduto termina "cancelled"); passa senza la suite solo se `changes` è riuscito
 fork e Dependabot. Concurrency per workflow e PR/ref senza `cancel-in-progress` (anche per l'agente smoke): una
 run in corso non viene annullata da un push più recente, che resta in coda; un annullamento a metà suite aveva lasciato
 voci e collezioni sull'account di test (2026-10-12, run mv4hpbf7-d515: 2 collezioni rimosse dalla pulizia degli avanzi più vecchi di 6 h
-alla prima run dopo le 6 h, base tornata a `collections:1`); le run di PR diverse e dell'agente si serializzano sul lato Zotero con
+alla prima run dopo le 6 h, base tornata a `collections:1`). Riprodotto con un annullamento voluto (run
+mv4wuscp-4e2f: 5 voci e 2 collezioni rimaste): i processi della suite sopravvivevano allo step annullato e creavano
+voci mentre la pulizia era già passata. Ora lo step di pulizia ferma prima i processi `node` della suite
+(SIGINT, poi SIGKILL dopo 15 s), la pulizia (teardown e solo pulizia) ripete le passate finché non restano voci con il
+tag né collezioni con il prefisso della run (al massimo 4, a 5 s), e il lock viene liberato solo dopo la pulizia. Una run che trova l'account dedicato non pulito all'avvio (voci, o collezioni oltre la sentinella) lo scrive nel log e come avviso GitHub (`::warning`): una pulizia fallita dopo un annullamento altrimenti si vedrebbe solo come "cancelled" nella sua run; le run di PR diverse e dell'agente si serializzano sul lato Zotero con
 `test/live/lock.mjs` (attesa fino a 70 min, poi "test account busy": l'agente smoke tiene l'account fino a circa 80 min), così le PR in stack non si annullano a vicenda i
 check obbligatori. Job di 100 min, step dei test di 85 (attesa del lock compresa). Il filtro sui file è un job
 (`changes`), non `on.paths`; con file non rilevanti il job `live-tests` passa senza la suite.
@@ -632,7 +636,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 - **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
   comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
   docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
-  negati; `--max-turns 160`, `--max-budget-usd 10`, `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min (costo atteso: vedi
+  negati; 160 turni, tetto di 3 USD (`maxBudgetUsd`; una run costa circa 0,35-0,45 USD), `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min (costo atteso: vedi
   il collaudo locale sotto; i limiti sono circa il doppio). La chiave Zotero sta solo nel file
   di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente. Gli artifact fra i job
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
@@ -741,7 +745,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 
 Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`, stessa
 configurazione della CI: template MCP, `--tools`, `dontAsk`, hook): 78 turni, 0,69 USD, 2 min 20 s (i limiti in CI,
-160 turni e 10 USD, lasciano ampio margine). P0, F0-F6, F8-F10 e 8 righe T passati, F7 saltato (nessun gruppo);
+160 turni e 3 USD, lasciano margine). P0, F0-F6, F8-F10 e 8 righe T passati, F7 saltato (nessun gruppo);
 18 docx in 9 `compare_group` (parità nei 5 stili, edge, nozcite, nonum-ieee, bare-id) tutti identici fra i due
 produttori; 4 esplorativi (1 ok, 3 unclear, nessun bug). Hook: 69 chiamate nell'audit, esattamente 2 negazioni, le
 due sonde F0 (`… && ls` e `delete_items` di `XXXXXXXX`), nessuna sul percorso normale. verify-claims con `--audit` e
@@ -754,7 +758,7 @@ livello 3b (AID-28..31) e da allora la scansione di robustezza tratta quel testo
 Il primo del mese (e a mano), nell'environment `claude-deps` (solo le variabili `ANTHROPIC_*` della Workload Identity
 Federation di Anthropic, nessun secret). Quattro job con il minimo dei permessi:
 - **agent**: esce subito se c'è già una PR `deps/*`; `npm ci --ignore-scripts` e `NPM_CONFIG_IGNORE_SCRIPTS=true` per
-  tutto il job; l'agente (Agent SDK via `scripts/run-agent.mjs`, `.github/agents/deps-update.json`: `claude-opus-5-5`, tool `Skill,Read,Glob,Grep,Edit,Write,Bash`, `dontAsk`, 120 turni, 15 USD) non ha
+  tutto il job; l'agente (Agent SDK via `scripts/run-agent.mjs`, `.github/agents/deps-update.json`: `claude-opus-5-5`, tool `Skill,Read,Glob,Grep,Edit,Write,Bash`, `dontAsk`, 120 turni, 6 USD) non ha
   token GitHub nel suo ambiente, può modificare solo `package.json`, `package-lock.json`, `CHANGELOG.md`,
   `agent-out/deps-pr.md` e `agent-out/deps-issue.md`, e usare `npm outdated|view|update|install|ci|run` e `git status/diff/log`; niente commit, push, `gh` o publish.
   Per minor e major consulta la documentazione delle librerie con il server MCP remoto di Context7
