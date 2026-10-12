@@ -590,7 +590,10 @@ async function main() {
   const readLines = (path) => (existsSync(path) ? parseTranscript(readFileSync(path, "utf8")) : null);
   const auditEntries = readLines(AUDIT);
   const denials = readLines(join(dirname(resolve(AUDIT)), "denials.jsonl")) ?? [];
-  const calls = auditEntries ? auditCalls(auditEntries) : null;
+  // evidence of this run only: every entry carries the run id of agent-audit/context.json
+  const foreign = [...(auditEntries ?? []), ...denials].filter((e) => e?.run_id !== context.run_id).length;
+  if (foreign) fail(`audit: ${foreign} entr${foreign === 1 ? "y" : "ies"} without this run's id (${context.run_id}): evidence from another run`);
+  const calls = auditEntries ? auditCalls(auditEntries.filter((e) => e?.run_id === context.run_id)) : null;
   if (!calls || calls.length === 0) fail(`audit ${AUDIT} missing or empty: the hooks of .claude/agent-smoke did not run`);
   else {
     // Robustness and safety hold for every recorded call, even when the agent did not finish

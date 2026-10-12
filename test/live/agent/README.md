@@ -32,16 +32,19 @@ MCP_TIMEOUT=30000 MCP_TOOL_TIMEOUT=120000 timeout 2700 claude -p "Carica la skil
   --tools "Skill,Read,Edit,Write,Bash" --permission-mode dontAsk \
   --allowedTools "Skill,mcp__zotero__*,Read(./agent-out/**),Edit(./agent-out/**),Bash(node test/live/agent/make-docx.mjs *),Bash(node test/live/agent/inject.mjs *)" \
   --disallowedTools "WebFetch,WebSearch" \
-  --output-format stream-json --verbose < /dev/null > agent-run.jsonl
+  --output-format stream-json --verbose < /dev/null > agent-audit/transcript.jsonl
 ```
 
 Drop `ZOTERO_LIVE_SAFE_MODE=1` only on a disposable test library (with the `__mzt_disposable__` collection).
 Safe mode allows `UNSAFE_OPERATIONS=items` at most and never deletes collections or writes to groups.
 
+Never commit `agent-out/`, `agent-audit/` or the transcript: they hold library content (titles, keys,
+collection names, your user id). They are gitignored and `test.yml` fails if any is tracked.
+
 Then verify and clean up:
 
 ```sh
-node test/live/verify-claims.mjs agent-out --audit agent-audit/audit.jsonl --transcript agent-run.jsonl
+node test/live/verify-claims.mjs agent-out --audit agent-audit/audit.jsonl --transcript agent-audit/transcript.jsonl
 ZOTERO_LIVE_SAFE_MODE=1 npm run test:live:cleanup -- "$(node -p 'require("./agent-out/context.json").run_id')"
 ```
 

@@ -2,8 +2,10 @@
 // Prepares agent-out/ for the test-mcp-zotero skill (CI and local use the same files):
 //   agent-out/context.json   run id/tag/prefix, mode, safe mode, group, cleanup owner
 //   agent-out/diff.txt       changed files + patch against the base (truncated), for the targeted path
-//   agent-audit/             emptied; context.json copy for the hooks of .claude/agent-smoke (outside agent-out/,
+//   agent-audit/             context.json copy for the hooks of .claude/agent-smoke (outside agent-out/,
 //                            so the agent cannot edit it), then audit.jsonl / denials.jsonl written by the hooks
+// Both directories are emptied first, so nothing from an earlier run (or a stray checked-in file) is ever verified.
+// Never commit them: they hold library content (.gitignore excludes them; test.yml fails if any is tracked).
 // Usage: node test/live/agent/prepare.mjs [--mode ci|local] [--base <git-ref>] [--run-id <id>]
 // Env: ZOTERO_LIVE_SAFE_MODE=1, ZOTERO_TEST_GROUP_ID, AGENT_UNSAFE_OPERATIONS (default items).
 // CI mode also requires ZOTERO_TEST_API_KEY and ZOTERO_TEST_USERNAME and exits non-zero, before the agent
@@ -88,6 +90,7 @@ const git = (...args) => {
   }
 };
 
+rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 const context = {
   schema_version: 1,
@@ -103,9 +106,9 @@ const context = {
   base,
   created_at: new Date().toISOString(),
 };
-writeFileSync(join(OUT, "context.json"), JSON.stringify(context, null, 2) + "\n");
 rmSync(AUDIT, { recursive: true, force: true });
 mkdirSync(AUDIT, { recursive: true });
+writeFileSync(join(OUT, "context.json"), JSON.stringify(context, null, 2) + "\n");
 writeFileSync(join(AUDIT, "context.json"), JSON.stringify(context, null, 2) + "\n");
 
 const names = git("diff", "--name-status", `${base}...HEAD`);

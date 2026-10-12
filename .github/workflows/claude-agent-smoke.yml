@@ -8,14 +8,14 @@ name: Agent smoke test
 # ANTHROPIC_SERVICE_ACCOUNT_ID, ANTHROPIC_WORKSPACE_ID. The federation rule is bound to
 # repo:<owner>/<repo>:environment:zotero-live, so the agent job must run in this environment.
 #
-# Three jobs keep credentials apart: `prepare` (no id-token) installs with --ignore-scripts, builds,
-# checks the test account and takes the lock; `agent-smoke-run` is the only job with id-token (for the
-# federation exchange) and runs no npm; `agent-smoke` (no id-token) verifies the claims, cleans up,
-# releases the lock and decides the check.
+# Jobs keep credentials apart: `prepare` (no id-token) installs with --ignore-scripts, builds, checks the
+# test account and takes the lock; `agent-smoke-run` is the only job with id-token (for the federation
+# exchange) and runs no npm; `agent-smoke-verify` (no id-token) verifies the claims; `agent-smoke` decides the
+# required check; `agent-smoke-cleanup` cleans up and releases the lock.
+# Triggers: pull requests (contextual to the change) and manual runs. No `push`: claude-code-action does not
+# support push events ("Unsupported event type: push"); main is covered by a manual run after a merge.
 on:
   pull_request:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -153,7 +153,6 @@ jobs:
         run: |
           case "$EVENT" in
             pull_request) base="origin/$BASE_REF" ;;
-            push) base="HEAD~1" ;;
             *) base="origin/main" ;;
           esac
           node test/live/agent/prepare.mjs --mode ci --base "$base"
@@ -391,10 +390,11 @@ jobs:
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
         run: node test/live/agent/redact.mjs restore agent-out
 
-      # Deterministic verdict: this step, not the agent, decides the check.
+      # Deterministic verdict: this step, not the agent, decides the check. Only on the output of an agent step
+      # that ran in this workflow run (the claims, audit and transcript are also checked against its run id).
       - name: Verify the agent's claims
         id: verify
-        if: needs.prepare.outputs.run_id != ''
+        if: needs.prepare.outputs.run_id != '' && needs.agent-run.result == 'success'
         timeout-minutes: 5
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
@@ -451,13 +451,26 @@ jobs:
           AVAILABLE: ${{ needs.prepare.outputs.available }}
           AGENT: ${{ needs.agent-run.result }}
           VERIFY: ${{ needs.verify.result }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          EVENT: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
         run: |
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes: $CHANGES (the file filter must succeed, or the check would pass without running)"
             exit 1
           fi
           if [ "$RELEVANT" != "true" ]; then echo "::notice::no change relevant to the agent smoke test"; exit 0; fi
-          if [ "$PREPARE" = "skipped" ]; then echo "::notice::fork PRs and Dependabot get no secrets: not run"; exit 0; fi
+          if [ "$PREPARE" = "skipped" ]; then
+            # same conditions as the prepare job's `if`, to name the one that applied
+            if [ "$ACTOR" = "dependabot[bot]" ]; then reason="Dependabot runs get no secrets"
+            elif [ "$EVENT" = "pull_request" ] && [ "$HEAD_REPO" != "$REPO" ]; then reason="fork PR ($HEAD_REPO): no secrets"
+            elif [ "$ACTOR" != "$OWNER" ] && [ "${ACTOR%\[bot\]}" = "$ACTOR" ]; then reason="actor $ACTOR is neither the repository owner nor a bot"
+            else reason="prepare skipped by its conditions"; fi
+            echo "::notice::agent smoke not run for this event: $reason"
+            exit 0
+          fi
           if [ "$PREPARE" != "success" ]; then echo "::error::agent-smoke-prepare: $PREPARE"; exit 1; fi
           if [ "$AVAILABLE" != "true" ]; then echo "::notice::skill not on the base branch yet: nothing to verify"; exit 0; fi
           if [ "$AGENT" != "success" ]; then echo "::error::agent-smoke-run: $AGENT"; exit 1; fi
