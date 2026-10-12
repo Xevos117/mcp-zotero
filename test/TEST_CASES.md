@@ -584,13 +584,12 @@ notturni, con il link alla run e i nomi dei test (mai dati).
 
 ## Agente smoke (`.github/workflows/claude-agent-smoke.yml`, skill `.claude/skills/test-mcp-zotero`)
 
-Un agente Claude Code vero (claude-code-action v1.0.248 fissata per SHA, Claude Code 2.1.296, modello
-`claude-sonnet-5-5`, autenticazione con Workload Identity Federation di Anthropic: variabili `ANTHROPIC_*` dell'environment
+Un agente Claude vero (Claude Agent SDK `@anthropic-ai/claude-agent-sdk`, eseguito da `scripts/run-agent.mjs` con la
+configurazione `.github/agents/agent-smoke.json`, modello `claude-sonnet-5-5`, autenticazione con Workload Identity Federation di Anthropic: variabili `ANTHROPIC_*` dell'environment
 `zotero-live`, `id-token: write`, nessuna API key) carica la skill di progetto e usa il server come un utente. Il prompt è solo "Carica la skill
 test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non è dell'agente**: lo decide
 `test/live/verify-claims.mjs`, poi la stessa pulizia di live-tests (solo pulizia, sul runId dell'agente).
-Gira sulle PR (contestuale alle modifiche) e a mano (`workflow_dispatch`, ad esempio su `main` dopo un merge); niente
-`push`: claude-code-action non supporta quell'evento ("Unsupported event type: push", prima run su `main`).
+Gira sulle PR (contestuale alle modifiche) e a mano (`workflow_dispatch`, ad esempio su `main` dopo un merge).
 `prepare.mjs` svuota `agent-out/` e `agent-audit/` prima di scrivere il contesto, gli hook marcano ogni riga di audit
 e di negazione con il runId e verify-claims rifiuta righe di un'altra run. Il contesto di riferimento è la copia scritta
 da prepare in `agent-audit/` (in CI portata accanto all'audit come `audit-context.json`): `agent-out/context.json`, che
@@ -638,7 +637,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
   nel job successivo), username, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne resta uno
   (anche dentro i docx); conservazione 1 giorno.
-- **Sulle PR** claude-code-action ripristina `.claude/` e `CLAUDE.md` dal branch di base (configurazione dell'agente
+- **Sulle PR** il job dell'agente ripristina `.claude/`, `CLAUDE.md` (e `.mcp.json`, `.claude.json`, `CLAUDE.local.md`) dal branch di base (configurazione dell'agente
   scritta nella PR = non fidata): gira la skill del branch di base. Se lì la skill non c'è ancora (la PR che la
   introduce), il job lo segnala e salta; il primo collaudo vero è l'avvio manuale da `main` dopo il merge.
 - **Percorso**: P0 precondizioni (15 tool, get_user_id, sentinella o safe mode); F0 sonde dei guardrail (un comando
@@ -732,6 +731,10 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | WL-02 | job obbligatori `live-tests` e `agent-smoke` | `!cancelled()`, controllo su `changes`, verdetto dell'agente che richiede verify riuscito |
 | WL-03 | concurrency di live-tests e agente smoke | `cancel-in-progress: false` |
 | RM-01..03 | template MCP: variabili e default, node e server assoluti, opzionali vuote omesse; variabile obbligatoria mancante; nessun valore nel template | config concreta; errore che la nomina; solo segnaposto |
+| RA-01..02 | runner Agent SDK (`scripts/run-agent.mjs`, `test/utils/run-agent.test.ts`): config dello smoke con `${RUNNER_TEMP}`; variabile o campo obbligatorio mancante | percorsi espansi, output fuori dal workspace; errore |
+| RA-03 | federazione e ambiente dell'agente | attiva solo con rule id e organization id; `ACTIONS_ID_TOKEN_REQUEST_*` rimossi |
+| RA-04 | opzioni SDK di smoke e deps | `dontAsk`, solo impostazioni di progetto, config MCP passata per percorso; deps senza MCP né schema, push/gh/publish negati |
+| RA-05 | esito: errore API, nessun risultato, schema senza output strutturato | fallimento con il motivo (errore e stato HTTP) |
 
 Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`, stessa
 configurazione della CI: template MCP, `--tools`, `dontAsk`, hook): 78 turni, 0,69 USD, 2 min 20 s (i limiti in CI,
@@ -748,8 +751,8 @@ livello 3b (AID-28..31) e da allora la scansione di robustezza tratta quel testo
 Il primo del mese (e a mano), nell'environment `claude-deps` (solo le variabili `ANTHROPIC_*` della Workload Identity
 Federation di Anthropic, nessun secret). Tre job con il minimo dei permessi:
 - **agent**: esce subito se c'è già una PR `deps/*`; `npm ci --ignore-scripts` e `NPM_CONFIG_IGNORE_SCRIPTS=true` per
-  tutto il job; l'agente (claude-code-action, `claude-opus-5-5`, `--tools "Skill,Read,Glob,Grep,Edit,Write,Bash"`, `--permission-mode dontAsk`, `--max-turns 120`, `--max-budget-usd 15`) ha il
-  `GITHUB_TOKEN` in sola lettura, può modificare solo `package.json`, `package-lock.json`, `CHANGELOG.md` e
+  tutto il job; l'agente (Agent SDK via `scripts/run-agent.mjs`, `.github/agents/deps-update.json`: `claude-opus-5-5`, tool `Skill,Read,Glob,Grep,Edit,Write,Bash`, `dontAsk`, 120 turni, 15 USD) non ha
+  token GitHub nel suo ambiente, può modificare solo `package.json`, `package-lock.json`, `CHANGELOG.md` e
   `agent-out/deps-pr.md`, e usare `npm outdated|view|update|install|ci|run` e `git status/diff/log`; niente commit, push, `gh` o publish. Un aggiornamento che
   rompe qualcosa viene rinviato, non corretto. Lo step finale produce una patch dei soli tre file (se l'agente ha
   toccato altro il job fallisce senza PR).

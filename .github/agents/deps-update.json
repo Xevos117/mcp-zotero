@@ -1,0 +1,47 @@
+{
+  "prompt": "Carica la skill deps-update e seguila.",
+  "model": "claude-opus-5-5",
+  "skills": [
+    "deps-update"
+  ],
+  "tools": [
+    "Skill",
+    "Read",
+    "Glob",
+    "Grep",
+    "Edit",
+    "Write",
+    "Bash"
+  ],
+  "allowedTools": [
+    "Skill",
+    "Read",
+    "Glob",
+    "Grep",
+    "Edit(./package.json)",
+    "Edit(./package-lock.json)",
+    "Edit(./CHANGELOG.md)",
+    "Edit(./agent-out/**)",
+    "Bash(npm outdated *)",
+    "Bash(npm view *)",
+    "Bash(npm update *)",
+    "Bash(npm install *)",
+    "Bash(npm ci *)",
+    "Bash(npm run *)",
+    "Bash(git status *)",
+    "Bash(git diff *)",
+    "Bash(git log *)"
+  ],
+  "disallowedTools": [
+    "WebFetch",
+    "WebSearch",
+    "Bash(git push *)",
+    "Bash(git commit *)",
+    "Bash(gh *)",
+    "Bash(npm publish *)"
+  ],
+  "maxTurns": 120,
+  "maxBudgetUsd": 15,
+  "timeoutMinutes": 42,
+  "transcript": "${RUNNER_TEMP}/agent/deps-execution.json"
+}

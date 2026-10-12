@@ -1,6 +1,6 @@
 name: Agent smoke test
 
-# A real Claude Code agent (claude-code-action, Agent SDK) uses the MCP server like a user, following
+# A real Claude agent (Claude Agent SDK, scripts/run-agent.mjs) uses the MCP server like a user, following
 # the versioned skill .claude/skills/test-mcp-zotero. The verdict is NOT the agent's: it comes from
 # test/live/verify-claims.mjs, which checks the agent's claims against the Zotero Web API.
 # Environment `zotero-live`: the live-test Zotero secrets, plus the Anthropic Workload Identity
@@ -12,8 +12,7 @@ name: Agent smoke test
 # test account and takes the lock; `agent-smoke-run` is the only job with id-token (for the federation
 # exchange) and runs no npm; `agent-smoke-verify` (no id-token) verifies the claims; `agent-smoke` decides the
 # required check; `agent-smoke-cleanup` cleans up and releases the lock.
-# Triggers: pull requests (contextual to the change) and manual runs. No `push`: claude-code-action does not
-# support push events ("Unsupported event type: push"); main is covered by a manual run after a merge.
+# Triggers: pull requests (contextual to the change) and manual runs; main is covered by a manual run after a merge.
 on:
   pull_request:
   workflow_dispatch:
@@ -54,7 +53,7 @@ jobs:
           fi
           changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
           printf '%s\n' "$changed"
-          if printf '%s\n' "$changed" | grep -Eq '^(src/|skills/zotero-skill-mcp-integrations/|\.claude/skills/test-mcp-zotero/|\.claude/agent-smoke/|test/live/agent/|test/live/verify-claims\.mjs|test/live/lock\.mjs|test/live/cleanup\.mjs|test/live/global-setup\.ts|test/live/scrub-report\.mjs|test/live/helpers/|test/fixtures/csl/|test/e2e/server-process\.ts|vitest\.live\.config\.ts|test/helpers/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|\.github/workflows/claude-agent-smoke\.yml)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|skills/zotero-skill-mcp-integrations/|\.claude/skills/test-mcp-zotero/|\.claude/agent-smoke/|test/live/agent/|test/live/verify-claims\.mjs|test/live/lock\.mjs|test/live/cleanup\.mjs|test/live/global-setup\.ts|test/live/scrub-report\.mjs|test/live/helpers/|test/fixtures/csl/|test/e2e/server-process\.ts|vitest\.live\.config\.ts|test/helpers/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|scripts/run-agent\.mjs|\.github/agents/agent-smoke\.json|\.github/workflows/claude-agent-smoke\.yml)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -89,7 +88,7 @@ jobs:
           node-version: 24
           cache: npm
 
-      # On pull requests claude-code-action restores .claude/ and CLAUDE.md from the PR base branch
+      # On pull requests the agent job restores .claude/ and CLAUDE.md from the PR base branch
       # (PR-authored agent config is untrusted), so the skill that runs is the base branch's version.
       - name: Skill available
         id: skill
@@ -213,8 +212,8 @@ jobs:
     timeout-minutes: 55
     permissions:
       contents: read
-      # Only job with an OIDC token: the Anthropic federation exchange, done by the action itself. The
-      # action removes ACTIONS_ID_TOKEN_REQUEST_* from the agent's environment; no npm runs here.
+      # Only job with an OIDC token: the Anthropic federation exchange, prepared by scripts/run-agent.mjs, which
+      # removes ACTIONS_ID_TOKEN_REQUEST_* from the agent's environment; no npm runs here.
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -244,6 +243,20 @@ jobs:
           # run settings for the hooks of .claude/agent-smoke, where the agent cannot edit them
           mkdir -p agent-audit && cp agent-out/context.json agent-audit/context.json
 
+      # A pull request's own agent configuration is untrusted: the skill, hooks and instructions the agent follows
+      # come from the base branch. Paths missing on the base are removed.
+      - name: Agent configuration from the base branch
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 2
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          for p in .claude CLAUDE.md CLAUDE.local.md .mcp.json .claude.json; do
+            rm -rf "$p"
+            if git cat-file -e "origin/$BASE_REF:$p" 2>/dev/null; then git checkout "origin/$BASE_REF" -- "$p"; fi
+          done
+          test -f .claude/skills/test-mcp-zotero/SKILL.md && test -f .claude/agent-smoke/settings.json
+
       # The MCP server is configured here, from the same template used locally
       # (test/live/agent/mcp.template.json); the agent never configures MCP. The Zotero key goes only into
       # this file (mode 600, removed after the agent step); the agent's environment never contains it.
@@ -257,43 +270,25 @@ jobs:
           MCP_CONFIG: ${{ runner.temp }}/mcp-zotero.json
         run: node test/live/agent/render-mcp.mjs "$MCP_CONFIG"
 
-      # Tools: --tools limits the built-in set to what the skill uses (Write is needed to create files; its
-      # permission rule is Edit(...)); --permission-mode dontAsk denies anything the allow rules do not cover,
-      # without prompting. The two commands are wrappers that keep every path inside agent-out/.
-      # Hooks (--settings .claude/agent-smoke/settings.json; on pull requests the action restores .claude/ from
-      # the base branch, so the PR cannot change them): Bash allowlist of the exact command shapes, deletions
+      # Agent: scripts/run-agent.mjs runs the Claude Agent SDK with .github/agents/agent-smoke.json. Tools: `tools`
+      # limits the built-in set to what the skill uses (Write is needed to create files; its permission rule is
+      # Edit(...)); permission mode dontAsk denies anything the allow rules do not cover, without prompting. The two
+      # commands are wrappers that keep every path inside agent-out/. Hooks (.claude/agent-smoke/settings.json, from
+      # the base branch on pull requests, see the step above): Bash allowlist of the exact command shapes, deletions
       # only of keys this run created, and an audit log of every Zotero call and Bash command
-      # (agent-audit/audit.jsonl, outside agent-out/) that verify-claims uses as evidence.
-      - name: Claude Code agent (skill test-mcp-zotero)
+      # (agent-audit/audit.jsonl, outside agent-out/) that verify-claims uses as evidence. The runner fetches the
+      # GitHub OIDC token for the federation exchange and removes ACTIONS_ID_TOKEN_REQUEST_* from the agent's env.
+      - name: Claude agent (Agent SDK, skill test-mcp-zotero)
         id: claude
         timeout-minutes: 45
-        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc # v1.0.248
         env:
           MCP_TIMEOUT: "30000"
           MCP_TOOL_TIMEOUT: "120000"
-        with:
-          anthropic_federation_rule_id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
-          anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
-          anthropic_service_account_id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
-          anthropic_workspace_id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
-          # read-only token: no Claude App token exchange, no write access for the agent
-          github_token: ${{ github.token }}
-          # runs started by deps-update.yml (workflow_dispatch with GITHUB_TOKEN) have this bot as actor;
-          # agent mode refuses non-human actors otherwise. Only this bot, never "*".
-          allowed_bots: "github-actions[bot]"
-          prompt: "Carica la skill test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt."
-          claude_args: >-
-            --model claude-sonnet-5-5
-            --tools "Skill,Read,Edit,Write,Bash"
-            --permission-mode dontAsk
-            --settings .claude/agent-smoke/settings.json
-            --max-turns 160
-            --max-budget-usd 10
-            --mcp-config ${{ runner.temp }}/mcp-zotero.json
-            --strict-mcp-config
-            --allowedTools "Skill,mcp__zotero__*,Read(./agent-out/**),Edit(./agent-out/**),Bash(node test/live/agent/make-docx.mjs *),Bash(node test/live/agent/inject.mjs *)"
-            --disallowedTools "WebFetch,WebSearch"
-            --json-schema '{"type":"object","properties":{"summary":{"type":"string"},"scenarios":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string","enum":["passed","failed","skipped"]},"notes":{"type":"string"}},"required":["id","status"]}},"friction":{"type":"array","items":{"type":"object","properties":{"tool":{"type":"string"},"note":{"type":"string"}},"required":["tool","note"]}}},"required":["summary","scenarios"]}'
+          ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+        run: node scripts/run-agent.mjs .github/agents/agent-smoke.json
 
       - name: Remove the MCP config
         if: always()
@@ -305,13 +300,12 @@ jobs:
       - name: Collect the agent output
         if: always()
         timeout-minutes: 2
-        env:
-          AGENT_REPORT: ${{ steps.claude.outputs.structured_output }}
-          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
         run: |
           mkdir -p agent-out
-          if [ -n "$AGENT_REPORT" ]; then printf '%s' "$AGENT_REPORT" > agent-out/agent-report.json; else echo '{}' > agent-out/agent-report.json; fi
-          if [ -n "$EXECUTION_FILE" ] && [ -f "$EXECUTION_FILE" ]; then cp "$EXECUTION_FILE" agent-out/execution.json; fi
+          # written by the runner outside the workspace, so the agent cannot plant them in agent-out/
+          rm -f agent-out/agent-report.json agent-out/execution.json
+          if [ -s "$RUNNER_TEMP/agent/agent-report.json" ]; then cp "$RUNNER_TEMP/agent/agent-report.json" agent-out/agent-report.json; else echo '{}' > agent-out/agent-report.json; fi
+          if [ -f "$RUNNER_TEMP/agent/execution.json" ]; then cp "$RUNNER_TEMP/agent/execution.json" agent-out/execution.json; fi
           for f in audit.jsonl denials.jsonl; do if [ -f "agent-audit/$f" ]; then cp "agent-audit/$f" "agent-out/$f"; fi; done
           # the context the hooks read (the agent cannot edit it): verify-claims compares agent-out/context.json with it
           if [ -f agent-audit/context.json ]; then cp agent-audit/context.json agent-out/audit-context.json; fi
