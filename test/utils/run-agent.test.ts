@@ -42,8 +42,10 @@ describe("run-agent: runner Agent SDK degli agenti CI (RA)", () => {
     expect(o.maxBudgetUsd).toBe(10);
     expect(o.env).toBe(env);
     const deps = sdkOptions(loadConfig(config("deps-update.json"), { RUNNER_TEMP: "/tmp/rt" }), env, new AbortController());
-    expect(deps.extraArgs).toEqual({});
+    expect(deps.extraArgs).toEqual({ "mcp-config": ".github/agents/deps-mcp.json", "strict-mcp-config": null });
     expect(deps.outputFormat).toBeUndefined();
+    expect(deps.allowedTools).toEqual(expect.arrayContaining(["mcp__context7__resolve-library-id", "mcp__context7__query-docs"]));
+    expect(deps.allowedTools.filter((t: string) => t.startsWith("mcp__"))).toHaveLength(2);
     expect(deps.disallowedTools).toEqual(expect.arrayContaining(["Bash(git push *)", "Bash(gh *)", "Bash(npm publish *)"]));
   });
 
