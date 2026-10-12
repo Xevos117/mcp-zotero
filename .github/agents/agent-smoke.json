@@ -1,0 +1,89 @@
+{
+  "prompt": "Carica la skill test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.",
+  "model": "claude-sonnet-5-5",
+  "skills": [
+    "test-mcp-zotero"
+  ],
+  "tools": [
+    "Skill",
+    "Read",
+    "Edit",
+    "Write",
+    "Bash"
+  ],
+  "allowedTools": [
+    "Skill",
+    "mcp__zotero__*",
+    "Read(./agent-out/**)",
+    "Edit(./agent-out/**)",
+    "Bash(node test/live/agent/make-docx.mjs *)",
+    "Bash(node test/live/agent/inject.mjs *)"
+  ],
+  "disallowedTools": [
+    "WebFetch",
+    "WebSearch"
+  ],
+  "settings": ".claude/agent-smoke/settings.json",
+  "mcpConfig": "${RUNNER_TEMP}/mcp-zotero.json",
+  "maxTurns": 160,
+  "maxBudgetUsd": 10,
+  "timeoutMinutes": 42,
+  "transcript": "${RUNNER_TEMP}/agent/execution.json",
+  "report": "${RUNNER_TEMP}/agent/agent-report.json",
+  "jsonSchema": {
+    "type": "object",
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "scenarios": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "passed",
+                "failed",
+                "skipped"
+              ]
+            },
+            "notes": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status"
+          ]
+        }
+      },
+      "friction": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "tool": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "tool",
+            "note"
+          ]
+        }
+      }
+    },
+    "required": [
+      "summary",
+      "scenarios"
+    ]
+  }
+}

@@ -59,7 +59,8 @@ the global teardown can remove it. After an interrupted run: `npm run test:live:
 
 The agent smoke test (`.github/workflows/claude-agent-smoke.yml`, skill `.claude/skills/test-mcp-zotero`)
 gets its environment from whoever starts the session, never from the agent: MCP server from
-`test/live/agent/mcp.template.json`, `--tools`, `--permission-mode dontAsk` and the hooks of
+`test/live/agent/mcp.template.json`, built-in tools, permission mode `dontAsk` (in CI from
+`.github/agents/agent-smoke.json`) and the hooks of
 `.claude/agent-smoke/settings.json` (Bash allowlist, delete policy, audit log used as evidence by
 `test/live/verify-claims.mjs`). Local runs use the same pieces: `test/live/agent/README.md`.
 
@@ -69,7 +70,7 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 |---|---|---|
 | `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging on Node 22/24/26 |
 | `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `live-tests-run`: `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; `live-tests` (required check) decides from it; nightly failures open/update one issue |
-| `claude-agent-smoke.yml` | same-repo PRs by the owner or a bot, manual (no `push`: claude-code-action does not support it; run it by hand on `main` after a merge) | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
+| `claude-agent-smoke.yml` | same-repo PRs by the owner or a bot, manual (run it by hand on `main` after a merge) | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
 | `deps-update.yml` | 1st of the month, manual | three jobs: agent (read-only token, no install scripts, leaves a patch) → open-pr (no npm, no id-token: pushes `deps/<date>` and opens the PR with `GITHUB_TOKEN`, then starts test/live-tests/agent-smoke on the branch with `workflow_dispatch`) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for those checks on the exact SHA, `--match-head-commit`) |
 | `release.yml` | GitHub release published, manual | tests, npm publish, skill zips (owner only) |
 
@@ -106,8 +107,11 @@ data on the test account): a newer push queues.
 Verified with a scratch workflow: a job that hits `timeout-minutes` concludes `cancelled`, and a dependent
 job with `if: !cancelled()` still runs and sees `needs.<job>.result == 'cancelled'`, so a timeout turns
 the verdict red instead of skipping it. Actions in the new workflows are pinned by
-SHA; Dependabot updates them. On pull requests claude-code-action restores `.claude/` and
+SHA; Dependabot updates them. On pull requests the agent job restores `.claude/` and
 `CLAUDE.md` from the base branch, so a PR cannot change the instructions its own agent run follows.
+
+The CI agents run with the Claude Agent SDK (`scripts/run-agent.mjs`, one JSON config per agent in
+`.github/agents/`).
 
 ## Scheduled workflows
 
