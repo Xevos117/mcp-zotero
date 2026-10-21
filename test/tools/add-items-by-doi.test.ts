@@ -5,6 +5,7 @@ import {
   expectValidationError,
   expectErrorJson,
   expectToolError,
+  expectApiError,
 } from "../helpers/mcp-harness.js";
 import { FakeHandler, jsonResponse, networkError, statusResponse } from "../helpers/fake-net.js";
 import { ZBASE, zWrite, zError } from "../helpers/zotero-fake.js";
@@ -102,6 +103,8 @@ describe("add_items_by_doi (MCP)", () => {
       expect(out.json.pdf_results).toEqual([
         expect.objectContaining({ item_key: "PAPER000", pdf_attached: false, error: expect.stringContaining("UNPAYWALL_EMAIL") }),
       ]);
+      // una sola volta a livello di risposta: gli item vanno bene, cosa dire all'utente
+      expect(out.json.hint).toMatch(/^No PDF lookup was done \(the items themselves are fine\)\. Tell the user .*UNPAYWALL_EMAIL.*restart the client/);
       expect(h.net.toHost(UNPAYWALL_HOST)).toHaveLength(0);
     });
 
@@ -138,6 +141,7 @@ describe("add_items_by_doi (MCP)", () => {
       );
       expect(json.failed.map((f: { doi: string }) => f.doi)).toEqual(["10.1/missing", "10.1/net"]);
       expect(json.failed[1].error).toContain("doi.org unreachable");
+      expect(json.hint).toMatch(/^Nothing was created;.*bare DOIs.*add_items.*retry later/);
       expect(h.net.requests("POST", ITEMS)).toHaveLength(0);
     });
 
@@ -189,7 +193,7 @@ describe("add_items_by_doi (MCP)", () => {
       ["pagina HTML con 200", 200, "<!DOCTYPE html><html>DOI home</html>", "DOI not found or not resolvable: 10.1/html (response is not a JSON object (HTTP 200, text/html))"],
       ["corpo vuoto con 200", 200, "", "DOI not found or not resolvable: 10.1/html (response is not a JSON object (HTTP 200, text/html))"],
       ["JSON non oggetto (null)", 200, "null", "DOI not found or not resolvable: 10.1/html (response is not a JSON object (HTTP 200, text/html))"],
-      ["pagina HTML con 404", 404, "<!DOCTYPE html><html>Not found</html>", "DOI resolution failed for 10.1/html: 404"],
+      ["pagina HTML con 404", 404, "<!DOCTYPE html><html>Not found</html>", "DOI resolution failed for 10.1/html: 404 (DOI not registered or mistyped)"],
     ])("AID-30 doi.org risponde con %s → errore leggibile per quel DOI, mai l'errore grezzo di JSON.parse", async (_label, status, body, message) => {
       h.net.on("GET", DOI_ROUTE, (req) => {
         const doi = decodeURIComponent(req.url.pathname.slice(1));
@@ -208,6 +212,7 @@ describe("add_items_by_doi (MCP)", () => {
       const json = expectErrorJson(await h.call("add_items_by_doi", { dois: ["10.1/a"] }), "Zotero API write failed");
       expect(json.error).toContain("Item 0");
       expect(json.error).toContain("Invalid field");
+      expect(json.hint).toMatch(/^Nothing was created\..*get_collections/);
     });
 
     // BUG: add-items-by-doi.ts:160 tratta un fallimento parziale come totale:
@@ -235,13 +240,13 @@ describe("add_items_by_doi (MCP)", () => {
     it.each([403, 404, 412, 413, 429, 500, 503])("AID-13 HTTP %i sulla POST Zotero → isError", async (status) => {
       h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a") }));
       h.net.on("POST", ITEMS, zError(status));
-      expectToolError(await h.call("add_items_by_doi", { dois: ["10.1/a"] }), String(status));
+      expectApiError(await h.call("add_items_by_doi", { dois: ["10.1/a"] }), status);
     });
 
     it("AID-14 errore di rete sulla POST Zotero → isError", async () => {
       h.net.on("GET", DOI_ROUTE, doiResolver({ "10.1/a": csl("10.1/a") }));
       h.net.on("POST", ITEMS, networkError());
-      expectToolError(await h.call("add_items_by_doi", { dois: ["10.1/a"] }));
+      expectApiError(await h.call("add_items_by_doi", { dois: ["10.1/a"] }));
     });
 
     it("AID-15 batch di 10 DOI: risoluzione concorrente, una sola POST, ordine preservato", async () => {
@@ -343,6 +348,7 @@ describe("add_items_by_doi (MCP)", () => {
       expect(out.isError).toBe(false);
       expect(out.json.success).toHaveLength(1);
       expect(out.json.storage_quota_warning).toContain("storage quota is full");
+      expect(out.json.storage_quota_warning).toMatch(/Tell the user .*settings\/storage.*find_and_attach_pdfs/);
       expect(out.json.pdf_results[0]).toMatchObject({ pdf_attached: false, error: expect.stringContaining("storage quota") });
     });
 

@@ -44,7 +44,14 @@ describe("resolveDoi", () => {
     );
 
     await expect(resolveDoi("10.9999/nonexistent")).rejects.toThrow(
-      "DOI resolution failed"
+      "DOI resolution failed for 10.9999/nonexistent: 404 Not Found (DOI not registered or mistyped)"
+    );
+  });
+
+  it("HTTP 5xx after the retries → says the registry is failing, retry later", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 502, statusText: "", headers: new Headers() }));
+    await expect(resolveDoi("10.1/x")).rejects.toThrow(
+      "DOI resolution failed for 10.1/x: 502 (doi.org or the registry is busy or failing: retry later)"
     );
   });
 

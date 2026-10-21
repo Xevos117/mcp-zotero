@@ -5,11 +5,13 @@ import { formatJsonResult, formatErrorResponse, formatEmptyResult, errorMessage,
 import { OaPdfResult, OaPdfTarget, attachOpenAccessPdfs } from "../utils/oa-pdf.js";
 import { fetchAllPages, fetchItemsByKeys } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { describeAnyError, MISSING_API_KEY, MISSING_API_KEY_HINT } from "../utils/error-hints.js";
+import { UNPAYWALL_EMAIL_HINT, UNPAYWALL_EMAIL_MISSING } from "../utils/unpaywall.js";
 
 export const toolConfig = {
   name: "find_and_attach_pdfs",
   description:
-    "For each Zotero item, check Unpaywall for open access PDFs and attach them. Items must have a DOI. Uses the same source as Zotero Desktop's 'Find Available PDFs'.",
+    "For each Zotero item, check Unpaywall for open access PDFs and attach them. Items must have a DOI; needs UNPAYWALL_EMAIL in the server settings. Uploads use the user's Zotero file storage; dry_run only reports what is available. Uses the same source as Zotero Desktop's 'Find Available PDFs'.",
   inputSchema: {
     item_keys: z
       .array(zoteroKey())
@@ -45,15 +47,17 @@ export async function handleFindAndAttachPdfs(
 
   // Validate: exactly one of item_keys or collection_key
   if (item_keys && collection_key) {
-    return formatErrorResponse("Provide either item_keys or collection_key, not both");
+    return formatErrorResponse("Provide either item_keys or collection_key, not both: call once per selection.");
   }
   if (!item_keys && !collection_key) {
-    return formatErrorResponse("Provide either item_keys or collection_key");
+    return formatErrorResponse(
+      "Provide either item_keys or collection_key: item_keys for specific items (from search_library), collection_key for every item of a collection (from get_collections)."
+    );
   }
 
   const apiKey = process.env.ZOTERO_API_KEY;
   if (!apiKey) {
-    return formatErrorResponse("ZOTERO_API_KEY environment variable is not set");
+    return formatErrorResponse(MISSING_API_KEY, { hint: MISSING_API_KEY_HINT });
   }
 
   try {
@@ -72,7 +76,11 @@ export async function handleFindAndAttachPdfs(
     }
 
     if (keys.length === 0) {
-      return formatEmptyResult("No items to process");
+      return formatEmptyResult("No items to process", {
+        suggestion: collection_key
+          ? "The collection is empty or holds only attachments and notes: check it with get_collection_items."
+          : "item_keys is empty: pass at least one item key (from search_library or get_collection_items).",
+      });
     }
 
     // 2. Batch-fetch item metadata to get DOIs
@@ -93,8 +101,8 @@ export async function handleFindAndAttachPdfs(
     const targets: OaPdfTarget[] = [];
     for (const key of keys) {
       const item = itemMap.get(key);
-      if (!item) preResults.set(key, { item_key: key, doi: null, status: "error", reason: "Item not found" });
-      else if (!item.DOI) preResults.set(key, { item_key: key, doi: null, status: "error", reason: "No DOI" });
+      if (!item) preResults.set(key, { item_key: key, doi: null, status: "error", reason: "Item not found in this library" });
+      else if (!item.DOI) preResults.set(key, { item_key: key, doi: null, status: "error", reason: "No DOI: Unpaywall needs one. Add the DOI to the item, or attach a PDF from a known URL with import_pdf_to_zotero" });
       else targets.push({ itemKey: key, doi: item.DOI });
     }
 
@@ -136,13 +144,15 @@ export async function handleFindAndAttachPdfs(
       ...(quotaExceeded > 0
         ? {
             storage_quota_warning:
-              "Zotero storage quota is full. Remaining PDF uploads were skipped. Free up space at https://www.zotero.org/settings/storage or upgrade your plan.",
+              "Zotero storage quota is full. Remaining PDF uploads were skipped. Tell the user they can free up space or upgrade at https://www.zotero.org/settings/storage, then run this tool again.",
           }
         : {}),
+      ...(results.some((r) => r.reason === UNPAYWALL_EMAIL_MISSING) ? { hint: UNPAYWALL_EMAIL_HINT } : {}),
       results,
     });
   } catch (err) {
     logToolError("find_and_attach_pdfs", err);
-    return formatErrorResponse("find_and_attach_pdfs failed", { details: errorMessage(err) });
+    const { error, ...described } = describeAnyError(err);
+    return formatErrorResponse(`find_and_attach_pdfs failed: ${error}`, { ...described, details: errorMessage(err) });
   }
 }

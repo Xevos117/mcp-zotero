@@ -69,13 +69,15 @@ test normali. Non restano `it.fails` nella suite.
 | SL-03 | query di soli spazi / con spazi | `q` omesso / trimmato |
 | SL-04 | limit 500 | limit=100 |
 | SL-05 | sort=title, asc, limit 5 | parametri inoltrati; nessun dateAdded |
-| SL-06/07 | risultato vuoto con/senza query | risultato vuoto (`message`, non isError) "No results found" (con query) / "No items found" |
+| SL-06/07 | risultato vuoto con/senza query | risultato vuoto (`message`, non isError) "No results found" (con query) / "No items found"; `suggestion` con cosa provare (titolo/autore/anno, senza query) / come aggiungere voci |
 | SL-08 | query/titoli unicode | `q` decodificato identico, unicode preservato |
 | SL-09/10 | metadati mancanti, creator senza nome | fallback Untitled / No authors listed / No date |
 | SL-11 | sort, direction, limit, query non validi | isError con il nome del campo, nessuna chiamata HTTP |
-| SL-12 | HTTP 403/404/412/429/500/503 | isError contenente lo status |
-| SL-13 | errore di rete | isError |
+| SL-12 | HTTP 403/404/412/429/500/503 | errore strutturato da `runTool`: `error` con "HTTP N", `http_status`, `hint` con il passo successivo |
+| SL-13 | errore di rete | errore strutturato "Network error: …ENOTFOUND…", `hint` (riprova, poi connessione della macchina del server) |
 | SL-14 | creator istituzionale (solo `name`) | nella stringa `authors` (prima: "No authors listed", trovato dall'agente smoke; corretto nel livello 3b) |
+| SL-15 | 403 con corpo "Invalid key" | `details` "Invalid key"; `hint`: riprovare non serve, pagina zotero.org/settings/keys, ZOTERO_API_KEY nelle impostazioni del server, riavvio del client; nessuna chiave né URL dell'API nel testo |
+| SL-16 | 429 con Retry-After: 12 | `retry_after_s` 12, `hint` "Wait 12 s and retry once…" |
 
 ## get_collections (`get-collections.test.ts`)
 | ID | Scenario | Atteso |
@@ -85,10 +87,10 @@ test normali. Non restano `it.fails` nella suite.
 | GC-03 | Total-Results gonfiato | si ferma alla pagina vuota, nessun loop |
 | GC-04 | Total-Results assente | solo la prima pagina |
 | GC-05 | collezioni nel cestino | escluse di default, incluse con include_trashed |
-| GC-06/07 | tutte nel cestino / nessuna | risultato vuoto (suggestion include_trashed / helpUrl) |
+| GC-06/07 | tutte nel cestino / nessuna | risultato vuoto (suggestion include_trashed=true o create_collection / helpUrl, search_library e create_collection) |
 | GC-08 | nomi unicode | preservati |
 | GC-09 | include_trashed non booleano | isError |
-| GC-10/11/12 | HTTP 4xx/5xx, errore sulla 2ª pagina, errore di rete | isError |
+| GC-10/11/12 | HTTP 4xx/5xx, errore sulla 2ª pagina, errore di rete | errore strutturato con `http_status` e `hint` (rete: "Network error") |
 
 ## get_collection_items (`get-collection-items.test.ts`)
 | ID | Scenario | Atteso |
@@ -96,10 +98,10 @@ test normali. Non restano `it.fails` nella suite.
 | GCI-01 | item completo | total/returned + campi (tags, doi, url, publicationTitle) |
 | GCI-02/03 | allegati e note | esclusi di default (total_items = Total-Results), inclusi con excludeAttachments=false |
 | GCI-04 | item minimale | fallback |
-| GCI-05/06 | vuota / solo allegati | risultato vuoto status `empty` / `invalid_items` |
+| GCI-05/06 | vuota / solo allegati | risultato vuoto status `empty` (suggestion: sottocollezioni non incluse, collection_key negli add_*) / `invalid_items` (suggestion: excludeAttachments=false) |
 | GCI-07 | 230 item | 3 pagine |
-| GCI-08 | 404 | errore strutturato `not_found` |
-| GCI-09/10 | HTTP 403/412/429/500/503, rete | isError |
+| GCI-08 | 404 | errore strutturato "Collection not found…" `not_found`, suggestion get_collections |
+| GCI-09/10 | HTTP 403/412/429/500/503, rete | errore strutturato con `http_status` e `hint` |
 | GCI-11 | unicode | preservato |
 | GCI-12..14 | collectionKey mancante o non stringa, excludeAttachments non booleano | isError |
 | GCI-15 | autore istituzionale (solo `name`) | nella stringa `authors` |
@@ -110,13 +112,13 @@ test normali. Non restano `it.fails` nella suite.
 | GID-01 | 2 chiavi | una sola GET `itemKey=A,B`; mappa chiave → campi specifici del tipo |
 | GID-02 | abstract | escluso di default, incluso con include_abstract |
 | GID-03 | campi strutturali/vuoti | omessi |
-| GID-04/05 | `[]` / nessun item | errore strutturato (nessuna chiamata HTTP) / risultato vuoto con le chiavi richieste |
+| GID-04/05 | `[]` / nessun item | errore strutturato che dice dove prendere le chiavi (nessuna chiamata HTTP) / risultato vuoto con le chiavi richieste e suggestion |
 | GID-06 | chiavi in parte inesistenti | solo quelle trovate |
 | GID-07/08 | fallback, unicode | ok |
 | GID-09/10 | 120 chiavi, 482 chiavi | tutte restituite (GET a blocchi da 50 con limit 50/50/20; nessun 500 per URL lungo) |
 | GID-11 | 20 chiavi | una GET, tutte restituite |
 | GID-12 | item_keys mancante/stringa/numeri, include_abstract non booleano | isError |
-| GID-13/14 | HTTP 4xx/5xx, rete | isError |
+| GID-13/14 | HTTP 4xx/5xx, rete | errore strutturato con `http_status` e `hint` |
 | GID-15 | creators strutturati (cognomi multiparola, editor istituzionale) | `creators` come in Zotero accanto ad `authors` (che ora include anche il nome istituzionale); assente se vuoto |
 | GID-16 | chiavi malformate / risposta con voci non richieste | errore di validazione senza richieste / solo le voci richieste |
 
@@ -128,15 +130,15 @@ test normali. Non restano `it.fails` nella suite.
 | GIF-03/04/05 | max_characters 100 / 0 / default | troncato / nessun limite / 50000 |
 | GIF-06 | figli misti | primo PDF (ignora HTML e note) |
 | GIF-07 | unicode | characters = lunghezza della stringa JS |
-| GIF-08 | fulltext 404 | errore strutturato "not indexed" |
-| GIF-09 | fulltext 403/429/500/503 | errore strutturato "status N" |
-| GIF-10 | fulltext, errore di rete | isError |
-| GIF-11/12/13 | nessun PDF: senza URL / con URL / webpage o blogPost | messaggi dedicati |
-| GIF-14 | item 404 | errore strutturato "Item not found" |
-| GIF-15/16/17 | item HTTP 4xx/5xx, children 500, rete | isError |
-| GIF-18 | ZOTERO_API_KEY assente | errore strutturato, nessuna chiamata HTTP |
+| GIF-08 | fulltext 404 | errore strutturato "not indexed… Retrying now will not help", `hint` per l'utente (aprire il PDF in Zotero desktop o Reindex Item, sincronizzare; PDF scansionati) |
+| GIF-09 | fulltext 403/429/500/503 | errore strutturato "status N" con "HTTP N" e `hint` (403: chiave; altri: riprova) |
+| GIF-10 | fulltext, errore di rete | errore strutturato "Network error: …socket hang up" |
+| GIF-11/12/13 | nessun PDF: senza URL / con URL / webpage o blogPost | messaggi dedicati (11/12: find_and_attach_pdfs o import_pdf_to_zotero, poi di nuovo) |
+| GIF-14 | item 404 | errore strutturato "Item not found in this library", `hint` search_library |
+| GIF-15/16/17 | item HTTP 4xx/5xx, children 500, rete | errore strutturato con `http_status` e `hint` |
+| GIF-18 | ZOTERO_API_KEY assente | errore strutturato con `hint` (chiave da zotero.org/settings/keys nelle impostazioni del server), nessuna chiamata HTTP |
 | GIF-19 | item_key mancante o non stringa, max_characters stringa | isError |
-| GIF-20 | solo un allegato linked_url con contentType PDF | errore con "linked URL", attachment_key e url del link, nessuna GET fulltext |
+| GIF-20 | solo un allegato linked_url con contentType PDF | errore con "linked URL", attachment_key e url del link (aprirlo con un tool web o import_pdf_to_zotero), nessuna GET fulltext |
 | GIF-21 | link elencato prima di un PDF importato | usa il PDF importato |
 | GIF-22 | chiave di un allegato linked_url | errore con "linked URL" e url, nessuna GET fulltext |
 | GIF-23 | fulltext 200 con HTML, corpo vuoto o JSON non oggetto | isError "Zotero fulltext API: response is not a JSON object (HTTP 200, text/html)", mai l'errore grezzo di JSON.parse |
@@ -145,7 +147,7 @@ test normali. Non restano `it.fails` nella suite.
 | ID | Scenario | Atteso |
 |---|---|---|
 | GUI-01..03 | normale / argomenti extra / "0012345" | `{user_id}` verbatim, nessuna chiamata HTTP |
-| GUI-04 | user id "" | isError "library ID is not set", nessuna chiamata HTTP |
+| GUI-04 | user id "" | isError "library ID is not set" (passare library_id o far impostare ZOTERO_USER_ID all'utente), nessuna chiamata HTTP |
 | GUI-05 | tools/call senza `arguments` | successo (corretto nell'SDK 1.32; era BUG con 1.27) |
 | GUI-06 | libreria utente | `{user_id, library_type: "user", library_id, library_path: "users/{id}"}` |
 | GUI-07 | `ZOTERO_LIBRARY_TYPE=group`, id 777 | `user_id` da `ZOTERO_USER_ID`, `library_path: "groups/777"` |
@@ -156,10 +158,11 @@ test normali. Non restano `it.fails` nella suite.
 | CC-01/02/03 | nome, parent, spazi | POST `[{name, parentCollection?}]`, nome trimmato |
 | CC-04 | "", "   ", "\t\n" | errore strutturato, nessuna POST |
 | CC-05 | unicode | round-trip |
-| CC-06 | scrittura `failed` | errore strutturato "Failed to create collection" |
+| CC-06 | scrittura `failed` | errore strutturato "Failed to create collection", `hint` sul parent_collection (get_collections) |
+| CC-06b | scrittura `failed` senza parent | `hint` sul nome |
 | CC-07 | details | contiene il messaggio del server ("code: message") |
 | CC-08 | name mancante/numero, parent numero | isError |
-| CC-09/10 | HTTP 403/404/412/413/429/500/503, rete | isError |
+| CC-09/10 | HTTP 403/404/412/413/429/500/503, rete | errore strutturato con `http_status` e `hint` |
 
 ## add_items (`add-items.test.ts`)
 | ID | Scenario | Atteso |
@@ -173,33 +176,33 @@ test normali. Non restano `it.fails` nella suite.
 | AI-07 | unicode | round-trip |
 | AI-08 | fallisce l'ultimo indice | success/failed corretti, messaggio presente |
 | AI-09/10 | fallisce il primo indice; error come stringa | mapping per indice, non isError; "400: Invalid date" |
-| AI-11 | tutti falliti | errore strutturato "All items failed to create" |
+| AI-11 | tutti falliti | errore strutturato "All items failed to create", `hint` (niente creato, correggere secondo failed[].error) |
 | AI-12 | 50 item | una POST con 50 oggetti |
 | AI-13 | 60 item | POST da 50 + 10, indici 0..59, 60 chiavi distinte |
 | AI-13b | fallimento nel 2º batch | failed con indice 55 e titolo dell'input originale |
 | AI-14 | items mancante/vuoto, itemType, title, campo non valido per il tipo, creatorType, creator incompleto, campo non stringa, tags, collection_key | isError con il nome del campo |
-| AI-15/16 | HTTP 4xx/5xx/413, rete | isError |
+| AI-15/16 | HTTP 4xx/5xx/413, rete | errore strutturato con `http_status` e `hint` |
 
 ## add_items_by_doi (`add-items-by-doi.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
 | AID-01 | DOI valido | GET doi.org con Accept CSL; item convertito (tipo, creators, publicationTitle) |
-| AID-02 | senza UNPAYWALL_EMAIL | pdf_results con warning, nessuna chiamata a Unpaywall |
+| AID-02 | senza UNPAYWALL_EMAIL | pdf_results con warning breve, `hint` unico (cosa dire all'utente, dove impostarla, riavvio), nessuna chiamata a Unpaywall |
 | AID-03 | auto_attach_pdf=false | niente pdf_results |
 | AID-04 | collection_key/tags | nel payload |
 | AID-05 | **DOI non trovato** (404) su 1 di 2 | l'altro viene creato; il primo in failed con 404 |
-| AID-06 | tutti falliti (404 + rete) | errore strutturato, nessuna POST |
+| AID-06 | tutti falliti (404 + rete) | errore strutturato con `hint` (DOI nudi, add_items, riprovare dopo errori di rete), nessuna POST |
 | AID-07 | doi.org 429 + Retry-After 0 | nuovo tentativo, successo |
 | AID-08 | doi.org 500 | in failed, nessun retry |
 | AID-09 | DOI con `<>();` e titolo unicode | codificato nell'URL, round-trip |
 | AID-10 | `[]` | errore strutturato, nessuna chiamata HTTP |
 | AID-28 | DOI `""`, `"   "`, tab | errore di validazione "DOI must not be empty", nessuna chiamata HTTP |
 | AID-29 | DOI con spazi attorno | ripulito prima della risoluzione |
-| AID-30 | doi.org risponde 200 con HTML, corpo vuoto o `null`; 404 con HTML | per quel DOI "DOI not found or not resolvable: … (response is not a JSON object (HTTP 200, text/html))" / "DOI resolution failed … 404"; l'altro DOI creato; mai "Unexpected token"/"is not valid JSON" |
-| AID-11 | scrittura `failed` | errore strutturato "Zotero API write failed: Item 0 ..." |
+| AID-30 | doi.org risponde 200 con HTML, corpo vuoto o `null`; 404 con HTML | per quel DOI "DOI not found or not resolvable: … (response is not a JSON object (HTTP 200, text/html))" / "DOI resolution failed … 404 (DOI not registered or mistyped)"; l'altro DOI creato; mai "Unexpected token"/"is not valid JSON" |
+| AID-11 | scrittura `failed` | errore strutturato "Zotero API write failed: Item 0 ...", `hint` "Nothing was created…" |
 | AID-12 | scrittura parziale | non isError; success con i creati, failed con `{ doi, error }` |
 | AID-12b | 60 DOI | POST da 50 + 10, ordine dei DOI preservato |
-| AID-13/14 | POST HTTP 403/404/412/413/429/500/503, rete | isError |
+| AID-13/14 | POST HTTP 403/404/412/413/429/500/503, rete | errore strutturato con `http_status` e `hint` |
 | AID-15 | 10 DOI | una POST, ordine preservato |
 | AID-16 | dois, auto_attach_pdf, tags non validi | isError |
 | AID-17 | OA gold | download + upload, allegato figlio, `source unpaywall_gold` |
@@ -207,7 +210,7 @@ test normali. Non restano `it.fails` nella suite.
 | AID-19 | green con sola landing page | landing_url + suggerimento import_pdf_to_zotero |
 | AID-20 | Unpaywall 404/500/rete | item creati, pdf_attached false |
 | AID-31 | Unpaywall risponde 200 con HTML | item creato, pdf_attached false, nessun errore grezzo |
-| AID-21 | **quota storage** (413) | storage_quota_warning, item creati |
+| AID-21 | **quota storage** (413) | storage_quota_warning (cosa dire all'utente, poi find_and_attach_pdfs), item creati |
 | AID-22 | quota piena su 12 DOI | upload successivi saltati |
 | AID-23 | un download 404 | risultati per singolo item |
 | AID-24 | ZOTERO_API_KEY assente | item creati, fase PDF saltata |
@@ -222,7 +225,7 @@ test normali. Non restano `it.fails` nella suite.
 | ALU-02 | figlio | parentItem, contentType, collections `[]` |
 | ALU-03 | standalone | collections + tags |
 | ALU-04 | unicode | round-trip |
-| ALU-05 | scrittura `failed` | errore strutturato |
+| ALU-05 | scrittura `failed` | errore strutturato, `hint` sul parent_item |
 | ALU-06 | details | contiene il messaggio del server ("code: message") |
 | ALU-07 | url mancante/non valido/numero, tags, collections | isError |
 | ALU-08/09 | HTTP 4xx/5xx, rete | isError |
@@ -230,29 +233,29 @@ test normali. Non restano `it.fails` nella suite.
 ## delete_collection (`delete-collection.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| DC-01 | **guard** none/items | errore strutturato con env_var/current_value/required_values, nessuna chiamata HTTP |
+| DC-01 | **guard** none/items | errore strutturato con env_var/current_value/required_values e il valore attuale nel testo; `hint`: non aggirare il blocco, `UNSAFE_OPERATIONS` 'all' (e cosa abilita 'items') nelle impostazioni del server, riavvio; nessuna chiamata HTTP |
 | DC-02 | validazione prima del guard | isError |
 | DC-03 | all | GET versione → DELETE con If-Unmodified-Since-Version |
 | DC-04/05 | senza nome / nome unicode | name = chiave / preservato |
-| DC-06/07 | 404 su GET / su DELETE | errore strutturato not_found |
-| DC-08 | 412 | errore strutturato version_conflict |
-| DC-09 | versione assente | errore strutturato, nessuna DELETE |
-| DC-10/11/12 | 403/429/500/503 su GET o DELETE, rete | isError |
+| DC-06/07 | 404 su GET / su DELETE | errore strutturato not_found, `hint` "Nothing was deleted…" get_collections |
+| DC-08 | 412 | errore strutturato version_conflict ("not deleted. Retry the same call.") |
+| DC-09 | versione assente | errore strutturato con `hint` di riprovare, nessuna DELETE |
+| DC-10/11/12 | 403/429/500/503 su GET o DELETE, rete | errore strutturato con `http_status` e `hint` |
 | DC-13 | chiave mancante/vuota/numero | isError |
 
 ## delete_items (`delete-items.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| DI-01 | **guard** none | errore strutturato, nessuna chiamata HTTP |
+| DI-01 | **guard** none | errore strutturato "not allowed… UNSAFE_OPERATIONS is 'none'. Nothing was deleted."; `hint`: non aggirare il blocco, 'items' o 'all' e cosa abilitano, dove impostarli ("Deletions allowed" nell'estensione di Claude Desktop, `UNSAFE_OPERATIONS` in claude_desktop_config.json / .mcp.json), riavvio; nessuna chiamata HTTP |
 | DI-02 | items / all | consentito |
 | DI-03 | 2 chiavi | GET itemKey → DELETE `?itemKey=A,B` con la versione della libreria |
 | DI-04 | cancellazione parziale | not_found; cancellate solo le chiavi trovate |
-| DI-05 | nessuna trovata | errore strutturato, nessuna DELETE |
-| DI-06 | 412 | version_conflict |
-| DI-07 | versione assente | errore strutturato |
+| DI-05 | nessuna trovata | errore strutturato con `hint` "Nothing was deleted…", nessuna DELETE |
+| DI-06 | 412 | version_conflict ("nothing was deleted. Retry the same call.") |
+| DI-07 | versione assente | errore strutturato con `hint` di riprovare |
 | DI-08 | 20 chiavi | una GET + una DELETE |
 | DI-09 | 50 chiavi (massimo per chiamata) | tutte cancellate, GET di verifica con limit=50 |
-| DI-10/11/12 | 4xx/5xx su GET o DELETE, rete | isError |
+| DI-10/11/12 | 4xx/5xx su GET o DELETE, rete | errore strutturato con `http_status` e `hint` |
 | DI-13/14 | mancante, `[]`, stringa, 51 chiavi / esattamente 50 | isError / accettato |
 | DI-15 | validazione prima del guard | isError |
 | DI-16 | chiave malformata | errore di validazione, **nessuna richiesta** (prima della 2.0.1 l'API ignorava il filtro e delete_items cancellava voci estranee) |
@@ -266,16 +269,16 @@ test normali. Non restano `it.fails` nella suite.
 | IP-03/04 | figlio / standalone | parentItem e collections `[]` / collections, tags, title, filename |
 | IP-05 | filename dall'URL | percent-decoding unicode; `document.pdf` come fallback |
 | IP-06 | content_type non PDF | fulltext saltato |
-| IP-07/08 | download 403/404/500, rete | errore strutturato con status / details |
-| IP-09/10 | pagina HTML, file vuoto | "not a valid PDF", nessun item creato |
-| IP-11 | 100 MB + 1 | "100 MB", nessun item creato |
-| IP-12/13 | creazione item `failed`, HTTP 4xx/5xx | errore strutturato "import_pdf_to_zotero failed" |
-| IP-14 | **quota storage** (auth 413) | errore strutturato con item_key orfano, suggestion, nota delete_items |
+| IP-07/08 | download 403/404/500, rete | errore strutturato "(HTTP N)" con status e suggestion per status (paywall/login, URL inesistente, riprova) / details e suggestion con fonti aperte (nessun riferimento a Sci-Hub) |
+| IP-09/10 | pagina HTML, file vuoto | "not a valid PDF" (suggestion: link diretto, /pdf/ su arXiv), nessun item creato |
+| IP-11 | 100 MB + 1 | "100 MB" con suggestion (Zotero desktop), nessun item creato |
+| IP-12/13 | creazione item `failed`, HTTP 4xx/5xx | errore strutturato "import_pdf_to_zotero failed", `hint` sul parent_item / `status` e `hint` per lo status ("Nothing was created.") |
+| IP-14 | **quota storage** (auth 413) | errore strutturato con item_key orfano, suggestion, nota per l'utente (delete_items solo se abilitato) |
 | IP-15 | autorizzazione dell'upload 200 con HTML | isError "Upload authorization failed", status 200, details "response is not a JSON object (HTTP 200, text/html)", nessun upload |
-| IP-15/16 | auth 403/412/500, rete | "Upload authorization failed" |
-| IP-17/18 | upload 500 / register 412 | "File upload failed" / "Upload registration failed" |
+| IP-15/16 | auth 403/412/500, rete | "Upload authorization failed" con `item_key` del record senza file e `hint` (un nuovo tentativo ne crea un altro; 403: chiave; altri: riprova) |
+| IP-17/18 | upload 500 / register 412 | "File upload failed" / "Upload registration failed", con `item_key` e `hint` |
 | IP-19/20 | fulltext 413 / PDF non estraibile | successo, fulltext_indexed false con motivo |
-| IP-21 | ZOTERO_API_KEY assente | errore strutturato, nessuna chiamata HTTP |
+| IP-21 | ZOTERO_API_KEY assente | errore strutturato con `hint` per l'utente, nessuna chiamata HTTP |
 | IP-22 | url mancante/non valido, tags, collections, content_type | isError |
 | IP-23 | size_bytes dopo l'estrazione | dimensione reale |
 | IP-24 | size_bytes senza estrazione | dimensione reale |
@@ -285,21 +288,22 @@ test normali. Non restano `it.fails` nella suite.
 |---|---|---|
 | FA-01 | item_keys, OA trovato | attached + conteggi; allegato figlio |
 | FA-02/03 | entrambi / nessuno | errore strutturato |
-| FA-04 | `[]` | risultato vuoto "No items to process" |
+| FA-04 | `[]` | risultato vuoto "No items to process", suggestion "item_keys is empty…" |
 | FA-05 | collection_key (2 pagine, allegati e note) | 20 item processati |
-| FA-06 | collezione vuota | risultato vuoto "No items to process" |
-| FA-07 | senza DOI / chiave fantasma | status error con motivo |
+| FA-06 | collezione vuota | risultato vuoto "No items to process", suggestion get_collection_items |
+| FA-07 | senza DOI / chiave fantasma | status error con motivo ("No DOI: Unpaywall needs one…" / "Item not found in this library") |
 | FA-08/09/10 | PDF esistente / solo snapshot HTML / skip=false | skipped / processato / nessuna richiesta children |
 | FA-11 | dry_run | available + pdf_url, nessun download |
 | FA-12 | closed / green con landing | not_found "No open access PDF found" con oa_status / landing_page_only con landing_url (entrambi contati in not_found) |
-| FA-13 | Unpaywall 404/500/rete | not_found |
-| FA-14 | UNPAYWALL_EMAIL non valida | not_found con warning, nessuna chiamata a Unpaywall |
+| FA-13 | Unpaywall 404 | not_found "No open access PDF found" |
+| FA-13b | Unpaywall 500 / rete | not_found con motivo "Unpaywall lookup failed (…): this does not mean there is no open access PDF. Retry later…" |
+| FA-14 | UNPAYWALL_EMAIL non valida | not_found con warning, `hint` unico per l'utente (dove impostarla, riavvio), nessuna chiamata a Unpaywall |
 | FA-15/16 | URL di fallback / tutti falliti | attached con il fallback / reason "…: publisher.example.org 500, repo.example.org network_error" |
-| FA-17 | **quota storage** | quota_exceeded, warning, item rimanenti saltati |
-| FA-18/19 | GET metadati 4xx/5xx, rete sulla collezione | errore strutturato con details |
+| FA-17 | **quota storage** | quota_exceeded, warning (cosa dire all'utente), nessun `hint` Unpaywall, item rimanenti saltati |
+| FA-18/19 | GET metadati 4xx/5xx, rete sulla collezione | errore strutturato "find_and_attach_pdfs failed: …" con details, `http_status` e `hint` |
 | FA-20 | children 500 su un item | l'item compare in results come error, contato in errors |
 | FA-21 | children 500 su un item | gli altri item vengono processati |
-| FA-22/25 | 120 item_keys / collezione di 120 | tutti processati, nessun "Item not found" |
+| FA-22/25 | 120 item_keys / collezione di 120 | tutti processati, nessun "Item not found in this library" |
 | FA-23 | ZOTERO_API_KEY assente | errore strutturato |
 | FA-24 | item_keys, collection_key, dry_run, skip non validi | isError |
 | FA-26 | PDF solo in una oa_location successiva (PLOS) | attached dal repository, filename dal DOI |
@@ -326,20 +330,22 @@ test normali. Non restano `it.fails` nella suite.
 | IC-01 | 1 zcite | `*_cited.docx` con XML valido, field code CSL_CITATION (uris), BIBL, "(Smith, 2023)"; originale intatto |
 | IC-02 | più tag, multi-chiave, chiavi ripetute | 1 GET per chiave, "(Smith, 2023; Doe & Roe, 2019)" |
 | IC-03 | locator/prefix/suffix | presenti nel field code |
-| IC-04/05 | ieee con num e senza / vancouver con tutti i num | [1] e [?] + warning / nessun warning |
-| IC-06 | nessuno zcite | found 0, output scritto, nessuna chiamata HTTP |
+| IC-04/05 | ieee con num e senza / vancouver con tutti i num | [1] e [?] + warning (quanti hanno num, [?] fino a Refresh, come rimediare) / nessun warning |
+| IC-06 | nessuno zcite | found 0, output scritto, warning "No <zcite> placeholders found…" (intestazioni, piè di pagina, note non lette), nessuna chiamata HTTP |
 | IC-07 | unicode (autori, titolo >30 caratteri, nome file) | XML ben formato, testo corretto |
-| IC-08/09 | .pdf / .DOCX | errore strutturato |
-| IC-10 | file inesistente | isError ENOENT |
-| IC-11..14 | **.docx malformati**: byte casuali, zip senza document.xml, zip troncato, file vuoto | isError (document.xml citato nel messaggio) |
+| IC-08/09 | .pdf / .DOCX | errore strutturato, `hint` (solo .docx minuscolo, convertire .doc/.odt/.rtf) |
+| IC-10 | file inesistente | isError "File not found" con la skill `zotero-mcp-integrations` e il link alla release |
+| IC-10b | percorso relativo inesistente | come IC-10, più `hint` "Pass an absolute path." |
+| IC-11..14 | **.docx malformati**: byte casuali, zip senza document.xml, zip troncato, file vuoto | isError "Invalid .docx file: not a readable ZIP archive (…)" / "word/document.xml not found", con l'indicazione di rigenerarlo |
+| IC-14b | cartella non scrivibile (non root) | errore strutturato "Cannot read the file or write the _cited copy… (EACCES)", `hint` di copiarlo in una cartella scrivibile |
 | IC-15 | zcite senza keys | ignorato |
-| IC-16 | chiavi 404 (sola e accanto a una valida) | isError "2 cited key(s) not found in the library: …" con tutte le chiavi, senza "404" grezzo, nessun output (come SK-05) |
-| IC-17/18 | HTTP 403/429/500/503, rete | isError |
+| IC-16 | chiavi 404 (sola e accanto a una valida) | isError "2 cited key(s) not found in the library: …. No file was written." con tutte le chiavi e come rimediare (search_library, add_items_by_doi), senza "404" grezzo, nessun output (come SK-05) |
+| IC-17/18 | HTTP 403/429/500/503, rete | errore strutturato con `http_status` e `hint` |
 | IC-19 | output | zip valido con le altre parti |
 | IC-20 | cartella `x.docx.d/` | output accanto all'input |
 | IC-21 | file_path mancante o numero, style non valido | isError |
 | IC-22 | `keys=" A, B ,"` con spazi | chiavi ripulite, URI senza spazi, nessuna richiesta fuori route |
-| IC-24 | chiave `<zcite>` non alfanumerica (`../tags`, `AB?C`, mista a una valida) | isError "Invalid Zotero item key(s) in <zcite>", nessuna richiesta, nessun output (come SK-10) |
+| IC-24 | chiave `<zcite>` non alfanumerica (`../tags`, `AB?C`, mista a una valida) | isError "Invalid Zotero item key(s) in <zcite>" con "No file was written" e da dove prendere le chiavi, nessuna richiesta, nessun output (come SK-10) |
 | IC-23 | itemData | volume/issue/page/publisher/publisher-place inclusi, abstract escluso, cognome multiparola intatto |
 
 Gli output di IC-01/02/03/04/07/19/23 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
@@ -413,7 +419,7 @@ Le chiavi finiscono nei path dell'API senza codifica (e l'URL risolve `..`) o ne
 nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `zoteroKey()` (`src/utils/zotero-keys.ts`).
 | ID | Scenario | Atteso |
 |---|---|---|
-| KV-01 | per ogni tool e argomento chiave (item_keys, item_key, collection_key, collectionKey, parent_item, parent_collection, collections): `../tags?tag=X&`, `../collections?collectionKey=A,B`, `../../groups/777/…`, minuscole, con 0, 7 caratteri, con virgola | errore di validazione col nome del campo, nessuna richiesta |
+| KV-01 | per ogni tool e argomento chiave (item_keys, item_key, collection_key, collectionKey, parent_item, parent_collection, collections): `../tags?tag=X&`, `../collections?collectionKey=A,B`, `../../groups/777/…`, minuscole, con 0, 7 caratteri, con virgola | errore di validazione col nome del campo, il formato (8 caratteri, es. ABCD2345) e "never guess keys", nessuna richiesta |
 | KV-02 | `<zcite>` con `../`, `?`, `%2F` (inject_citations) | errore "Invalid Zotero item key(s)", nessuna richiesta |
 
 ## tools/list (`tools-list.test.ts`)
@@ -439,7 +445,9 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 | H-06/07 | isZoteroApiError su ErrorResponse reale / errore di rete | true con status / false |
 | H-08/09/10 | contratto zotero-api-client | Total-Results e versione; `getData()` con tutti gli oggetti inviati, `getErrors()` con oggetti; DELETE `?itemKey` con If-Unmodified-Since-Version |
 | H-11..14 | fetchWithRetry | Retry-After come data passata, 500 senza retry, esaurimento dei retry, errore di rete |
-| H-15/16 | resolveDoi | codifica + Accept CSL / 404 con DOI e status nel messaggio |
+| H-15/16 | resolveDoi | codifica + Accept CSL / 404 con DOI, status e "(DOI not registered or mistyped)"; 5xx "retry later" (`src/utils/doi-resolver.test.ts`) |
+| H-20 | `describeError` (`src/utils/error-hints.test.ts`) | 403/401: chiave e pagina zotero.org/settings/keys, impostazioni del server; 404: chiavi valide; 409/412: riprova; 429: Retry-After; 5xx: attendi e riprova, poi dillo all'utente; 400: correggi gli argomenti; timeout: controlla prima di ripetere una scrittura; rete: causa inclusa, un TypeError che nomina solo "network" non conta; corpo HTML mai copiato, percorsi `users|groups/<id>` e numeri di 5+ cifre mascherati nei `details`; altri errori non tradotti; `whereToSet` (titolo dell'impostazione nell'estensione di Claude Desktop e variabile env); `unsafeOperationsHint` |
+| H-21 | `runTool` (`src/tools/index.test.ts`) | errore API → errore strutturato con `http_status` e `hint`, senza URL; errore non API → rilanciato |
 | H-17/18 | putFulltext | body JSON + API key, 204 / 413 e 500 |
 | H-19 | putFulltext gruppo | PUT su `/groups/777/items/{key}/fulltext` |
 
@@ -463,12 +471,12 @@ poi gli stessi scenari utente e gruppo di `npm run smoke`; inoltre: nessuna vari
 ## E2E (`test/e2e/stdio-server.e2e.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni, 15 tool con schema object |
+| E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni (UNPAYWALL_EMAIL, regola UNSAFE_OPERATIONS, hint negli errori), 15 tool con schema object |
 | E2E-03 | argomenti non validi su 14 tool | isError con il campo, nessuna chiamata HTTP |
 | E2E-04..18 | una tools/call per ciascuno dei 15 tool (deletes con UNSAFE_OPERATIONS=all) | risultato atteso, richieste corrette alla FakeNet |
 | E2E-19 | 403 Zotero | isError al client |
 | E2E-20 | rete | nessuna richiesta del processo figlio senza route |
-| E2E-21/22 | UNSAFE_OPERATIONS assente / " ITEMS " | delete bloccati senza chiamate HTTP / solo delete_items abilitato |
+| E2E-21/22 | UNSAFE_OPERATIONS assente / " ITEMS " | delete bloccati senza chiamate HTTP, con `hint` per l'utente / solo delete_items abilitato |
 | E2E-23 | senza credenziali | exit code 1 entro 5 s, errore su stderr |
 
 ## E2E librerie di gruppo (`test/e2e/group-library.e2e.test.ts`)

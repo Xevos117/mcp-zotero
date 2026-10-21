@@ -45,8 +45,8 @@ describe.skipIf(!live.enabled)("find_and_attach_pdfs (live)", () => {
   it("LIVE-FA-02 chiave sconosciuta e voce senza DOI → error con il motivo, senza servizi esterni", async () => {
     const r = await s.call("find_and_attach_pdfs", { item_keys: [FAKE_KEY, noDoi], dry_run: true });
     expect(r.json.results).toEqual([
-      expect.objectContaining({ item_key: FAKE_KEY, status: "error", reason: "Item not found" }),
-      expect.objectContaining({ item_key: noDoi, status: "error", reason: "No DOI" }),
+      expect.objectContaining({ item_key: FAKE_KEY, status: "error", reason: "Item not found in this library" }),
+      expect.objectContaining({ item_key: noDoi, status: "error", reason: expect.stringMatching(/^No DOI: Unpaywall needs one/) }),
     ]);
   });
 

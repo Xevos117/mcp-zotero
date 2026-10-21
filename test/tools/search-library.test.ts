@@ -3,12 +3,13 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectToolError,
+  expectApiError,
+  TEST_API_KEY,
   carriesApiKey,
   ZOTERO_ERROR_STATUSES,
   expectEmptyResult,
 } from "../helpers/mcp-harness.js";
-import { networkError } from "../helpers/fake-net.js";
+import { networkError, statusResponse } from "../helpers/fake-net.js";
 import { ZBASE, zList, zError, article } from "../helpers/zotero-fake.js";
 
 const ITEMS = `${ZBASE}/items`;
@@ -84,12 +85,13 @@ describe("search_library (MCP)", () => {
     h.net.on("GET", ITEMS, zList([]));
     const json = expectEmptyResult(await h.call("search_library", { query: "zzz" }), "No results found");
     expect(json.query).toBe("zzz");
-    expect(json.suggestion).toBeTypeOf("string");
+    expect(json.suggestion).toMatch(/title, creator or year.*omit query/);
   });
 
   it("SL-07 libreria vuota senza query: risultato vuoto 'No items found'", async () => {
     h.net.on("GET", ITEMS, zList([]));
-    expectEmptyResult(await h.call("search_library", {}), "No items found");
+    const json = expectEmptyResult(await h.call("search_library", {}), "No items found");
+    expect(json.suggestion).toMatch(/add_items_by_doi.*add_items/);
   });
 
   it("SL-08 unicode: query codificata correttamente e titoli/autori preservati", async () => {
@@ -162,12 +164,33 @@ describe("search_library (MCP)", () => {
     it.each(ZOTERO_ERROR_STATUSES)("SL-12 HTTP %i → isError con lo status", async (status) => {
       h.net.on("GET", ITEMS, zError(status));
       const out = await h.call("search_library", { query: "x" });
-      expectToolError(out, String(status));
+      expectApiError(out, status);
     });
 
     it("SL-13 errore di rete → isError", async () => {
       h.net.on("GET", ITEMS, networkError("getaddrinfo ENOTFOUND api.zotero.org"));
-      expectToolError(await h.call("search_library", { query: "x" }), "ENOTFOUND");
+      const json = expectApiError(await h.call("search_library", { query: "x" }));
+      expect(json.error).toContain("ENOTFOUND");
+      expect(json.hint).toMatch(/cannot reach the service/);
+    });
+
+    it("SL-15 403 → chiave senza accesso: niente retry, cosa dire all'utente (pagina chiavi, impostazioni del server)", async () => {
+      h.net.on("GET", ITEMS, zError(403, "Invalid key"));
+      const json = expectApiError(await h.call("search_library", { query: "x" }), 403);
+      expect(json.details).toBe("Invalid key");
+      expect(json.hint).toMatch(/will not help/);
+      expect(json.hint).toContain("https://www.zotero.org/settings/keys");
+      expect(json.hint).toMatch(/ZOTERO_API_KEY.*restart the client/);
+      // nessuna chiave né URL dell'API nel testo che vede il modello
+      expect(JSON.stringify(json)).not.toContain(TEST_API_KEY);
+      expect(JSON.stringify(json)).not.toContain("api.zotero.org/users");
+    });
+
+    it("SL-16 429 con Retry-After → attendi quei secondi e riprova una volta", async () => {
+      h.net.on("GET", ITEMS, statusResponse(429, "Too many requests", { "Retry-After": "12" }));
+      const json = expectApiError(await h.call("search_library", { query: "x" }), 429);
+      expect(json.retry_after_s).toBe(12);
+      expect(json.hint).toMatch(/^Wait 12 s and retry once/);
     });
   });
 });

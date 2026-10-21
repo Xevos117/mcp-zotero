@@ -153,7 +153,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
   });
 
   it("FA-04 item_keys vuoto → risultato vuoto 'No items to process'", async () => {
-    expectEmptyResult(await h.call("find_and_attach_pdfs", { item_keys: [] }), "No items to process");
+    const json = expectEmptyResult(await h.call("find_and_attach_pdfs", { item_keys: [] }), "No items to process");
+    expect(json.suggestion).toMatch(/^item_keys is empty/);
   });
 
   it("FA-05 collection_key: pagina la collezione (Total-Results) ed esclude allegati e note", async () => {
@@ -187,7 +188,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
 
   it("FA-06 collezione vuota → risultato vuoto 'No items to process'", async () => {
     h.net.on("GET", `${ZBASE}/collections/CPLQQQQR/items`, zList([]));
-    expectEmptyResult(await h.call("find_and_attach_pdfs", { collection_key: "CPLQQQQR" }), "No items to process");
+    const json = expectEmptyResult(await h.call("find_and_attach_pdfs", { collection_key: "CPLQQQQR" }), "No items to process");
+    expect(json.suggestion).toMatch(/get_collection_items/);
   });
 
   it("FA-30 chiave malformata → errore di validazione, nessuna richiesta né allegati a voci estranee", async () => {
@@ -199,8 +201,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
     library(h, [article("NPDPIQQR", { DOI: undefined })]);
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["NPDPIQQR", "GHPSTQQR"] });
     const r = byKey(out.json);
-    expect(r.NPDPIQQR).toMatchObject({ status: "error", reason: "No DOI" });
-    expect(r.GHPSTQQR).toMatchObject({ status: "error", reason: "Item not found" });
+    expect(r.NPDPIQQR).toMatchObject({ status: "error", reason: expect.stringMatching(/^No DOI: Unpaywall needs one\..*import_pdf_to_zotero/) });
+    expect(r.GHPSTQQR).toMatchObject({ status: "error", reason: "Item not found in this library" });
     expect(out.json.errors).toBe(2);
     expect(h.net.toHost(UNPAYWALL_HOST)).toHaveLength(0);
   });
@@ -250,11 +252,24 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(out.json.not_found).toBe(2);
   });
 
-  it.each([404, 500, "network"] as const)("FA-13 Unpaywall %s → not_found 'No open access PDF found'", async (fx) => {
+  it("FA-13 Unpaywall 404 (DOI sconosciuto a Unpaywall) → not_found 'No open access PDF found'", async () => {
+    library(h, [article("AAAARRRR")]);
+    installUnpaywall(h.net, { "10.1000/aaaarrrr": 404 });
+    const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAARRRR"] });
+    expect(out.json.results[0]).toMatchObject({ status: "not_found", reason: "No open access PDF found" });
+  });
+
+  it.each([
+    [500, "HTTP 500"],
+    ["network", "unpaywall down"],
+  ] as const)("FA-13b Unpaywall %s → not_found che dice che il lookup è fallito, non che manca l'OA", async (fx, what) => {
     library(h, [article("AAAARRRR")]);
     installUnpaywall(h.net, { "10.1000/aaaarrrr": fx });
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAARRRR"] });
-    expect(out.json.results[0]).toMatchObject({ status: "not_found", reason: "No open access PDF found" });
+    expect(out.json.results[0]).toMatchObject({ status: "not_found" });
+    expect(out.json.results[0].reason).toMatch(/^Unpaywall lookup failed \(/);
+    expect(out.json.results[0].reason).toContain(what);
+    expect(out.json.results[0].reason).toMatch(/does not mean there is no open access PDF\. Retry later/);
   });
 
   it("FA-14 UNPAYWALL_EMAIL non valida → not_found con il warning di configurazione", async () => {
@@ -263,6 +278,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
     library(h, [article("AAAARRRR")]);
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAARRRR"] });
     expect(out.json.results[0]).toMatchObject({ status: "not_found", reason: expect.stringContaining("UNPAYWALL_EMAIL") });
+    // una volta sola, a livello di risposta: cosa dire all'utente e dove impostarla
+    expect(out.json.hint).toMatch(/Tell the user .*"Email for Unpaywall" in Settings → Extensions → MCP Zotero; in other clients, UNPAYWALL_EMAIL .*claude_desktop_config\.json.*restart the client/);
     expect(h.net.toHost(UNPAYWALL_HOST)).toHaveLength(0);
   });
 
@@ -305,6 +322,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
     expect(out.json.processed).toBe(12);
     expect(out.json.quota_exceeded).toBeGreaterThanOrEqual(1);
     expect(out.json.storage_quota_warning).toContain("storage quota is full");
+    expect(out.json.storage_quota_warning).toMatch(/Tell the user .*zotero\.org\/settings\/storage/);
+    expect(out.json).not.toHaveProperty("hint");
     expect(out.json.results.length).toBeLessThan(12);
     expect(h.net.requests("POST", FILE_ROUTE).length).toBeLessThan(12);
   });
@@ -316,6 +335,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
       h.net.on("GET", ITEMS, zError(status));
       const json = expectErrorJson(await h.call("find_and_attach_pdfs", { item_keys: ["AAAARRRR"] }), "find_and_attach_pdfs failed");
       expect(json.details).toContain(String(status));
+      expect(json.http_status).toBe(status);
+      expect(json.hint).toBeTypeOf("string");
     }
   });
 
@@ -323,6 +344,8 @@ describe("find_and_attach_pdfs (MCP)", () => {
     h.net.on("GET", `${ZBASE}/collections/CPLQQQQR/items`, networkError("ETIMEDOUT"));
     const json = expectErrorJson(await h.call("find_and_attach_pdfs", { collection_key: "CPLQQQQR" }), "find_and_attach_pdfs failed");
     expect(json.details).toContain("ETIMEDOUT");
+    expect(json.error).toContain("Network error");
+    expect(json.hint).toMatch(/Retry once/);
   });
 
   // BUG: find-and-attach-pdfs.ts:208 scarta i risultati "rejected" di
@@ -356,7 +379,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
     library(h, lib);
     installUnpaywall(h.net, {});
     const out = await h.call("find_and_attach_pdfs", { item_keys: lib.map((i) => i.key), skip_if_attachment_exists: false });
-    expect(out.json.results.filter((r: Result) => r.reason === "Item not found")).toHaveLength(0);
+    expect(out.json.results.filter((r: Result) => r.reason === "Item not found in this library")).toHaveLength(0);
   });
 
   it("FA-23 ZOTERO_API_KEY assente → errore strutturato senza rete", async () => {

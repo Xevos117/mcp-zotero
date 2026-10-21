@@ -181,6 +181,16 @@ describe("lookupOaPdfWithFallbacks: primary", () => {
 
     const result = await lookupPrimary("10.9999/nonexistent");
     expect(result.found).toBe(false);
+    expect(result.warning).toBeUndefined();
+  });
+
+  it("HTTP 500: found=false with a warning that the lookup failed (not 'no open access copy')", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500, headers: new Headers() }));
+    const result = await lookupPrimary("10.1234/test");
+    expect(result.found).toBe(false);
+    expect(result.warning).toBe(
+      "Unpaywall lookup failed (HTTP 500): this does not mean there is no open access PDF. Retry later with find_and_attach_pdfs."
+    );
   });
 
   it("returns found=false on network error", async () => {
@@ -191,6 +201,7 @@ describe("lookupOaPdfWithFallbacks: primary", () => {
 
     const result = await lookupPrimary("10.1234/test");
     expect(result.found).toBe(false);
+    expect(result.warning).toMatch(/^Unpaywall lookup failed \(fetch failed\): this does not mean there is no open access PDF/);
   });
 
   it("uses UNPAYWALL_EMAIL env var in the request URL", async () => {

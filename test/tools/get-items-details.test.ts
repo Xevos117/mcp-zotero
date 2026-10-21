@@ -5,6 +5,7 @@ import {
   expectValidationError,
   expectErrorJson,
   expectToolError,
+  expectApiError,
   ZOTERO_ERROR_STATUSES,
   expectEmptyResult,
 } from "../helpers/mcp-harness.js";
@@ -111,6 +112,7 @@ describe("get_items_details (MCP)", () => {
     h.net.on("GET", ITEMS, zList([]));
     const json = expectEmptyResult(await h.call("get_items_details", { item_keys: ["NPPEQQQR"] }), "No items found");
     expect(json.item_keys).toEqual(["NPPEQQQR"]);
+    expect(json.suggestion).toMatch(/None of these keys exists.*search_library/);
   });
 
   it("GID-06 chiavi parzialmente inesistenti: restituisce solo quelle trovate", async () => {
@@ -175,11 +177,11 @@ describe("get_items_details (MCP)", () => {
 
   it.each(ZOTERO_ERROR_STATUSES)("GID-13 HTTP %i → isError", async (status) => {
     h.net.on("GET", ITEMS, zError(status));
-    expectToolError(await h.call("get_items_details", { item_keys: ["AAAARRRR"] }), String(status));
+    expectApiError(await h.call("get_items_details", { item_keys: ["AAAARRRR"] }), status);
   });
 
   it("GID-14 errore di rete → isError", async () => {
     h.net.on("GET", ITEMS, networkError());
-    expectToolError(await h.call("get_items_details", { item_keys: ["AAAARRRR"] }));
+    expectApiError(await h.call("get_items_details", { item_keys: ["AAAARRRR"] }));
   });
 });

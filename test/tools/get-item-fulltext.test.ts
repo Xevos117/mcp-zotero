@@ -5,6 +5,7 @@ import {
   expectValidationError,
   expectErrorJson,
   expectToolError,
+  expectApiError,
   carriesApiKey,
 } from "../helpers/mcp-harness.js";
 import { jsonResponse, networkError, statusResponse } from "../helpers/fake-net.js";
@@ -124,20 +125,24 @@ describe("get_item_fulltext (MCP)", () => {
     h.net.on("GET", FULLTEXT, zError(404));
     const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), "Full text not indexed");
     expect(json).toMatchObject({ item_key: "PARQQQQR", attachment_key: "ATTQQQQR" });
+    expect(json.error).toMatch(/Retrying now will not help/);
+    expect(json.hint).toMatch(/^Tell the user to open the PDF in Zotero desktop \(or right-click it → Reindex Item\).*scanned PDF/);
   });
 
   it.each([403, 429, 500, 503])("GIF-09 fulltext HTTP %i → errore strutturato con lo status", async (status) => {
     h.net.on("GET", PARENT, zSingle(article("PARQQQQR")));
     h.net.on("GET", CHILDREN, zList([pdfAttachment("ATTQQQQR", "PARQQQQR")]));
     h.net.on("GET", FULLTEXT, zError(status));
-    expectErrorJson(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), `status ${status}`);
+    const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), `status ${status}`);
+    expect(json.error).toContain(`HTTP ${status}`);
+    expect(json.hint).toMatch(status === 403 ? /settings\/keys/ : /retry once/);
   });
 
   it("GIF-10 errore di rete sull'endpoint fulltext → isError", async () => {
     h.net.on("GET", PARENT, zSingle(article("PARQQQQR")));
     h.net.on("GET", CHILDREN, zList([pdfAttachment("ATTQQQQR", "PARQQQQR")]));
     h.net.on("GET", FULLTEXT, networkError("socket hang up"));
-    expectToolError(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), "socket hang up");
+    expect(expectApiError(await h.call("get_item_fulltext", { item_key: "PARQQQQR" })).error).toContain("socket hang up");
   });
 
   describe("nessun PDF", () => {
@@ -146,6 +151,7 @@ describe("get_item_fulltext (MCP)", () => {
       h.net.on("GET", CHILDREN, zList([]));
       const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), "No PDF attachment found");
       expect(json.item_key).toBe("PARQQQQR");
+      expect(json.error).toMatch(/find_and_attach_pdfs .*import_pdf_to_zotero .*then call again/);
       expect(h.net.requests("GET", /fulltext$/)).toHaveLength(0);
     });
 
@@ -154,6 +160,7 @@ describe("get_item_fulltext (MCP)", () => {
       h.net.on("GET", CHILDREN, zList([]));
       const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), "This item has a URL");
       expect(json.url).toBe("https://example.org/p");
+      expect(json.error).toMatch(/find_and_attach_pdfs.*import_pdf_to_zotero/);
     });
 
     it.each(["webpage", "blogPost"])("GIF-13 itemType %s → messaggio pagina web", async (itemType) => {
@@ -166,30 +173,32 @@ describe("get_item_fulltext (MCP)", () => {
 
   it("GIF-14 item inesistente (404) → errore strutturato 'Item not found'", async () => {
     h.net.on("GET", PARENT, zError(404));
-    const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), "Item not found");
+    const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), "Item not found in this library");
     expect(json.item_key).toBe("PARQQQQR");
+    expect(json.hint).toMatch(/search_library.*never guess keys/);
   });
 
   it.each([403, 412, 429, 500, 503])("GIF-15 HTTP %i sull'item → isError", async (status) => {
     h.net.on("GET", PARENT, zError(status));
-    expectToolError(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), String(status));
+    expectApiError(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), status);
   });
 
   it("GIF-16 HTTP 500 sui children → isError", async () => {
     h.net.on("GET", PARENT, zSingle(article("PARQQQQR")));
     h.net.on("GET", CHILDREN, zError(500));
-    expectToolError(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), "500");
+    expectApiError(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), 500);
   });
 
   it("GIF-17 errore di rete sull'item → isError", async () => {
     h.net.on("GET", PARENT, networkError());
-    expectToolError(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }));
+    expectApiError(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }));
   });
 
   it("GIF-18 ZOTERO_API_KEY assente → errore strutturato senza chiamate", async () => {
     await h.close();
     h = await startHarness({ envApiKey: "" });
-    expectErrorJson(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), "ZOTERO_API_KEY");
+    const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), "ZOTERO_API_KEY");
+    expect(json.hint).toMatch(/^Tell the user to create a Zotero API key at https:\/\/www\.zotero\.org\/settings\/keys .*restart the client/);
     expect(h.net.calls).toHaveLength(0);
   });
 
@@ -214,6 +223,7 @@ describe("get_item_fulltext (MCP)", () => {
       const json = expectErrorJson(await h.call("get_item_fulltext", { item_key: "PARQQQQR" }), "linked URL");
       expect(json).toMatchObject({ attachment_key: "LNKQQQQR", url: "https://example.org/paper.pdf" });
       expect(json.error).not.toMatch(/Open the PDF in Zotero desktop/);
+      expect(json.error).toMatch(/if you have a web tool, or store the PDF with import_pdf_to_zotero/);
       expect(h.net.requests("GET", /\/fulltext$/)).toHaveLength(0);
     });
 

@@ -5,6 +5,7 @@ import {
   expectValidationError,
   expectErrorJson,
   expectToolError,
+  expectApiError,
   ZOTERO_ERROR_STATUSES,
 } from "../helpers/mcp-harness.js";
 import { networkError } from "../helpers/fake-net.js";
@@ -199,6 +200,7 @@ describe("add_items (MCP)", () => {
       "All items failed to create"
     );
     expect(json.failed.map((f: { index: number }) => f.index)).toEqual([0, 1]);
+    expect(json.hint).toMatch(/^Nothing was created\. failed\[\]\.error gives Zotero's reason.*retrying unchanged will fail again/);
   });
 
   it("AI-12 batch di 50 item → una sola POST con 50 oggetti", async () => {
@@ -257,11 +259,11 @@ describe("add_items (MCP)", () => {
 
   it.each([...ZOTERO_ERROR_STATUSES, 413])("AI-15 HTTP %i sulla POST → isError", async (status) => {
     h.net.on("POST", ITEMS, zError(status));
-    expectToolError(await h.call("add_items", { items: [{ itemType: "book", title: "X" }] }), String(status));
+    expectApiError(await h.call("add_items", { items: [{ itemType: "book", title: "X" }] }), status);
   });
 
   it("AI-16 errore di rete → isError", async () => {
     h.net.on("POST", ITEMS, networkError());
-    expectToolError(await h.call("add_items", { items: [{ itemType: "book", title: "X" }] }));
+    expectApiError(await h.call("add_items", { items: [{ itemType: "book", title: "X" }] }));
   });
 });

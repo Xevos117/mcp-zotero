@@ -8,8 +8,8 @@ export const toolConfig = {
   name: "search_library",
   description: `Search your Zotero library or list items sorted by a field.
 
-When 'query' is provided, searches by title, author, or any field.
-When 'query' is omitted, lists items sorted by the chosen field (default: dateAdded, descending) — this replaces the old get_recent tool.
+When 'query' is provided, matches it against titles, creator names and years (not abstracts, tags or full text).
+When 'query' is omitted, lists items sorted by the chosen field (default: dateAdded, descending).
 
 Examples:
   - Search: { "query": "deep learning" }
@@ -73,11 +73,11 @@ export async function handleSearchLibrary(
       return formatEmptyResult("No results found", {
         query,
         suggestion:
-          "Try a different search term or verify your library contains matching items",
+          "Nothing in this library matches the query in title, creator or year. Try fewer or different words (one author surname or a title keyword), or omit query to list recent items. For a group library pass library_type and library_id.",
       });
     }
     return formatEmptyResult("No items found", {
-      suggestion: "Add some items to your Zotero library first",
+      suggestion: "This library has no items yet. Add some with add_items_by_doi (items with a DOI) or add_items.",
     });
   }
 

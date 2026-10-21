@@ -5,6 +5,7 @@ import {
   expectValidationError,
   expectErrorJson,
   expectToolError,
+  expectApiError,
 } from "../helpers/mcp-harness.js";
 import { networkError, jsonResponse } from "../helpers/fake-net.js";
 import { ZBASE, zSingle, zError, zDeleted, collection, zoteroEntity } from "../helpers/zotero-fake.js";
@@ -30,6 +31,10 @@ describe("delete_collection (MCP)", () => {
         expect(json).toEqual(
           expect.objectContaining({ env_var: "UNSAFE_OPERATIONS", current_value: mode, required_values: ["all"] })
         );
+        expect(json.error).toContain(`needs UNSAFE_OPERATIONS 'all' in this server's configuration (it is '${mode}'). Nothing was deleted.`);
+        expect(json.hint).toMatch(/^Do not try to get around this with other tools/);
+        expect(json.hint).toContain("'all' (allows delete_collection and delete_items; 'items' allows only delete_items)");
+        expect(json.hint).toMatch(/restart the client/);
         expect(h.net.calls).toHaveLength(0);
       }
     );
@@ -73,6 +78,7 @@ describe("delete_collection (MCP)", () => {
       h.net.on("GET", COLL, zError(404));
       const json = expectErrorJson(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), "Collection not found");
       expect(json.status).toBe("not_found");
+      expect(json.hint).toMatch(/^Nothing was deleted\. Get valid collection keys from get_collections/);
       expect(h.net.requests("DELETE", COLL)).toHaveLength(0);
     });
 
@@ -91,36 +97,38 @@ describe("delete_collection (MCP)", () => {
         await h.call("delete_collection", { collection_key: "CPLQQQQR" }),
         "modified by another client"
       );
+      expect(json.error).toMatch(/so it was not deleted\. Retry the same call\./);
       expect(json.status).toBe("version_conflict");
     });
 
     it("DC-09 versione non determinabile (nessun header) → errore strutturato, nessuna DELETE", async () => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, jsonResponse(zoteroEntity(collection("CPLQQQQR", "X"))));
-      expectErrorJson(
+      const json = expectErrorJson(
         await h.call("delete_collection", { collection_key: "CPLQQQQR" }),
         "Could not determine collection version"
       );
+      expect(json.hint).toBe("Nothing was deleted. Retry the same call once.");
       expect(h.net.requests("DELETE", COLL)).toHaveLength(0);
     });
 
     it.each([403, 429, 500, 503])("DC-10 HTTP %i sulla GET → isError", async (status) => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, zError(status));
-      expectToolError(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), String(status));
+      expectApiError(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), status);
     });
 
     it.each([403, 429, 500])("DC-11 HTTP %i sulla DELETE → isError", async (status) => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, zSingle(collection("CPLQQQQR", "X"), 3));
       h.net.on("DELETE", COLL, zError(status));
-      expectToolError(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), String(status));
+      expectApiError(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), status);
     });
 
     it("DC-12 errore di rete → isError", async () => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, networkError());
-      expectToolError(await h.call("delete_collection", { collection_key: "CPLQQQQR" }));
+      expectApiError(await h.call("delete_collection", { collection_key: "CPLQQQQR" }));
     });
 
     it.each([

@@ -6,18 +6,19 @@ import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.
 import { resolveLibrary, libraryArgsSchema, LibraryType } from "../utils/library-context.js";
 import { findPdfAttachments, isLinkedUrl, isPdfAttachment } from "../utils/attachments.js";
 import { fetchWithTimeout, isTimeoutAbort, timeoutError, TIMEOUTS } from "../utils/timeouts.js";
+import { ITEM_KEY_HINT, MISSING_API_KEY, MISSING_API_KEY_HINT, zoteroStatusHint } from "../utils/error-hints.js";
 
 export const toolConfig = {
   name: "get_item_fulltext",
   description:
-    "Get the full text content of a Zotero item's PDF attachment via Zotero's fulltext index. Zotero desktop automatically indexes PDFs when synced. Use this to read the full content of papers instead of relying on abstracts.",
+    "Get the text of a Zotero item's stored PDF from Zotero's full-text index. Works for PDFs indexed by Zotero desktop and synced, or imported with import_pdf_to_zotero / find_and_attach_pdfs; not for linked URLs or web pages. Use this to read the full content of papers instead of relying on abstracts.",
   inputSchema: {
-    item_key: zoteroKey().describe("The Zotero item key (parent item or attachment key)"),
+    item_key: zoteroKey().describe("Item key (the parent item or its PDF attachment), from search_library or get_collection_items"),
     max_characters: z
       .number()
       .optional()
       .default(50000)
-      .describe("Maximum characters to return (default: 50000, 0 = no limit)"),
+      .describe("Maximum characters to return (default: 50000, 0 = no limit); truncated: true in the result when cut"),
     ...libraryArgsSchema,
   },
 } as const;
@@ -34,7 +35,7 @@ export async function handleGetItemFulltext(
 
   const apiKey = process.env.ZOTERO_API_KEY;
   if (!apiKey) {
-    return formatErrorResponse("ZOTERO_API_KEY environment variable is not set");
+    return formatErrorResponse(MISSING_API_KEY, { hint: MISSING_API_KEY_HINT });
   }
 
   try {
@@ -50,7 +51,7 @@ export async function handleGetItemFulltext(
     if (isPdfAttachment(itemData)) {
       if (isLinkedUrl(itemData)) {
         return formatErrorResponse(
-          "This attachment is a link to a PDF on the web (linked URL): Zotero stores no file or full text for it. Fetch the URL directly.",
+          "This attachment is a link to a PDF on the web (linked URL): Zotero stores no file or full text for it. Fetch the URL directly if you have a web tool, or store the PDF with import_pdf_to_zotero and call again.",
           { item_key, url: itemData.url || undefined }
         );
       }
@@ -64,7 +65,7 @@ export async function handleGetItemFulltext(
 
     if (!pdfAttachment?.key && linkedPdf) {
       return formatErrorResponse(
-        "No stored PDF attachment found. This item only links to a PDF on the web (linked URL attachment), which Zotero does not index — fetch the linked URL directly.",
+        "No stored PDF attachment found. This item only links to a PDF on the web (linked URL attachment), which Zotero does not index — fetch the linked URL directly if you have a web tool, or store the PDF with import_pdf_to_zotero (parent_item = this item) and call again.",
         { item_key, attachment_key: linkedPdf.key, url: linkedPdf.url || undefined }
       );
     }
@@ -73,24 +74,28 @@ export async function handleGetItemFulltext(
       // Provide context-aware error messages
       if (itemData.itemType === "webpage" || itemData.itemType === "blogPost") {
         return formatErrorResponse(
-          "This is a web page item. Use the item's URL to fetch its content directly.",
+          "This is a web page item: Zotero has no PDF text for it. Fetch its URL directly if you have a web tool; otherwise tell the user.",
           { item_key, url: itemData.url || undefined }
         );
       }
       if (itemData.url) {
         return formatErrorResponse(
-          `No PDF attachment found. This item has a URL — you can fetch its content directly from the web.`,
+          "No PDF attachment found. This item has a URL — you can fetch its content directly from the web, or attach the PDF " +
+            "(find_and_attach_pdfs if the item has a DOI, import_pdf_to_zotero for a PDF URL) and call again.",
           { item_key, url: itemData.url }
         );
       }
-      return formatErrorResponse("No PDF attachment found for this item.", { item_key });
+      return formatErrorResponse(
+        "No PDF attachment found for this item. Attach one with find_and_attach_pdfs (items with a DOI) or import_pdf_to_zotero (a PDF URL), then call again.",
+        { item_key }
+      );
     }
 
     return fetchFulltext(item_key, pdfAttachment.key, libraryType, libraryId, apiKey, max_characters);
   } catch (err) {
     if (isZoteroApiError(err)) {
       if (err.response?.status === 404) {
-        return formatErrorResponse("Item not found", { item_key });
+        return formatErrorResponse("Item not found in this library", { item_key, hint: ITEM_KEY_HINT });
       }
     }
     throw err;
@@ -110,16 +115,24 @@ async function fetchFulltext(
 
   if (response.status === 404) {
     return formatErrorResponse(
-      "Full text not indexed for this item. Open the PDF in Zotero desktop to trigger indexing, then sync.",
-      { item_key: itemKey, attachment_key: attachmentKey }
+      "Full text not indexed for this item: Zotero has no text for this PDF yet. Retrying now will not help.",
+      {
+        item_key: itemKey,
+        attachment_key: attachmentKey,
+        hint:
+          "Tell the user to open the PDF in Zotero desktop (or right-click it → Reindex Item) and let Zotero sync, then try again. " +
+          "A scanned PDF without a text layer cannot be indexed.",
+      }
     );
   }
 
   if (!response.ok) {
-    return formatErrorResponse(
-      `Zotero fulltext API returned status ${response.status}`,
-      { item_key: itemKey, attachment_key: attachmentKey }
-    );
+    const { error, hint } = zoteroStatusHint(response.status);
+    return formatErrorResponse(`Zotero fulltext API returned status ${response.status}. ${error}`, {
+      item_key: itemKey,
+      attachment_key: attachmentKey,
+      hint,
+    });
   }
 
   let data: ZoteroFulltextResponse;
@@ -133,6 +146,7 @@ async function fetchFulltext(
     return formatErrorResponse(timeoutError("Zotero fulltext request", url, TIMEOUTS.zoteroApiMs).message, {
       item_key: itemKey,
       attachment_key: attachmentKey,
+      hint: "Retry once; large PDFs can be slow. If it keeps timing out, tell the user to check the network connection of the machine running this server.",
     });
   }
   let text = data.content;

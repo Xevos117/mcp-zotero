@@ -26,6 +26,13 @@ interface ZciteMatch {
   num?: string;
 }
 
+const REGENERATE_DOCX =
+  "The file is not a Word document or is corrupted: create it again as .docx (e.g. with the docx npm package) and call again.";
+
+const NO_ZCITE_WARNING =
+  'No <zcite> placeholders found: the output is an unchanged copy. Write them in the document body as <zcite keys="ITEMKEY"/> ' +
+  "(headers, footers, footnotes and comments are not scanned).";
+
 function parseZciteMatches(documentXml: string): ZciteMatch[] {
   const findRegex = /&lt;zcite\s+[\s\S]*?\/&gt;/g;
   const matches: ZciteMatch[] = [];
@@ -164,11 +171,16 @@ export async function injectCitations(
   const outputPath = format({ dir, name: `${name}_cited`, ext });
 
   const fileBuffer = await readFile(filePath);
-  const zip = await JSZip.loadAsync(fileBuffer);
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(fileBuffer);
+  } catch (err) {
+    throw new Error(`Invalid .docx file: not a readable ZIP archive (${err instanceof Error ? err.message : String(err)}). ${REGENERATE_DOCX}`);
+  }
 
   const documentEntry = zip.file("word/document.xml");
   if (!documentEntry) {
-    throw new Error("Invalid .docx file: word/document.xml not found");
+    throw new Error(`Invalid .docx file: word/document.xml not found. ${REGENERATE_DOCX}`);
   }
 
   let documentXml = await documentEntry.async("string");
@@ -179,7 +191,7 @@ export async function injectCitations(
   if (matches.length === 0) {
     const buffer = await zip.generateAsync({ type: "nodebuffer" });
     await writeFile(outputPath, buffer);
-    return { outputPath, found: 0, injected: 0, warnings: [] };
+    return { outputPath, found: 0, injected: 0, warnings: [NO_ZCITE_WARNING] };
   }
 
   // Warn if using a numbered style but tags are missing the num attribute
@@ -188,7 +200,9 @@ export async function injectCitations(
     const withNum = matches.filter((m) => m.num !== undefined).length;
     if (withNum < matches.length) {
       warnings.push(
-        `Style '${style}' requires 'num' attribute on <zcite> tags. Found ${withNum}/${matches.length} tags with num.`
+        `Style '${style}' requires 'num' attribute on <zcite> tags. Found ${withNum}/${matches.length} tags with num. ` +
+          "Citations without num show [?] until the user runs Zotero → Refresh in Word; to get the numbers now, add " +
+          'num="N" (order of first citation) to every <zcite> in the original file and run again.'
       );
     }
   }
@@ -199,7 +213,10 @@ export async function injectCitations(
   // <zcite> cannot point the request at another endpoint ("../", "?", "&"). The skill's inject.js applies the same check
   const invalid = [...uniqueKeys].filter((k) => !/^[A-Za-z0-9]{1,32}$/.test(k));
   if (invalid.length > 0) {
-    throw new Error(`Invalid Zotero item key(s) in <zcite>: ${invalid.join(", ")} (letters and digits only)`);
+    throw new Error(
+      `Invalid Zotero item key(s) in <zcite>: ${invalid.join(", ")} (letters and digits only). No file was written. ` +
+        "Use the 8-character keys returned by search_library, add_items_by_doi or add_items."
+    );
   }
 
   // Fetch CSL data from Zotero
@@ -208,7 +225,11 @@ export async function injectCitations(
   // like the skill's inject.js with a key missing from metadata.json
   const missingKeys = [...uniqueKeys].filter((k) => !cslData.has(k));
   if (missingKeys.length > 0) {
-    throw new Error(`${missingKeys.length} cited key(s) not found in the library: ${missingKeys.join(", ")}`);
+    throw new Error(
+      `${missingKeys.length} cited key(s) not found in the library: ${missingKeys.join(", ")}. No file was written. ` +
+        "Fix these keys in the document (find existing items with search_library, or add the missing ones with add_items_by_doi " +
+        "or add_items) and call again; for a group library pass library_type and library_id."
+    );
   }
 
   // Replace each zcite tag with a field code

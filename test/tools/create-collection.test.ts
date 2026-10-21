@@ -5,6 +5,7 @@ import {
   expectValidationError,
   expectErrorJson,
   expectToolError,
+  expectApiError,
   ZOTERO_ERROR_STATUSES,
 } from "../helpers/mcp-harness.js";
 import { networkError } from "../helpers/fake-net.js";
@@ -62,6 +63,13 @@ describe("create_collection (MCP)", () => {
       "Failed to create collection"
     );
     expect(json).toHaveProperty("details");
+    expect(json.hint).toMatch(/parent_collection exists.*get_collections/);
+  });
+
+  it("CC-06b scrittura rifiutata senza parent_collection → hint sul nome", async () => {
+    h.net.on("POST", COLLS, zWrite({ fail: { 0: { code: 400, message: "Collection name too long" } } }));
+    const json = expectErrorJson(await h.call("create_collection", { name: "X" }), "Failed to create collection");
+    expect(json.hint).toMatch(/fix the name/);
   });
 
   // BUG: create-collection.ts:47 fa `Object.values(errors).join("; ")` ma gli
@@ -86,11 +94,11 @@ describe("create_collection (MCP)", () => {
 
   it.each([...ZOTERO_ERROR_STATUSES, 413])("CC-09 HTTP %i → isError", async (status) => {
     h.net.on("POST", COLLS, zError(status));
-    expectToolError(await h.call("create_collection", { name: "X" }), String(status));
+    expectApiError(await h.call("create_collection", { name: "X" }), status);
   });
 
   it("CC-10 errore di rete → isError", async () => {
     h.net.on("POST", COLLS, networkError());
-    expectToolError(await h.call("create_collection", { name: "X" }));
+    expectApiError(await h.call("create_collection", { name: "X" }));
   });
 });

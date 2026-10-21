@@ -5,11 +5,12 @@ import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
 import { fetchItemsByKeys } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { ITEM_KEY_HINT, unsafeOperationsHint } from "../utils/error-hints.js";
 
 export const toolConfig = {
   name: "delete_items",
   description:
-    "Delete one or more items from your Zotero library: they are permanently deleted (not moved to the Zotero trash). Accepts up to 50 item keys per call. Requires UNSAFE_OPERATIONS environment variable set to 'items' or 'all'.",
+    "Delete one or more items from your Zotero library: they are permanently deleted (not moved to the Zotero trash), so confirm with the user first. Accepts up to 50 item keys per call. Disabled unless the server setting UNSAFE_OPERATIONS is 'items' or 'all'.",
   inputSchema: {
     item_keys: z
       .array(zoteroKey())
@@ -35,11 +36,12 @@ export async function handleDeleteItems(
 
   if (!canDeleteItems(unsafeOps)) {
     return formatErrorResponse(
-      "Deletion of items is not allowed. Set the UNSAFE_OPERATIONS environment variable to 'items' or 'all' to enable this operation.",
+      `Deletion of items is not allowed: destructive operations are disabled in this server's configuration (UNSAFE_OPERATIONS is '${unsafeOps}'). Nothing was deleted.`,
       {
         env_var: "UNSAFE_OPERATIONS",
         current_value: unsafeOps,
         required_values: ["items", "all"],
+        hint: unsafeOperationsHint("items"),
       }
     );
   }
@@ -57,6 +59,7 @@ export async function handleDeleteItems(
       return formatErrorResponse("No items found for the given keys", {
         item_keys,
         status: "not_found",
+        hint: `Nothing was deleted: none of these keys exists in this library (already deleted, or in another library). ${ITEM_KEY_HINT}`,
       });
     }
 
@@ -65,6 +68,7 @@ export async function handleDeleteItems(
     if (libraryVersion === null) {
       return formatErrorResponse("Could not determine library version", {
         item_keys,
+        hint: "Nothing was deleted. Retry the same call once.",
       });
     }
 
@@ -91,7 +95,7 @@ export async function handleDeleteItems(
     if (isZoteroApiError(err)) {
       if (err.response.status === 412) {
         return formatErrorResponse(
-          "Items were modified by another client. Retry the operation.",
+          "Items were modified by another client, so nothing was deleted. Retry the same call.",
           {
             item_keys,
             status: "version_conflict",

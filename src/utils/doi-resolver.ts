@@ -13,9 +13,14 @@ export async function resolveDoi(doi: string): Promise<CslItemData> {
   }, { label: "DOI resolution" });
 
   if (!response.ok) {
-    throw new Error(
-      `DOI resolution failed for ${doi}: ${response.status} ${response.statusText}`
-    );
+    const why =
+      response.status === 404
+        ? " (DOI not registered or mistyped)"
+        : response.status === 429 || response.status >= 500
+          ? " (doi.org or the registry is busy or failing: retry later)"
+          : "";
+    const status = [response.status, response.statusText].filter(Boolean).join(" ");
+    throw new Error(`DOI resolution failed for ${doi}: ${status}${why}`);
   }
 
   try {

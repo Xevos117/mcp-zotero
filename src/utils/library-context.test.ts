@@ -132,7 +132,7 @@ describe("resolveLibrary", () => {
   });
 
   it("requires library_id when overriding a user server to a group", () => {
-    expect(() => resolveLibrary({ library_type: "group" }, "13885496")).toThrow(/library_id is required/);
+    expect(() => resolveLibrary({ library_type: "group" }, "13885496")).toThrow(/library_id is required.*numeric group ID \(the number in the group's zotero\.org\/groups\/<id> URL\)/);
   });
 
   it("falls back to ZOTERO_USER_ID when overriding a group server to the user library", () => {
@@ -161,6 +161,6 @@ describe("resolveLibrary", () => {
   });
 
   it("throws when id is empty (no arg, no default, no env)", () => {
-    expect(() => resolveLibrary({}, "")).toThrow(/library ID is not set/);
+    expect(() => resolveLibrary({}, "")).toThrow(/library ID is not set: .*Pass library_id.*tell the user to set their userID .*settings\/keys.*"Zotero user ID" in Settings → Extensions → MCP Zotero; in other clients, ZOTERO_USER_ID .*restart the client/);
   });
 });
