@@ -386,7 +386,7 @@ assenti dal client) le decide il job `word-proxy` (sezione sotto) con Zotero des
 | DP-09 | `ZOTERO_PREF_*` con apici singoli | `kept`, nulla cambia |
 | DP-10 | relazione custom-properties verso un'altra parte | letta e unita lì, nessuna parte né relazione nuova |
 | DP-11 | parte esistente senza radice `Properties` riconoscibile | `skipped`: mai riscritta, nessun Override né relazione |
-| DV-16 | validatore | preferenze su più proprietà ricomposte; stile diverso dall'iniezione, buchi nella numerazione, parte oltre 255 caratteri, `fieldType` diverso, Override o relazione mancanti → errori |
+| DV-16 | validatore | preferenze su più proprietà ricomposte; stile diverso dall'iniezione, buchi nella numerazione, parte oltre 255 caratteri, `fieldType` diverso, Override o relazione mancanti → errori; assenti con `requireDocumentPrefs` → errore (senza: nessuno); preferenze di un altro stile con `documentPrefsStyle` → nessun errore |
 | SK-V01 (esteso) | inject.js nei 5 stili | stesse preferenze di `inject_citations` |
 | SK-V03 | inject.js con preferenze già presenti; radice con prefisso; parte non unibile | mantenute con WARNING; unite conservando le proprietà dell'utente; non scritte, parte intatta, WARNING |
 
@@ -771,8 +771,8 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 - **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
   comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
   docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
-  negati; 160 turni, tetto di 3 USD (`maxBudgetUsd`; una run costa circa 0,35-0,45 USD), `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min (costo atteso: vedi
-  il collaudo locale sotto; i limiti sono circa il doppio). La chiave Zotero sta solo nel file
+  negati; 140 turni, tetto di 2 USD (`maxBudgetUsd`, `.github/agents/agent-smoke.json`; le run reali usano 65-98 turni e 0,37-0,67 USD), `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min (costo atteso: vedi
+  il collaudo locale sotto). La chiave Zotero sta solo nel file
   di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente. Gli artifact fra i job
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
   nel job successivo), username, nome del gruppo, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne
@@ -787,7 +787,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 - **Sulle PR** il job dell'agente ripristina `.claude/`, `CLAUDE.md` (e `.mcp.json`, `.claude.json`, `CLAUDE.local.md`) dal branch di base (configurazione dell'agente
   scritta nella PR = non fidata): gira la skill del branch di base. Se lì la skill non c'è ancora (la PR che la
   introduce), il job lo segnala e salta; il primo collaudo vero è l'avvio manuale da `main` dopo il merge.
-- **Percorso**: P0 precondizioni (15 tool, get_user_id, sentinella o safe mode); F0 sonde dei guardrail (un comando
+- **Percorso**: P0 precondizioni (numero di tool da `context.tool_count`, scritto da prepare.mjs da `manifest.json`; get_user_id, sentinella o safe mode); F0 sonde dei guardrail (un comando
   Bash concatenato con `&& ls` e `delete_items` di `XXXXXXXX`, chiave inesistente: entrambi devono essere negati dagli
   hook); F1 DOI con PDF OA; F2 collezione,
   sottocollezione, add_items di tre voci (libro con autore istituzionale, articolo con titolo e autori non ASCII,
@@ -799,9 +799,15 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   (chiave sconosciuta ben formata → stesso errore, nessun output; chiave malformata `../items` → stesso rifiuto;
   `keys="A, B"`; chiave ripetuta; documento senza zcite); F10 casi limite degli input dei tool (array vuoti, stringhe di soli spazi,
   limiti 0/1/max/max+1 dove lo schema li fissa: delete_items 1..50, add_items almeno 1, search_library massimo 100);
-  poi gli scenari T-… per i file toccati, fino a 5 **scenari esplorativi** X1..X5 scelti dall'agente in base al diff
+  F11 preferenze del documento mantenute (sorgente di make-docx con le preferenze `chicago`, iniettato in `apa` dai due
+  produttori: avviso, preferenze `chicago` conservate, `compare_group` `prefs-kept`);
+  poi gli scenari T-… per i file toccati (tabella condivisa `.claude/skills/test-mcp-zotero/scenarios.json`, copiata in
+  `agent-out/scenarios.json`; prepare.mjs scrive in `context.targeted` le righe scelte da `context.changed_files`; ogni
+  sorgente di `src/` ha almeno una riga, SC-02), fino a 5 **scenari esplorativi** X1..X5 scelti dall'agente in base al diff
   (null, tipi sbagliati, vuoti, spazi, stringhe lunghissime, unicode, limiti, duplicati, valori validi e non validi
-  insieme), la valutazione d'uso e `agent-out/claims.json` (`schema_version: 2`).
+  insieme; almeno 1 con un diff solo CI o test), la valutazione d'uso e `agent-out/claims.json` (`schema_version: 3`).
+  Regole contro le deviazioni: in CI nessuna cancellazione oltre gli oggetti `<prefix> … to delete` di F8 e T-delete,
+  mai eseguire il verificatore, `notes` e `friction` in italiano; limiti 140 turni e 2 USD.
 - **verify-claims** (exit 0/1/2, `verdict.json` e riepilogo nello step summary): scenari fissi presenti e non falliti
   (F1 può essere `skipped` con motivo); ogni oggetto dichiarato esiste con i marcatori della run e lo stato dichiarato
   (titolo, DOI, collezione, genitore, link_mode, PDF); ogni cancellazione dichiarata ha una chiave nel formato Zotero,
@@ -833,6 +839,17 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   errori di validazione), nessun crash di inject.js. **Sicurezza** delle scritture: ogni chiave passata a un tool di
   scrittura è ben formata e creata prima dalla run (o finta), niente scritture sul gruppo in safe mode, mai
   delete_collection in safe mode. I messaggi riportano solo chiavi, tool e percorsi, mai contenuti della libreria.
+  **Claims schema 3** (solo dalla skill che lo introduce: sulle PR l'agente segue la skill del branch base, quindi un file
+  con `schema_version: 2` è giudicato esattamente come prima, VC-14): scenari T scelti dai file cambiati del contesto
+  fidato con la tabella condivisa (mancante → problema, saltato con motivo → avviso), F11 obbligatorio; ogni chiave creata
+  nell'audit dichiarata o cancellata (altrimenti avviso, problema senza i marcatori della run); `created[].call_no` = la
+  chiamata che ha creato la chiave, con il titolo atteso preso dal suo risultato invece che ridigitato; `metadata[]`
+  (`path`, `call_no`) per ogni file di metadati letto da inject.mjs, identico al risultato di quel `get_items_details`;
+  preferenze del documento obbligatorie in ogni documento con citazioni e nell'impronta di parità (`document_prefs` per
+  lo stile conservato del caso F11) e un gruppo verificato con preferenze mantenute; `expect.publicationTitle`
+  (T-doi, "Computers & Operations Research" con la `&` letterale); F10 soddisfatto da una qualsiasi chiamata corrispondente
+  (prima solo dalla prima); F1 saltato solo con un risultato di add_items_by_doi nell'audit che riporta un guasto esterno
+  (`test/live/helpers/external.mjs`); avviso per ogni cancellazione riuscita di un oggetto non creato come "… to delete".
 
 | ID | Scenario (`test/utils/verify-claims.test.ts`) | Atteso |
 |---|---|---|
@@ -852,6 +869,16 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-07 | make-docx: tag in linea e spezzato riconosciuti dal sorgente, `num` su ogni tag, spazi e chiave ripetuta (F9), percorso fuori agent-out e `"` nei valori rifiutati | caratteristiche lette correttamente; exit 2 |
 | VC-08 | 5 stili: inject_citations (server con Zotero finto) e inject.js (via inject.mjs, metadata da get_items_details) sul documento di parità | docx validi, 5 citazioni, impronte identiche, copertura istituzionale/senza metadati/non ASCII, testo attorno ai tag in linea e spezzato conservato, una bibliografia |
 | VC-08b | impronta alterata: citationID diverso / locator / testo visibile / bibliografia | nessuna differenza / percorso della prima differenza |
+| VC-08c | schema 3 con i due produttori reali: sorgente make-docx con preferenze `chicago` (stile sconosciuto → exit 2), iniettato in `apa` | entrambi avvisano e conservano `chicago` (valido con `documentPrefsStyle`, errore senza), stessa impronta con le preferenze; documenti di parità con le preferenze del loro stile; impronta schema 2 senza preferenze |
+| VC-13a | `createdByCalls` | chiavi create con tipo, libreria (gruppo per chiamata), `call_no`, titolo o nome riportato dal tool |
+| VC-13b | `created[].call_no` giusto, di un'altra chiamata, mancante, inesistente, libreria diversa | titolo atteso dal risultato / un problema per caso |
+| VC-13c | chiavi create non dichiarate (né cancellate); cancellazione di un oggetto non "… to delete" | elencate / avviso |
+| VC-13d | `metadata[]`: file identico al risultato del suo `call_no`, non dichiarato ma usato da inject.mjs, `call_no` non get_items_details riuscito, contenuto diverso, file mancante | controllo / un problema per caso |
+| VC-13e | F1 saltato: nessun add_items_by_doi, 503 di doi.org, 404 | nessuna prova / prova / nessuna prova |
+| VC-13f | scenari T dal contesto: scelti per percorso e prefisso, mancante, saltato con motivo, fallito, `changed_files` assente | problema / avviso / nessun doppio problema / problema |
+| VC-13g | F10 con la prima chiamata sbagliata e la seconda giusta | schema 2: problema; schema 3: nessuno, prova = la seconda |
+| VC-14/14b | script completo sullo stesso audit con claims schema 2 / 3 (riga T scelta, F1 saltato senza prova, cancellazione fuori da F8, metadati non dichiarati, F10 giusto solo alla seconda chiamata, niente F11) | schema 2: verdetto identico a quello del verificatore della 2.0.3 (problemi, avvisi, controlli); schema 3: i requisiti nuovi in più, il problema F10 in meno, l'avviso sulla cancellazione |
+| SC-01..04 | tabella degli scenari mirati (`test/utils/agent-scenarios.test.ts`): id unici e pattern esistenti; ogni sorgente di `src/` mappato; scelta per percorso, prefisso `/**`, ordine, docs/CI esclusi; SKILL.md rimanda a `agent-out/scenarios.json` e a `context.targeted`, senza ripetere la tabella | come atteso |
 | VC-09a/b | script completo senza rete: senza `--audit`; claims incompleti, cancellazione non attribuibile, chiamata della trascrizione assente dall'audit | exit 2; exit 1 e `verdict.json` con scenari mancanti, sicurezza, sonde F0, buco dell'audit, F10, parità, F9; la chiave non compare nell'output |
 | VC-09c | riga d'audit con un runId diverso | problema "evidence from another run" (in VC-09b) |
 | VC-11 | `agent-out/context.json` identico alla copia degli hook / modificato (cleanup) | nessun problema sul contesto / "differs from the copy written before the agent started" |

@@ -101,6 +101,13 @@ export interface ValidateOptions {
   requireBibliography?: boolean;
   /** Prefisso libreria atteso negli URI, es. "users/123" o "groups/777". */
   libraryPath?: string;
+  /** Errore se mancano le preferenze del documento (ZOTERO_PREF_*) (default: assenti ammesse, documentPrefs null). */
+  requireDocumentPrefs?: boolean;
+  /**
+   * Stile atteso nelle preferenze, se diverso da quello dell'iniezione: un documento che le aveva già le mantiene
+   * (caso "preferenze mantenute"). Default: `style`.
+   */
+  documentPrefsStyle?: CitationStyle;
 }
 
 const Ajv = ((AjvModule as any).default ?? AjvModule) as new (opts: Record<string, unknown>) => any;
@@ -426,11 +433,14 @@ export function styleId(style: CitationStyle): string {
  * Preferenze del documento come le scrive Zotero for Word (H-W1): proprietà ZOTERO_PREF_1…n di docProps/custom.xml
  * (al massimo 255 caratteri ciascuna, numerate senza buchi) che ricomposte danno `<data data-version="3">` con lo
  * stile e `fieldType` Field; content type e relazione della parte presenti. Lo stile deve essere quello
- * dell'iniezione. Assenti → null, nessun errore (documento non ancora gestito da Zotero).
+ * dell'iniezione (o `documentPrefsStyle`). Assenti → null, errore solo con `requireDocumentPrefs`.
  */
-async function checkDocumentPrefs(zip: JSZip, style: CitationStyle, errors: string[]): Promise<DocxReport["documentPrefs"]> {
+async function checkDocumentPrefs(zip: JSZip, style: CitationStyle, errors: string[], required = false): Promise<DocxReport["documentPrefs"]> {
   const custom = await zip.file("docProps/custom.xml")?.async("string");
-  if (!custom || !/ZOTERO_PREF/.test(custom)) return null;
+  if (!custom || !/ZOTERO_PREF/.test(custom)) {
+    if (required) errors.push("preferenze del documento assenti (nessun ZOTERO_PREF_* in docProps/custom.xml): il primo Refresh apre Document Preferences");
+    return null;
+  }
   const chunks = new Map<number, string>();
   for (const m of custom.matchAll(/<property\b[^>]*\bname="ZOTERO_PREF_(\d+)"[^>]*>([\s\S]*?)<\/property>/g)) {
     const value = /<vt:lpwstr>([\s\S]*?)<\/vt:lpwstr>/.exec(m[2]);
@@ -520,7 +530,7 @@ export async function validateDocx(docx: Buffer | Uint8Array, opts: ValidateOpti
   if ((opts.requireBibliography ?? true) && report.citations.length > 0 && !report.bibliography) {
     errors.push("citazioni presenti ma nessun campo ZOTERO_BIBL");
   }
-  report.documentPrefs = await checkDocumentPrefs(zip, style, errors);
+  report.documentPrefs = await checkDocumentPrefs(zip, opts.documentPrefsStyle ?? style, errors, opts.requireDocumentPrefs);
   report.parity = computeParity(report.documentPrefs !== null, report.citations);
   if (errors.length === 0) renderWithCiteproc(report, style);
   return report;
