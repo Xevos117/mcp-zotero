@@ -185,8 +185,12 @@ Add to your Claude Desktop configuration:
 ## Integration with Claude Code
 
 ```bash
-claude mcp add-json "zotero" '{"command":"npx","args":["tsx","src/server.ts"],"env":{"ZOTERO_API_KEY":"...","ZOTERO_USER_ID":"..."}}'
+claude mcp add zotero -e ZOTERO_API_KEY=YOUR_API_KEY -e ZOTERO_USER_ID=YOUR_USER_ID -- npx -y @xevos117/mcp-zotero
 ```
+
+Add `-e UNPAYWALL_EMAIL=...` or `-e UNSAFE_OPERATIONS=items` as needed, and `--scope user` to make the server
+available in every project (the default `local` scope covers only the current project). From a clone of this repository,
+`npx tsx src/server.ts` runs the server from source instead (see [Development](#development)).
 
 ## Available Tools
 
