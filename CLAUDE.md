@@ -69,7 +69,7 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging on Node 22/24/26 |
-| `live-tests.yml` | same-repo PRs, `main`, nightly, manual | `live-tests-run`: `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; `live-tests` (required check) decides from it; nightly failures open/update one issue |
+| `live-tests.yml` | same-repo PRs, `main`, weekly (Friday), manual | `live-tests-run`: `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; `live-tests` (required check) decides from it; weekly failures open/update one issue |
 | `claude-agent-smoke.yml` | same-repo PRs by the owner or `github-actions[bot]` (the agent costs API credits: other people's changes only by hand, after review), manual (run it by hand on `main` after a merge) | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
 | `deps-update.yml` | 1st of the month, manual | agent (no GitHub token, no install scripts, Context7 MCP for library docs, leaves a patch and optionally an issue text) → open-pr (no npm, no id-token: pushes `deps/<date>` and opens the PR labelled `dipendenze` with `GITHUB_TOKEN`, then starts test/live-tests/agent-smoke on the branch with `workflow_dispatch`) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for those checks on the exact SHA, `--match-head-commit`); issue (majors and postponed updates: opens or comments the open issue labelled `dipendenze`). Published agent text goes through `scripts/check-public-text.mjs` |
 | `release.yml` | GitHub release published, manual | tests, npm publish, skill zips (owner only) |
@@ -83,7 +83,7 @@ The deps workflow uses only `GITHUB_TOKEN` on GitHub. Events caused by `GITHUB_T
 `pull_request`/`push` workflows, so open-pr starts the required ones with `workflow_dispatch` (the one
 exception GitHub allows) on the dependency branch; their check runs attach to the PR head. The gate's
 auto-merge produces a push to `main` that likewise triggers no workflows: every required check already
-ran on the PR, and the nightly `live-tests.yml` run covers `main`.
+ran on the PR, and the weekly `live-tests.yml` run (Friday) covers `main`.
 
 Required checks to set in the ruleset after the stack merges (names as GitHub shows them):
 `test (node 22)`, `test (node 24)`, `test (node 26)`, `live-tests`, `agent-smoke`.

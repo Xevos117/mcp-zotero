@@ -9,8 +9,8 @@ on:
   push:
     branches: [main]
   schedule:
-    # nightly, to notice changes in Zotero, doi.org, Unpaywall or publishers
-    - cron: "23 3 * * *"
+    # weekly on Friday, to notice changes in Zotero, doi.org, Unpaywall or publishers
+    - cron: "23 3 * * 5"
   workflow_dispatch:
 
 permissions:
@@ -180,8 +180,8 @@ jobs:
             *) echo "::error::live-tests-run: $LIVE"; exit 1 ;;
           esac
 
-  # Nightly failures open (or update) one issue; it carries links and test names, never data.
-  report-nightly:
+  # Scheduled-run failures open (or update) one issue; it carries links and test names, never data.
+  report-weekly:
     needs: live
     if: always() && github.event_name == 'schedule' && needs.live.result == 'failure'
     runs-on: ubuntu-latest
@@ -195,7 +195,7 @@ jobs:
         with:
           name: live-report
           path: live-artifacts
-      - name: Open or update the nightly issue
+      - name: Open or update the weekly issue
         timeout-minutes: 2
         env:
           GH_TOKEN: ${{ github.token }}
@@ -211,7 +211,7 @@ jobs:
             console.log(names.length ? names.map((n) => "- " + n).join("\n") : "- (failure outside the tests: setup, teardown or cleanup)");
           ')
           body=$(printf 'Run: %s\n\nFailed tests:\n%s\n' "$RUN_URL" "$failed")
-          title="Test dal vivo notturni falliti"
+          title="Test dal vivo settimanali falliti"
           number=$(gh issue list --repo "$REPO" --state open --search "$title in:title" --json number --jq '.[0].number // empty')
           if [ -n "$number" ]; then
             gh issue comment "$number" --repo "$REPO" --body "$body"
