@@ -164,7 +164,22 @@ To enable deletion, set the `UNSAFE_OPERATIONS` environment variable to one of t
 
 ## Integration with Claude Desktop
 
-Add to your Claude Desktop configuration:
+### Install as a Claude Desktop extension (one click)
+
+1. Download `mcp-zotero.mcpb` from the [latest release](https://github.com/Xevos117/mcp-zotero/releases/latest)
+   (available from the first release after 2.0.2).
+2. Open the file with Claude Desktop (macOS or Windows; e.g. double-click it) and confirm in the installation dialog.
+3. Fill in your **Zotero API key** and **Zotero user ID** (see [Setup](#setup)). Optional settings: library type and
+   group ID (for a group library), the email for Unpaywall (open-access PDF lookup) and which deletions are allowed
+   (default: none, see [Unsafe Operations](#unsafe-operations)).
+
+The extension bundles the server and its dependencies and runs with the Node.js runtime that ships with Claude
+Desktop, so no separate Node.js or npm install is needed. The API key is declared as a sensitive setting (masked
+input, stored securely by the client).
+
+### Manual configuration (any MCP client)
+
+Add to your Claude Desktop configuration (or the equivalent file of another MCP client):
 
 ```json
 {
@@ -237,6 +252,8 @@ npm run build          # Compile TypeScript
 npm test               # Unit and per-tool tests (vitest, fetch faked, ~1000 tests)
 npm run test:e2e       # Built server over stdio against a local fake Zotero API
 npm run smoke          # Quick stdio smoke test of the built server (user + group library)
+npm run bundle         # Claude Desktop extension: dist/mcp-zotero.mcpb (production dependencies only)
+npm run smoke -- --bundle dist/mcp-zotero.mcpb   # smoke test of the unpacked bundle, started from its manifest
 npx tsx src/server.ts  # Run directly without building
 ```
 
@@ -318,14 +335,14 @@ Other owner settings:
 
 ### Releasing
 
-1. Update `CHANGELOG.md` (move `Unreleased` to the new version) and the version in `package.json` and in
-   `server.json` (`version` and `packages[0].version`; `npm test` fails if they differ).
+1. Update `CHANGELOG.md` (move `Unreleased` to the new version) and the version in `package.json`, in
+   `server.json` (`version` and `packages[0].version`) and in `manifest.json` (`npm test` fails if they differ).
 2. Make sure CI, live tests and the agent smoke test are green on `main`.
 3. Run the manual [Word checklist](test/WORD_CHECKLIST.md) on a document injected by the release candidate
    and record the results in its log.
 4. Publish the GitHub release: the [release workflow](.github/workflows/release.yml) runs the tests, publishes
    to npm, publishes `server.json` to the [MCP Registry](https://registry.modelcontextprotocol.io) and attaches
-   the skill zips.
+   the skill zips and the Claude Desktop extension (`mcp-zotero.mcpb`).
 
 ### Debug with MCP Inspector
 
