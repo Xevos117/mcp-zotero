@@ -198,6 +198,24 @@ describe("script degli hook come processi (AH-03)", () => {
     }
   });
 
+  // Contract of Claude Code / Agent SDK hooks: exit 0 and one JSON object on stdout whose
+  // hookSpecificOutput.additionalContext is shown to the model after the tool result (hookEventName = the event).
+  // Checked for real once with claude -p and with the Agent SDK (settings file, Bash, Haiku): the model quoted the note.
+  it.each(["PostToolUse", "PostToolUseFailure"])("AH-03g contratto dell'output di audit.mjs per %s: exit 0, un solo oggetto JSON, solo hookSpecificOutput con evento e additionalContext", async (event) => {
+    const input = { hook_event_name: event, tool_name: "mcp__zotero__search_library", tool_use_id: "c1", tool_input: { query: "x" }, ...(event === "PostToolUse" ? { tool_response: [{ type: "text", text: "[]" }] } : { error: "boom" }) };
+    const r = await hook("audit.mjs", input, dir.path);
+    expect(r.code).toBe(0);
+    expect(r.stdout.trim().split("\n")).toHaveLength(1);
+    const out = JSON.parse(r.stdout);
+    expect(Object.keys(out)).toEqual(["hookSpecificOutput"]);
+    expect(Object.keys(out.hookSpecificOutput).sort()).toEqual(["additionalContext", "hookEventName"]);
+    expect(out.hookSpecificOutput.hookEventName).toBe(event);
+    expect(out.hookSpecificOutput.additionalContext).toBe('audit call_no 1 (mcp__zotero__search_library): reference this call in claims.json as "call_no": 1');
+    expect(out.hookSpecificOutput.additionalContext.length).toBeLessThan(2000);
+    // the number told is the one recorded
+    expect((await lines("audit.jsonl"))[0].call_no).toBe(1);
+  });
+
   it("AH-03d delete-guard senza agent-audit/context.json → negato", async () => {
     const empty = await tempDir();
     try {
