@@ -36,4 +36,7 @@ if (groupId) {
 await writeFile(join(out, "items.json"), JSON.stringify({ libraries }));
 const keys = libraries.map((l) => `${l.type}=${l.items.map((i) => i.key).join(",")}`).join("\n");
 await writeFile(join(out, "keys.env"), keys + "\n");
-for (const l of libraries) console.log(`${l.type}: ${l.items.length} items (${l.items.map((i) => i.data.itemType).join(", ")})`);
+for (const l of libraries) {
+  const transient = l.items.filter((i) => /^mzt-/.test(i.data.title)).length;
+  console.log(`${l.type}: ${l.items.length} items (${l.items.map((i) => i.data.itemType).join(", ")}), ${transient} created by a live run`);
+}
