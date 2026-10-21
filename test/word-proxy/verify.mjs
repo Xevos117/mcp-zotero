@@ -66,20 +66,25 @@ for (const name of names) {
 report.proposedStyles = [...new Set(wc.filter((e) => e.proposedStyle).map((e) => e.proposedStyle))];
 report.H5_embeddedFallback = [...new Set([...log.matchAll(/Item \["([^"]+)"\] not in library\. Using embedded data/g)].map((m) => m[1].split("/").pop()))];
 report.missingItemPrompts = (log.match(/missingItem/g) ?? []).length;
+report.libraryLoaded = wc.filter((e) => e.loaded !== undefined).map((e) => ({ library: e.library, items: e.loaded }));
+if (!report.libraryLoaded.length) report.libraryLoaded = undefined;
+report.setupErrors = wc.filter((e) => e.setupError).map((e) => e.setupError);
 const d = report.docs;
 const injected = names.filter((n) => !n.startsWith("fix") && !["again", "restyle"].includes(n) && n !== "proposed");
 const all = Object.values(d);
 report.verdicts = {
   H1: injected.every((n) => d[n].H1_docPrefsDialog) ? "confermata: il primo Refresh chiede Document Preferences" : "smentita",
-  H1_fix: names.filter((n) => n.startsWith("fix")).every((n) => !d[n].H1_docPrefsDialog) ? "con ZOTERO_PREF_1 nel docx nessun dialogo" : "il fix non basta",
+  H1_fix: !names.some((n) => n.startsWith("fix")) ? "non provato" : names.filter((n) => n.startsWith("fix")).every((n) => !d[n].H1_docPrefsDialog) ? "con ZOTERO_PREF_1 nel docx nessun dialogo" : "il fix non basta",
   H2: all.every((x) => x.alerts.length === 0 && x.H2_noteIndex.every((i) => i === 0)) ? "smentita: nessun avviso, noteIndex 0 scritto da Zotero" : "da rivedere",
   H3: all.every((x) => Object.values(x.H3_idsPerUri).every((ids) => ids.length === 1) && x.bibliographyParagraphs === x.H3_distinctUris) ? "smentita: un id per URI, bibliografia senza duplicati" : "da rivedere",
   H4: all.every((x) => x.H4_locatorRendered.every((t) => /\bp\. 12\b|\b12\b/.test(t))) ? "smentita: locator reso come pagina" : "da rivedere",
-  H5: report.missingItemPrompts === 0 && report.H5_embeddedFallback.length > 0 ? "itemData incorporato usato senza richieste (voci non in libreria)" : "da rivedere",
+  H5: report.missingItemPrompts !== 0 ? "da rivedere: Zotero ha chiesto delle voci mancanti"
+    : report.libraryLoaded ? (report.H5_embeddedFallback.length === 0 ? "tutte le voci risolte dalla libreria locale (URI utente e gruppo)" : `voci non risolte dalla libreria: ${report.H5_embeddedFallback.join(", ")}`)
+    : report.H5_embeddedFallback.length > 0 ? "itemData incorporato usato senza richieste (voci non in libreria)" : "da rivedere",
 };
 console.log(JSON.stringify(report, null, 2));
 if (process.env.GITHUB_STEP_SUMMARY) {
   const rows = names.map((n) => `| ${n} | ${d[n].completed ? "ok" : "**non completato**"} | ${d[n].H1_docPrefsDialog ? "sì" : "no"} | ${d[n].H1_styleInDoc ?? ""} | ${d[n].alerts.length} | ${d[n].visible.join(" · ").replace(/\|/g, "/")} | ${d[n].bibliographyParagraphs} |`);
   await appendFile(process.env.GITHUB_STEP_SUMMARY, [`### Zotero ${report.zotero} + WordCraft`, "", "| passo | comando | Document Preferences | stile salvato | avvisi | citazioni | voci bibliografia |", "|---|---|---|---|---|---|---|", ...rows, "", ...Object.entries(report.verdicts).map(([k, v]) => `- **${k}**: ${v}`), ""].join("\n"));
 }
-if (!all.every((x) => x.completed)) process.exitCode = 1;
+if (!all.every((x) => x.completed) || report.setupErrors.length) process.exitCode = 1;

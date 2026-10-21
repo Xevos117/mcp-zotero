@@ -1,9 +1,10 @@
-// Fake Zotero Web API for the PoC: three items in /users/000000, no network.
-const PREFIX = "/users/000000";
-const ITEMS = {
-  AAAA1111: { itemType: "journalArticle", title: "Alpha paper on testing", date: "2020", publicationTitle: "Journal of Tests", volume: "12", issue: "3", pages: "100-120", creators: [{ creatorType: "author", lastName: "Rossi", firstName: "Mario" }] },
-  BBBB2222: { itemType: "book", title: "Beta book of fields", date: "2018", publisher: "Field Press", place: "Milano", creators: [{ creatorType: "author", lastName: "Bianchi", firstName: "Anna" }, { creatorType: "author", lastName: "Verdi", firstName: "Luca" }] },
-  CCCC3333: { itemType: "bookSection", title: "Gamma chapter", bookTitle: "Collected Gammas", date: "2021", pages: "5-30", publisher: "G Press", creators: [{ creatorType: "author", lastName: "Neri", firstName: "Paola" }, { creatorType: "editor", lastName: "Gialli", firstName: "Ugo" }] },
+// Fake Zotero Web API for the PoC: three items in /users/000000 (or STUB_PREFIX, e.g. /groups/777), no network. Keys use Zotero's key
+// alphabet (no 0, 1, O), or the local database refuses them (load-items.js).
+const PREFIX = process.env.STUB_PREFIX ?? "/users/000000";
+export const ITEMS = {
+  AAAA2222: { itemType: "journalArticle", title: "Alpha paper on testing", date: "2020", publicationTitle: "Journal of Tests", volume: "12", issue: "3", pages: "100-120", creators: [{ creatorType: "author", lastName: "Rossi", firstName: "Mario" }] },
+  BBBB3333: { itemType: "book", title: "Beta book of fields", date: "2018", publisher: "Field Press", place: "Milano", creators: [{ creatorType: "author", lastName: "Bianchi", firstName: "Anna" }, { creatorType: "author", lastName: "Verdi", firstName: "Luca" }] },
+  CCCC4444: { itemType: "bookSection", title: "Gamma chapter", bookTitle: "Collected Gammas", date: "2021", pages: "5-30", publisher: "G Press", creators: [{ creatorType: "author", lastName: "Neri", firstName: "Paola" }, { creatorType: "editor", lastName: "Gialli", firstName: "Ugo" }] },
 };
 globalThis.fetch = async (input, init) => {
   const url = new URL(typeof input === "string" ? input : input.url);
