@@ -1,7 +1,7 @@
 name: word-tools
 description: >-
   Zotero desktop and wordcraft-cli for the word-proxy and word-render jobs: system packages (Xvfb, GTK), official
-  binaries at pinned versions verified by sha256, cached per version and architecture. Composite steps cannot carry
+  archives at pinned versions, cached per version and architecture and checked against their sha256 on every run. Composite steps cannot carry
   timeout-minutes: every command has its own timeout and the calling step sets timeout-minutes.
 outputs:
   zotero:
@@ -42,16 +42,18 @@ runs:
         set -euo pipefail
         sudo timeout 180 apt-get update -qq
         sudo timeout 240 apt-get install -y -qq --no-install-recommends xvfb libgtk-3-0t64 libdbus-glib-1-2 libasound2t64 libxtst6 > /dev/null
-    - name: Cache Zotero and WordCraft
+    # The cache holds the downloaded archives, not the unpacked programs: every run checks them against the pinned
+    # sha256 (a cache hit included) and unpacks them again (a few seconds)
+    - name: Cache the Zotero and WordCraft archives
       id: cache
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/word-tools
-        key: word-tools-zotero${{ steps.versions.outputs.zotero }}-wordcraft${{ steps.versions.outputs.wordcraft }}-${{ runner.arch }}
-    - name: Download Zotero and WordCraft (pinned sha256)
-      if: steps.cache.outputs.cache-hit != 'true'
+        path: ~/word-tools-archives
+        key: word-tools-archives-zotero${{ steps.versions.outputs.zotero }}-wordcraft${{ steps.versions.outputs.wordcraft }}-${{ runner.arch }}
+    - name: Download, verify and unpack Zotero and WordCraft (pinned sha256)
       shell: bash
       env:
+        CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
         ZOTERO_VERSION: ${{ steps.versions.outputs.zotero }}
         WORDCRAFT_VERSION: ${{ steps.versions.outputs.wordcraft }}
         ZOTERO_ARCH: ${{ steps.versions.outputs.zotero_arch }}
@@ -60,14 +62,16 @@ runs:
         WORDCRAFT_SHA256: ${{ steps.versions.outputs.wordcraft_sha256 }}
       run: |
         set -euo pipefail
-        rm -rf ~/word-tools && mkdir -p ~/word-tools && cd ~/word-tools
+        mkdir -p ~/word-tools-archives && cd ~/word-tools-archives
         z="Zotero-${ZOTERO_VERSION}_linux-${ZOTERO_ARCH}.tar.xz"
         w="wordcraft-${WORDCRAFT_VERSION}-linux-${WORDCRAFT_ARCH}.tar.gz"
-        timeout 300 curl -sSfL --retry 2 --max-time 280 -o "$z" "https://download.zotero.org/client/release/${ZOTERO_VERSION}/$z"
-        timeout 300 curl -sSfL --retry 2 --max-time 280 -o "$w" "https://github.com/storytold/wordcraft/releases/download/v${WORDCRAFT_VERSION}/$w"
+        if [ "$CACHE_HIT" != "true" ]; then
+          timeout 300 curl -sSfL --retry 2 --max-time 280 -o "$z" "https://download.zotero.org/client/release/${ZOTERO_VERSION}/$z"
+          timeout 300 curl -sSfL --retry 2 --max-time 280 -o "$w" "https://github.com/storytold/wordcraft/releases/download/v${WORDCRAFT_VERSION}/$w"
+        fi
         printf '%s  %s\n%s  %s\n' "$ZOTERO_SHA256" "$z" "$WORDCRAFT_SHA256" "$w" | sha256sum -c -
-        timeout 120 tar xJf "$z" && timeout 120 tar xzf "$w"
-        rm "$z" "$w"
+        rm -rf ~/word-tools && mkdir -p ~/word-tools && cd ~/word-tools
+        timeout 120 tar xJf ~/word-tools-archives/"$z" && timeout 120 tar xzf ~/word-tools-archives/"$w"
         mv Zotero_linux-* zotero && mv "wordcraft-${WORDCRAFT_VERSION}-linux-${WORDCRAFT_ARCH}" wordcraft
     - name: Paths
       id: paths

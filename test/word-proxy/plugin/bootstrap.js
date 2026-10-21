@@ -2,7 +2,7 @@
 // Preferences, citation dialog, item reselect) with scripted answers and logs every request as a `WCAUTO {json}`
 // line of the debug output, so a headless run can tell which dialog Zotero wanted (H-W1) and still finish the
 // command. Uses Zotero internals (Zotero.Integration.displayDialog): re-check on every Zotero update.
-var orig;
+var orig, windowObserver;
 function log(o) { dump("WCAUTO " + JSON.stringify(o) + "\n"); }
 async function startup() {
   await Zotero.initializationPromise;
@@ -26,8 +26,10 @@ async function startup() {
     }
     // Any other dialog (citation, select items, bibliography editor) is cancelled: io untouched.
   };
-  // Prompts that bypass the word processor (Services.prompt): log and take the default button.
-  Services.obs.addObserver({ observe(subject) { subject.addEventListener("load", () => log({ window: subject.location.href, title: subject.document.title }), { once: true }); } }, "domwindowopened");
+  // Windows that bypass the word processor (e.g. Services.prompt): only logged (title, URL), never answered here;
+  // the protocol's own alerts are answered by WordCraft's headless host and end up in the trace.
+  windowObserver = { observe(subject) { subject.addEventListener("load", () => log({ window: subject.location.href, title: subject.document.title }), { once: true }); } };
+  Services.obs.addObserver(windowObserver, "domwindowopened");
   const setup = Zotero.Prefs.get("extensions.wcauto.setup", true);
   if (setup) {
     try { await (new ((async () => {}).constructor)("Zotero", "log", await Zotero.File.getContentsAsync(setup)))(Zotero, log); }
@@ -35,6 +37,9 @@ async function startup() {
   }
   log({ ready: true, zotero: Zotero.version, defaultStyle, styleFile });
 }
-function shutdown() { if (orig) Zotero.Integration.displayDialog = orig; }
+function shutdown() {
+  if (orig) Zotero.Integration.displayDialog = orig;
+  if (windowObserver) Services.obs.removeObserver(windowObserver, "domwindowopened");
+}
 function install() {}
 function uninstall() {}

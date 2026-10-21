@@ -21,6 +21,15 @@ user_pref("extensions.zotero.sync.autoSync", false);
 user_pref("extensions.zotero.automaticScraperUpdates", false);
 user_pref("app.update.enabled", false);
 user_pref("app.update.auto", false);
+user_pref("extensions.update.enabled", false);
+user_pref("extensions.zotero.retractions.enabled", false);
+user_pref("extensions.zotero.sync.fulltext.enabled", false);
+user_pref("extensions.zotero.reportTranslationFailure", false);
+user_pref("extensions.zotero.feeds.enabled", false);
+user_pref("datareporting.policy.dataSubmissionEnabled", false);
+user_pref("toolkit.telemetry.enabled", false);
+user_pref("network.captive-portal-service.enabled", false);
+user_pref("network.connectivity-service.enabled", false);
 user_pref("extensions.wcauto.styleFile", "$OUT/next-style");
 user_pref("extensions.wcauto.setup", "${ZOTERO_JS_SETUP:-}");
 PREFS
@@ -30,10 +39,12 @@ XPID=
 cleanup() { [ -n "${ZPID:-}" ] && kill "$ZPID" 2>/dev/null; [ -n "$XPID" ] && kill "$XPID" 2>/dev/null; wait 2>/dev/null; }
 trap cleanup EXIT
 if [ -n "${XVFB:-}" ]; then
-  (cd "${XVFB_CWD:-.}" && exec timeout 600 "$XVFB" :99 -screen 0 1280x1024x24 -nolisten tcp) > "$OUT/xvfb.log" 2>&1 &
+  # Xvfb picks a free display and writes its number to fd 3 once it accepts connections (no fixed :99, no stale socket)
+  : > "$OUT/display"
+  (cd "${XVFB_CWD:-.}" && exec timeout 600 "$XVFB" -displayfd 3 -screen 0 1280x1024x24 -nolisten tcp 3> "$OUT/display") > "$OUT/xvfb.log" 2>&1 &
   XPID=$!
-  timeout 15 bash -c 'until [ -e /tmp/.X11-unix/X99 ]; do sleep 0.3; done' || { echo "Xvfb did not start"; exit 2; }
-  export DISPLAY=:99
+  timeout 15 bash -c "until [ -s '$OUT/display' ]; do kill -0 $XPID 2>/dev/null || exit 1; sleep 0.2; done" || { echo "Xvfb did not start"; exit 2; }
+  export DISPLAY=":$(tr -dc '0-9' < "$OUT/display")"
 fi
 : > "$OUT/zotero.log"; T0=$(date +%s)
 timeout 500 "$Z/zotero-bin" -app "$Z/app/application.ini" -profile "$P" -ZoteroDebugText >> "$OUT/zotero.log" 2>&1 &

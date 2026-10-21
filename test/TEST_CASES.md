@@ -508,8 +508,8 @@ bibliografia dalla libreria locale con quella dall'`itemData` incorporato. Nessu
 | WP-group | docx dalla libreria di gruppo 777, gruppo assente in Zotero | H-W5: `itemData` incorporato, nessuna richiesta, URI `groups/777` |
 | WP-lib-apa/lib-fix-apa/lib-group | sessione "library" (percorso A): stesse voci con le stesse chiavi nella libreria locale e in un gruppo 777 (`load-items.js`) | voci dalla libreria, nessun fallback; dialogo H-W1 solo senza `ZOTERO_PREF` |
 | WP-ab | bibliografia lib-fix-apa contro fix-apa | uguali salvo le 4 differenze note: `zoteroItemToCsl` non porta università (tesi), istituzione (report), repository/archiveID (preprint), data di accesso (pagina web) |
-| WL-09 | ambito del job (`scripts/word-proxy-scope.mjs`, `test/utils/workflow-logic.test.ts`) | PR: solo se cambiano iniezione, conversione, skill, corpus, word-proxy, il job; PR solo docs: saltato; push su main e manuale: sempre |
-| WL-10 | struttura del job | senza segreti né `environment`, `ubuntu-24.04`, timeout ≤ 10 min, azione composita `word-tools` (versioni e sha256 fissati, cache), artifact solo dopo `check-artifacts.mjs`, conservato 1 giorno |
+| WL-09 | ambito del job (`scripts/word-proxy-scope.mjs`, `test/utils/workflow-logic.test.ts`) | PR: solo se cambiano un sorgente del server (`src/`), la skill, il corpus, word-proxy o il job; PR solo docs o solo test: saltato; push su main e manuale: sempre |
+| WL-10 | struttura del job | senza segreti né `environment`, `ubuntu-24.04`, timeout ≤ 10 min, azione composita `word-tools` (versioni e sha256 fissati, archivi in cache ricontrollati a ogni run), artifact solo dopo `check-artifacts.mjs`, conservato 1 giorno |
 | WP-CA | `check-artifacts.mjs` (`test/utils/word-proxy.test.ts`) | fallisce con URI di libreria diversi dai segnaposto, email, home diversa da quella del runner, valori di variabili segrete, file inattesi (anche dentro i docx) |
 | WP-V | `verify.mjs` / `compare.mjs` su documenti costruiti nel test | aspettative rispettate → ok; una differenza → errore con atteso/ottenuto; differenza A/B nuova o sparita → errore |
 

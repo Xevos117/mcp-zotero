@@ -179,7 +179,8 @@ describe("ambito di una run del workflow dal vivo (scripts/live-scope.mjs, WL-08
 describe("job word-proxy di test.yml (WL-09, WL-10)", () => {
   it.each<[string, string, string[], boolean]>([
     ["PR solo docs", "pull_request", ["README.md", "test/WORD_CHECKLIST.md"], false],
-    ["PR su un tool che non tocca l'iniezione", "pull_request", ["src/tools/search-library.ts"], false],
+    ["PR solo sui test unitari", "pull_request", ["test/tools/search-library.test.ts"], false],
+    ["PR su qualunque sorgente del server (i documenti passano da tutto il server)", "pull_request", ["src/utils/zotero-keys.ts"], true],
     ["PR sull'iniettore", "pull_request", ["src/citation-injector/injector.ts"], true],
     ["PR sulla conversione in itemData", "pull_request", ["src/utils/csl-to-zotero.ts"], true],
     ["PR sulla skill (inject.js)", "pull_request", ["skills/zotero-skill-mcp-integrations/scripts/inject.js"], true],
@@ -209,6 +210,8 @@ describe("job word-proxy di test.yml (WL-09, WL-10)", () => {
     const action = readFileSync(join(ROOT, ".github", "actions", "word-tools", "action.yml"), "utf8");
     expect(action.match(/sha256=[0-9a-f]{64}/g)).toHaveLength(4);
     expect(action).toContain("sha256sum -c -");
+    // the archives are checked on every run, a cache hit included
+    expect(action).not.toMatch(/if: steps\.cache\.outputs\.cache-hit/);
     expect(action).toMatch(/actions\/cache@[0-9a-f]{40}/);
   });
 });
