@@ -12,9 +12,10 @@
 //   "[object Object]"/undefined/NaN, stack traces) and every write call for keys the run did not create;
 // - checks the guardrail probes (F0), the fixed edge cases (F9, F10) and that every claimed exploratory call
 //   (X1..X5) was really made.
-// Exit 0 = verified, 1 = claims not verified, 2 = setup error. Writes <dir>/verdict.json and, in CI,
-// a summary to $GITHUB_STEP_SUMMARY. No secret or library content is printed.
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+// Exit 0 = verified, 1 = claims not verified, 2 = setup error. Writes <dir>/verdict.json; the Job Summary and the
+// PR comment are written from its scrubbed copy by test/live/agent/summary.mjs. No secret or library content is
+// printed.
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
@@ -49,6 +50,8 @@ const INVALID_ZCITE = "Invalid Zotero item key(s) in <zcite>";
 const problems = [];
 const warnings = [];
 const checks = [];
+/** Audited calls referenced by the exploratory scenarios (verdict.json, shown in the report). */
+const exploratoryCalls = [];
 const fail = (msg) => problems.push(msg);
 const ok = (msg) => checks.push(msg);
 const scrub = (t) => (KEY ? String(t).split(KEY).join("***") : String(t));
@@ -135,13 +138,14 @@ export function toolCalls(messages) {
   return calls;
 }
 
-/** Calls from the hook audit log (agent-audit/audit.jsonl), in the same form as toolCalls. */
+/** Calls from the hook audit log (agent-audit/audit.jsonl), in the same form as toolCalls, plus the hook's callNo. */
 export function auditCalls(entries) {
   return (Array.isArray(entries) ? entries : [])
     .filter((e) => e && typeof e.tool_name === "string")
     .map((e) => ({
       isCall: true,
       id: e.tool_use_id,
+      callNo: e.call_no,
       name: e.tool_name,
       tool: e.tool_name.startsWith(ZOTERO_PREFIX) ? e.tool_name.slice(ZOTERO_PREFIX.length) : null,
       input: e.tool_input ?? {},
@@ -159,6 +163,27 @@ export function auditGaps(messages, entries, denials) {
     .map((c, i) => ({ c, i }))
     .filter(({ c }) => c.tool && !known.has(c.id))
     .map(({ c, i }) => `call #${i + 1} ${c.tool} of the transcript has no audit entry (hooks not active, or no result)`);
+}
+
+/**
+ * The audit hook numbers every call it records (call_no 1..n, the reference claims.json uses): once any entry has a
+ * number, all must, without repeats or gaps (a gap is a call whose entry was lost). An audit without numbers comes
+ * from hooks that predate them (a pull request's agent runs the base branch's hooks).
+ */
+export function auditNumberingProblems(entries) {
+  const list = (Array.isArray(entries) ? entries : []).filter((e) => e && typeof e.tool_name === "string");
+  if (!list.some((e) => e.call_no !== undefined)) return [];
+  const out = [];
+  const numbers = list.map((e) => e.call_no);
+  const bad = numbers.filter((n) => !Number.isInteger(n) || n < 1).length;
+  if (bad) out.push(`audit: ${bad} entr${bad === 1 ? "y" : "ies"} without a valid call_no`);
+  const valid = numbers.filter((n) => Number.isInteger(n) && n >= 1);
+  const repeated = valid.length - new Set(valid).size;
+  if (repeated) out.push(`audit: ${repeated} repeated call_no`);
+  const max = Math.max(0, ...valid);
+  const missing = max - new Set(valid).size;
+  if (missing > 0) out.push(`audit: ${missing} call_no missing between 1 and ${max} (lost entries)`);
+  return out;
 }
 
 /** F0 and denials: the two probes must be denied by the hooks; any other denial is a warning. */
@@ -395,13 +420,23 @@ function limitProblem(call, max) {
   return null;
 }
 
-/** F9 checks: the same failure from inject_citations and from inject.js (unknown key, malformed key), 0 found without zcite. */
-export function edgeCaseProblems(messages) {
+/**
+ * F9 checks (the same failure from inject_citations and from inject.js for the unknown and the malformed key, 0
+ * found without zcite) and F10 rows. Also returns the calls used as their evidence: an exploratory scenario may not
+ * claim one of them.
+ * @returns {{ problems: string[], evidence: Set<object> }}
+ */
+export function edgeCaseEvidence(messages) {
   const out = [];
+  const evidence = new Set();
   const calls = toolCalls(messages);
   const injects = calls.filter((c) => c.tool === "inject_citations" && c.result);
   const skill = calls.filter((c) => c.name === "Bash" && INJECT_CMD.test(String(c.input?.command ?? "")) && c.result);
-  const has = (list, pred) => list.some(pred);
+  const has = (list, pred) => {
+    const found = list.find(pred);
+    if (found) evidence.add(found);
+    return found !== undefined;
+  };
   const fakeIn = (text) => [...FAKE_KEYS].some((k) => text.includes(k));
   if (!has(injects, (c) => c.result.isError && c.result.text.includes(INVALID_ZCITE))) out.push(`F9: no inject_citations call rejected a malformed <zcite> key ("${INVALID_ZCITE}")`);
   if (!has(skill, (c) => c.result.text.includes(INVALID_ZCITE) && !/"injected"/.test(c.result.text))) out.push("F9: no inject.js run rejected a malformed <zcite> key with the same message");
@@ -413,11 +448,16 @@ export function edgeCaseProblems(messages) {
     const found = calls.filter((c) => match(c) && c.result);
     if (found.length === 0) out.push(`F10: ${desc} not called`);
     else {
+      evidence.add(found[0]);
       const problem = expect(found[0]);
       if (problem) out.push(`F10: ${desc}: ${problem}`);
     }
   }
-  return out;
+  return { problems: out, evidence };
+}
+
+export function edgeCaseProblems(messages) {
+  return edgeCaseEvidence(messages).problems;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -431,13 +471,20 @@ export function canonical(value) {
   return JSON.stringify(value) ?? "null";
 }
 
+const MAX_INPUT_SHOWN = 300;
+
 /**
  * At most 5 exploratory scenarios, each with a rationale, at least one call and a verdict; every claimed call
- * was really made (same tool, same arguments). "bug" fails the check, "unclear" is a warning.
- * @returns {{ problems: string[], warnings: string[], checks: string[] }}
+ * was really made. A call is referenced by the call_no the audit hook gave it: the audited call with that number
+ * must exist, be of the claimed tool and have the claimed outcome (is_error), and belong to one scenario only and
+ * not be the evidence of a fixed check (`reserved`, from edgeCaseEvidence). With an audit that has no numbers
+ * (older hooks) a call is matched by tool and exact arguments instead; once the audit is numbered, claims must
+ * use call_no. "bug" fails the check, "unclear" is a warning. `calls` lists every referenced audited call with its
+ * input as the audit recorded it (truncated), so the report shows what was really sent.
+ * @returns {{ problems: string[], warnings: string[], checks: string[], calls: Array<{ scenario: string, call_no: number, tool: string, input: string }> }}
  */
-export function exploratoryFindings(list, messages) {
-  const res = { problems: [], warnings: [], checks: [] };
+export function exploratoryFindings(list, messages, reserved = new Set()) {
+  const res = { problems: [], warnings: [], checks: [], calls: [] };
   if (list === undefined) return res;
   if (!Array.isArray(list)) {
     res.problems.push("exploratory is not an array");
@@ -446,7 +493,11 @@ export function exploratoryFindings(list, messages) {
   if (list.length > MAX_EXPLORATORY) res.problems.push(`exploratory: ${list.length} scenarios (max ${MAX_EXPLORATORY})`);
   // Bash calls compare by command only (the harness adds a description)
   const argsOf = (name, input) => canonical(name === "Bash" ? { command: input?.command } : (input ?? {}));
-  const made = toolCalls(messages).map((c) => ({ tool: c.tool, name: c.name, args: argsOf(c.name, c.input) }));
+  const calls = toolCalls(messages);
+  const made = calls.map((c) => ({ tool: c.tool, name: c.name, args: argsOf(c.name, c.input) }));
+  const byNo = new Map(calls.filter((c) => Number.isInteger(c.callNo)).map((c) => [c.callNo, c]));
+  const numbered = byNo.size > 0;
+  const owner = new Map();
   const ids = new Set();
   for (const x of list.slice(0, MAX_EXPLORATORY)) {
     const id = String(x?.id ?? "");
@@ -461,9 +512,34 @@ export function exploratoryFindings(list, messages) {
     for (const [n, call] of (Array.isArray(x.calls) ? x.calls : []).entries()) {
       const tool = String(call?.tool ?? "");
       const short = tool.startsWith(ZOTERO_PREFIX) ? tool.slice(ZOTERO_PREFIX.length) : tool;
+      const label = `${id}: call ${n + 1} (${short})`;
+      if (call?.call_no !== undefined) {
+        const audited = Number.isInteger(call.call_no) ? byNo.get(call.call_no) : undefined;
+        if (!audited) res.problems.push(`${label}: call_no ${JSON.stringify(call.call_no)} not in the audit`);
+        else if (!(audited.tool === short || (audited.tool === null && audited.name === tool))) res.problems.push(`${label}: call_no ${call.call_no} is a ${audited.tool ?? audited.name} call`);
+        else if (typeof call.is_error !== "boolean") res.problems.push(`${label}: is_error (true|false) missing`);
+        else if (call.is_error !== audited.result.isError) res.problems.push(`${label}: call_no ${call.call_no} claimed is_error ${call.is_error}, the audit says ${audited.result.isError}`);
+        else if (reserved.has(audited)) res.problems.push(`${label}: call_no ${call.call_no} is the evidence of a fixed check (F9/F10), not an exploratory call`);
+        else if (owner.has(call.call_no)) res.problems.push(`${label}: call_no ${call.call_no} already claimed by ${owner.get(call.call_no)}`);
+        else {
+          owner.set(call.call_no, `${id} call ${n + 1}`);
+          const input = canonical(audited.name === "Bash" ? { command: audited.input?.command } : (audited.input ?? {}));
+          res.calls.push({
+            scenario: id,
+            call_no: call.call_no,
+            tool: audited.tool ?? audited.name,
+            input: input.length > MAX_INPUT_SHOWN ? `${input.slice(0, MAX_INPUT_SHOWN - 1)}…` : input,
+          });
+        }
+        continue;
+      }
+      if (numbered) {
+        res.problems.push(`${label}: no call_no (the audit numbers every call: reference it by call_no)`);
+        continue;
+      }
       const args = argsOf(tool, call?.args);
       const seen = made.some((m) => (m.tool === short || (m.tool === null && m.name === tool)) && m.args === args);
-      if (!seen) res.problems.push(`${id}: call ${n + 1} (${short}) not found in the audit with the same arguments`);
+      if (!seen) res.problems.push(`${label} not found in the audit with the same arguments`);
     }
     if (x.verdict === "bug") res.problems.push(`${id}: the agent found a bug (see claims.json exploratory)`);
     else if (x.verdict === "unclear") res.warnings.push(`${id}: unclear behaviour (see claims.json exploratory)`);
@@ -607,6 +683,9 @@ async function main() {
   const calls = auditEntries ? auditCalls(auditEntries.filter((e) => e?.run_id === context.run_id)) : null;
   if (!calls || calls.length === 0) fail(`audit ${AUDIT} missing or empty: the hooks of .claude/agent-smoke did not run`);
   else {
+    const numbering = auditNumberingProblems(auditEntries.filter((e) => e?.run_id === context.run_id));
+    numbering.forEach(fail);
+    if (!numbering.length && calls.some((c) => c.callNo !== undefined)) ok(`audit: ${calls.length} calls numbered 1..${calls.length}`);
     // Robustness and safety hold for every recorded call, even when the agent did not finish
     const robustness = robustnessProblems(calls);
     robustness.forEach((p) => fail(`robustness: ${p}`));
@@ -647,13 +726,14 @@ async function main() {
   for (const s of scenarios.values()) if (s.status === "failed" && !required.includes(s.id)) fail(`scenario ${s.id} failed${s.notes ? `: ${s.notes}` : ""}`);
 
   if (calls && calls.length) {
-    const edge = edgeCaseProblems(calls);
-    edge.forEach(fail);
-    if (!edge.length) ok("F9/F10: edge cases verified on the audit");
-    const x = exploratoryFindings(claims.exploratory, calls);
+    const edge = edgeCaseEvidence(calls);
+    edge.problems.forEach(fail);
+    if (!edge.problems.length) ok("F9/F10: edge cases verified on the audit");
+    const x = exploratoryFindings(claims.exploratory, calls, edge.evidence);
     x.problems.forEach(fail);
     warnings.push(...x.warnings);
     checks.push(...x.checks);
+    exploratoryCalls.push(...x.calls);
   }
 
   // Created objects: they exist (unless claimed deleted), carry the run markers and match the claimed state
@@ -825,7 +905,7 @@ async function main() {
 }
 
 function finish(context) {
-  const verdict = { run_id: context.run_id, verified: problems.length === 0, problems, warnings, checks: checks.length };
+  const verdict = { run_id: context.run_id, verified: problems.length === 0, problems, warnings, checks: checks.length, exploratory_calls: exploratoryCalls };
   writeFileSync(join(DIR, "verdict.json"), scrub(JSON.stringify(verdict, null, 2)) + "\n");
   const lines = [
     `### Agent smoke: ${verdict.verified ? "claims verified" : "claims NOT verified"}`,
@@ -834,7 +914,6 @@ function finish(context) {
     ...problems.map((p) => `- ${scrub(p)}`),
     ...(warnings.length ? ["", "Warnings:", ...warnings.map((w) => `- ${scrub(w)}`)] : []),
   ];
-  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
   console.log(lines.join("\n"));
   return verdict.verified ? 0 : 1;
 }

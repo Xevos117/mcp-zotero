@@ -14,12 +14,27 @@ permissions:
 
 jobs:
   # ── 1. Run tests before publishing anything ──────────────────
+  # Tests the release tag when it exists. Started by hand with a tag that does not exist yet, it tests the
+  # dispatch ref: skill-zips then creates the tag from the default branch.
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         timeout-minutes: 3
+        with:
+          persist-credentials: false
+      - name: Check out the release tag if it exists
+        timeout-minutes: 2
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          if timeout 60 git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null; then
+            git checkout --detach "refs/tags/$TAG"
+            echo "testing tag $TAG"
+          else
+            echo "::notice::tag $TAG does not exist yet: testing $GITHUB_REF (skill-zips creates the tag)"
+          fi
       - uses: actions/setup-node@v7
         timeout-minutes: 3
         with:
@@ -43,8 +58,10 @@ jobs:
   # fallback; once trusted publishing works, delete the NPM_TOKEN secret and the env line below.
   # Tests run only in the `test` job: publish uses --ignore-scripts, so prepublishOnly never runs
   # with publishing credentials in the environment.
+  # On workflow_dispatch the default checkout is the branch, not the release: check out the tag and refuse to
+  # publish unless package.json has its version (same check as mcp-registry and mcpb-build).
   npm-publish:
-    needs: test
+    needs: [test, skill-zips] # skill-zips creates the release (and its tag) when started by hand with a new tag
     runs-on: ubuntu-latest
     environment: release
     timeout-minutes: 15
@@ -54,6 +71,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         timeout-minutes: 3
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+
+      - name: Check package.json version = release tag
+        timeout-minutes: 1
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          if [ "${TAG#v}" != "$VERSION" ]; then
+            echo "::error::package.json version $VERSION does not match the release tag $TAG"
+            exit 1
+          fi
 
       - uses: actions/setup-node@v7
         timeout-minutes: 3
@@ -138,6 +169,8 @@ jobs:
           exit 1
 
   # ── 4. Generate skill zips and attach to the release ────────
+  # Creates the release (and its tag) when started by hand with a new tag, so npm-publish, mcp-registry and mcpb-build
+  # wait for it; the zips are built from the tag's content.
   skill-zips:
     needs: test
     runs-on: ubuntu-latest
@@ -147,6 +180,42 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         timeout-minutes: 3
+        with:
+          persist-credentials: false
+
+      - name: Resolve or create release
+        id: tag
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed through env, never interpolated into the script (workflow_dispatch input).
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          # Create the release if it doesn't exist yet: only for the version in package.json, and on the commit this
+          # run tested (a manual run from another branch must not tag the default branch)
+          if ! timeout 60 gh release view "$TAG" > /dev/null 2>&1; then
+            VERSION=$(node -p 'require("./package.json").version')
+            if [ "${TAG#v}" != "$VERSION" ]; then
+              echo "::error::package.json version $VERSION does not match the release tag $TAG: no release created"
+              exit 1
+            fi
+            timeout 60 gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          fi
+          echo "name=$TAG" >> "$GITHUB_OUTPUT"
+
+      # The zips must hold the released version (on workflow_dispatch the default checkout is the branch)
+      - name: Check out the release tag
+        timeout-minutes: 2
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          timeout 60 git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          git checkout --detach "refs/tags/$TAG"
+          VERSION=$(node -p 'require("./package.json").version')
+          if [ "${TAG#v}" != "$VERSION" ]; then
+            echo "::error::package.json version $VERSION does not match the release tag $TAG"
+            exit 1
+          fi
 
       - name: Create skill zip archives
         timeout-minutes: 3
@@ -157,20 +226,6 @@ jobs:
             (cd skills && zip -r "../dist-skills/${skill_name}.zip" "$skill_name")
           done
           ls -lh dist-skills/
-
-      - name: Resolve or create release
-        id: tag
-        timeout-minutes: 3
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Passed through env, never interpolated into the script (workflow_dispatch input).
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
-        run: |
-          # Create the release if it doesn't exist yet
-          if ! gh release view "$TAG" > /dev/null 2>&1; then
-            gh release create "$TAG" --title "$TAG" --generate-notes
-          fi
-          echo "name=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Upload zips to GitHub Release
         timeout-minutes: 3

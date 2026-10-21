@@ -3,7 +3,7 @@
 // trusted base version while everything else in the checkout comes from the PR.
 // Evidence lives in <project>/agent-audit/, outside agent-out/, where the agent cannot write (its Edit/Write
 // rules and both allowed commands are confined to agent-out/).
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
@@ -36,6 +36,23 @@ export function append(input, file, entry) {
   const dir = auditDir(input);
   mkdirSync(dir, { recursive: true });
   appendFileSync(join(dir, file), JSON.stringify({ ts: new Date().toISOString(), run_id: runId(input), ...entry }) + "\n");
+}
+
+/**
+ * Next sequential number of an audited call (1, 2, ...), unique even when hooks of parallel tool calls run at
+ * the same time: each number is claimed by creating agent-audit/call-no/<n> exclusively.
+ */
+export function nextCallNo(input) {
+  const dir = join(auditDir(input), "call-no");
+  mkdirSync(dir, { recursive: true });
+  for (let n = readdirSync(dir).length + 1; ; n++) {
+    try {
+      writeFileSync(join(dir, String(n)), "", { flag: "wx" });
+      return n;
+    } catch (e) {
+      if (e?.code !== "EEXIST") throw e;
+    }
+  }
 }
 
 export function readJsonl(path) {

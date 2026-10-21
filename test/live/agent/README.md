@@ -3,7 +3,7 @@
 The skill `.claude/skills/test-mcp-zotero` only describes the path the agent follows. Everything the agent
 must not decide is set by whoever starts the session, the same way in CI and locally:
 
-| What | Where | CI (`.github/workflows/claude-agent-smoke.yml`) | Locally |
+| What | Where | CI (`.github/workflows/claude-agent-smoke.yml`, after the live suite) | Locally |
 |---|---|---|---|
 | Run context, diff | `test/live/agent/prepare.mjs` | `--mode ci` (dedicated test account only) | `--mode local`, `ZOTERO_LIVE_SAFE_MODE=1` on a personal library |
 | MCP server | `test/live/agent/mcp.template.json` | rendered by `render-mcp.mjs` into `$RUNNER_TEMP` (key only in that file, mode 600) | passed as is: Claude Code expands `${VAR}` from your environment |
@@ -15,7 +15,9 @@ must not decide is set by whoever starts the session, the same way in CI and loc
 The hooks: a Bash allowlist (only `node test/live/agent/make-docx.mjs …` and `node test/live/agent/inject.mjs …`
 in their exact shape), deletions only of keys the run created (plus the non-existent `ZZZZZZZZ`/`YYYYYYYY`),
 and an audit log of every Zotero call and Bash command in `agent-audit/audit.jsonl` (denials in
-`agent-audit/denials.jsonl`), outside `agent-out/` where the agent can write.
+`agent-audit/denials.jsonl`), outside `agent-out/` where the agent can write. The audit hook numbers every call
+(`call_no`, told to the agent after each call): the exploratory claims reference calls by that number, and
+verify-claims checks that the numbers run 1..n without repeats or gaps.
 
 ## Local run
 

@@ -60,22 +60,31 @@ Against a personal library run it with `ZOTERO_LIVE_SAFE_MODE=1`. Assertions mus
 the run creates (never absolute library counts), and every created key must carry the run markers so
 the global teardown can remove it. After an interrupted run: `npm run test:live:cleanup -- [runId]`.
 
-The agent smoke test (`.github/workflows/claude-agent-smoke.yml`, skill `.claude/skills/test-mcp-zotero`)
+The agent smoke test (`.github/workflows/claude-agent-smoke.yml`, the same workflow as the live suite; skill
+`.claude/skills/test-mcp-zotero`)
 gets its environment from whoever starts the session, never from the agent: MCP server from
 `test/live/agent/mcp.template.json`, built-in tools, permission mode `dontAsk` (in CI from
 `.github/agents/agent-smoke.json`) and the hooks of
 `.claude/agent-smoke/settings.json` (Bash allowlist, delete policy, audit log used as evidence by
-`test/live/verify-claims.mjs`). Local runs use the same pieces: `test/live/agent/README.md`.
+`test/live/verify-claims.mjs`; the audit hook numbers every call and the exploratory claims reference calls by
+that `call_no`; on pull requests the agent runs the base branch's hooks, so the first numbered run after the change
+that introduced numbering is a manual run on `main` after the merge). Local runs use the same pieces:
+`test/live/agent/README.md`.
+
+The test account must never be identifiable in public logs, artifacts, summaries or comments (user id, username,
+group id and name, `users|groups/<id>` URIs). Every job that talks to it starts with
+`test/live/mask-group-name.mjs` (reads the group name in-process, `::add-mask::`, exports
+`ZOTERO_TEST_GROUP_NAME`), and `scrub-report.mjs`, `agent/redact.mjs` and `agent/summary.mjs` fail closed when
+an identifier survives (or the group name is missing); an artifact is uploaded only after a successful scrub.
 
 ## CI workflows and agents
 
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging, `.mcpb` bundle (`mcpb validate`, `npm run bundle`, smoke of the unpacked bundle) on Node 22/24/26 |
-| `live-tests.yml` | same-repo PRs, `main`, weekly (Friday), manual | `live-tests-run`: `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; `live-tests` (required check) decides from it; weekly failures open/update one issue |
-| `claude-agent-smoke.yml` | same-repo PRs by the owner or `github-actions[bot]` (the agent costs API credits: other people's changes only by hand, after review), manual (run it by hand on `main` after a merge) | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
-| `deps-update.yml` | 1st of the month, manual | agent (no GitHub token, no install scripts, Context7 MCP for library docs, leaves a patch and optionally an issue text) → open-pr (no npm, no id-token: pushes `deps/<date>` and opens the PR labelled `dipendenze` with `GITHUB_TOKEN`, then starts test/live-tests/agent-smoke on the branch with `workflow_dispatch`) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for those checks on the exact SHA, `--match-head-commit`); issue (majors and postponed updates: opens or comments the open issue labelled `dipendenze`). Published agent text goes through `scripts/check-public-text.mjs` |
-| `release.yml` | GitHub release published, manual | tests, npm publish, then `server.json` to the MCP Registry (`mcp-registry`: only job with id-token besides npm-publish, `mcp-publisher` pinned by version + sha256, GitHub OIDC login), skill zips, `.mcpb` (`mcpb-build` read-only, `mcpb-upload` the only write job: no checkout, no npm); `mcp-registry` and `mcpb-build` check out the release tag and fail unless it equals the `package.json` version (owner only) |
+| `claude-agent-smoke.yml` ("Live tests + agent smoke"; the file keeps this name because the agent's federation rule names it) | same-repo PRs (live + agent, by changed files); push to `main` and weekly Friday `23 3 * * 5` (live only); manual (`scope`: `live+agent`, default, or `live`) | `changes` (`scripts/live-scope.mjs`) → `live-tests-run`: `npm run test:live` in environment `zotero-live`, always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report → [slot for a future `word-render` job] → only if the live suite passed, and only for the owner or `github-actions[bot]` (the agent costs API credits: other people's changes only by hand, after review): `agent-smoke-prepare` (no id-token: install without scripts, build, account checks, lock) → `agent-smoke-run` (only job with id-token) → `agent-smoke-verify` (`test/live/verify-claims.mjs`, then the Job Summary from the scrubbed output with `test/live/agent/summary.mjs`) → `agent-smoke-comment` (same-repo PRs, only `pull-requests: write`, no checkout: one sticky PR comment with the same summary). Required checks `live-tests` and `agent-smoke` decide from the jobs (`agent-smoke` passes as not applicable on push, schedule and live-only runs, and fails when the live suite failed); `agent-smoke-cleanup` (always, also after a cancellation) cleans up the agent's run and releases the lock; `live-tests-weekly-issue` (only `issues: write`) opens/updates one issue for scheduled failures |
+| `deps-update.yml` | 1st of the month, manual | agent (no GitHub token, no install scripts, Context7 MCP for library docs, leaves a patch and optionally an issue text) → open-pr (no npm, no id-token: pushes `deps/<date>` and opens the PR labelled `dipendenze` with `GITHUB_TOKEN`, then starts `test.yml` and `claude-agent-smoke.yml` (live + agent) on the branch with `workflow_dispatch`) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for those checks on the exact SHA, `--match-head-commit`); issue (majors and postponed updates: opens or comments the open issue labelled `dipendenze`). Published agent text goes through `scripts/check-public-text.mjs` |
+| `release.yml` | GitHub release published, manual | tests, npm publish, then `server.json` to the MCP Registry (`mcp-registry`: only job with id-token besides npm-publish, `mcp-publisher` pinned by version + sha256, GitHub OIDC login), skill zips, `.mcpb` (`mcpb-build` read-only, `mcpb-upload` the only write job: no checkout, no npm); `npm-publish`, `mcp-registry` and `mcpb-build` check out the release tag and fail unless it equals the `package.json` version (owner only) |
 
 The agents authenticate to the Claude API with Anthropic Workload Identity Federation (environment
 variables `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`,
@@ -86,7 +95,7 @@ The deps workflow uses only `GITHUB_TOKEN` on GitHub. Events caused by `GITHUB_T
 `pull_request`/`push` workflows, so open-pr starts the required ones with `workflow_dispatch` (the one
 exception GitHub allows) on the dependency branch; their check runs attach to the PR head. The gate's
 auto-merge produces a push to `main` that likewise triggers no workflows: every required check already
-ran on the PR, and the weekly `live-tests.yml` run (Friday) covers `main`.
+ran on the PR, and the weekly live run of `claude-agent-smoke.yml` (Friday) covers `main`.
 
 Required checks to set in the ruleset after the stack merges (names as GitHub shows them):
 `test (node 22)`, `test (node 24)`, `test (node 26)`, `live-tests`, `agent-smoke`.
@@ -106,7 +115,7 @@ real jobs failed or timed out, and pass without testing only when nothing releva
 fork PRs and Dependabot, which get no secrets; the agent smoke test also skips runs started by anyone
 other than the owner or `github-actions[bot]`, and its notice names the condition). Fork PRs need the owner's
 approval before any workflow runs (repository setting: approval for all external contributors). `test.yml` cancels a superseded run (cancelled,
-not red); `live-tests.yml` and `claude-agent-smoke.yml` never cancel a running run (a cancel mid-suite left
+not red); `claude-agent-smoke.yml` never cancels a running run (a cancel mid-suite left
 data on the test account): a newer push queues.
 Verified with a scratch workflow: a job that hits `timeout-minutes` concludes `cancelled`, and a dependent
 job with `if: !cancelled()` still runs and sees `needs.<job>.result == 'cancelled'`, so a timeout turns
