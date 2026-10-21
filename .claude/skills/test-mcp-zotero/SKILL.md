@@ -165,8 +165,8 @@ If `agent-render/index.json` does not exist (a local run without rendered pages)
 no `visual-review.md`. Otherwise `agent-render/` holds PNG pages of documents that Zotero 10 desktop really refreshed (job word-render):
 the checklist document of the real corpus (`test/fixtures/corpus`) injected by the product in every style
 (path B: Zotero renders from the `itemData` the product embedded), the same document from the group library,
-the H-W1 case `proposed` (the user pressed OK on the Document Preferences dialog Zotero opened, accepting
-the style it proposed), and `lib-fix-apa` (path A: the same items from the local library, the reference).
+the case `proposed` (if Zotero opened its Document Preferences dialog, the user pressed OK on the style it
+proposed), and `lib-apa` (path A: the same items from the local library, the reference).
 Read `agent-render/index.json` first (document, style, path, page of each image, the dialog recorded at that
 step, the 12 corpus items with their cases, the known issues), then every PNG with the Read tool.
 
@@ -174,7 +174,7 @@ The pages are **WordCraft's rendering, not Word's**. Judge the **content** of th
 bibliography, per style: which elements are there (authors, year, title, container, editors as "In … (Ed.)",
 publisher, pages, DOI), their order, italics where the style wants them, numbering in numeric styles
 (`ieee`, `vancouver`), locators and prefixes ("see", "p. 110"), disambiguation (co-authors, 2020a/2020b),
-non-Latin text and name particles. Compare path B with path A (`lib-fix-apa`) for the same item. Do **not**
+non-Latin text and name particles. Compare path B with path A (`lib-apa`) for the same item. Do **not**
 judge layout (fonts, hanging indents, line spacing, margins, page breaks): note it only in the
 "Da verificare in Word" list, which never fails the run.
 

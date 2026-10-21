@@ -13,7 +13,7 @@ placeholder libraries `users/000000` and `groups/777`.
 | `run.sh` | one Zotero session: fresh profile, the test plugin, Xvfb, one `wordcraft-cli zotero <command>` per step; writes `events.jsonl` (plugin events, embedded-data fallbacks) |
 | `plugin/` | test-only Zotero plugin: records every integration dialog and answers Document Preferences with the step's style |
 | `items.mjs` + `load-items.js` | path A: the corpus saved in the local Zotero database (user library and local group 777) with the same keys |
-| `add-prefs.mjs` | test-only stand-in for the H1 fix (`ZOTERO_PREF_1` in `docProps/custom.xml`), steps `fix-*` |
+| `render.mjs` | pages of the refreshed documents as PNG and `index.json`, for the agent's visual review (job word-render) |
 | `verify.mjs` | facts per step (dialogs, alerts, noteIndex, ids per URI, bibliography, style saved, fallbacks) and the check against `expect.json` |
 | `compare.mjs` | path A against path B: what the product's embedded itemData loses compared with the library |
 | `check-artifacts.mjs` | fail-closed check before an artifact is uploaded |

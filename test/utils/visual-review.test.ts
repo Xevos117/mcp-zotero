@@ -20,7 +20,7 @@ const INDEX = {
   images: [
     { image: "apa-p2.png", document: "apa" },
     { image: "proposed-p1.png", document: "proposed" },
-    { image: "lib-fix-apa-p1.png", document: "lib-fix-apa" },
+    { image: "lib-apa-p1.png", document: "lib-apa" },
   ],
 };
 
@@ -45,8 +45,8 @@ const REVIEW = `# Revisione visiva
 - Noto: H-W1
 
 ## Problema 3: curatrice assente
-- Documento: lib-fix-apa
-- Pagina: lib-fix-apa-p1.png
+- Documento: lib-apa
+- Pagina: lib-apa-p1.png
 - Posizione: voce di bibliografia 4
 - Voce del corpus: eve2020
 - Reso: "Eve, M. P. (2020b). Violins in the Subway. Open Book Publishers."
@@ -68,7 +68,7 @@ describe("revisione visiva (VR)", () => {
 
   it("VR-02 problema noto → avviso; problema senza Noto → problema (bug)", () => {
     const f = visualReviewFindings(parseVisualReview(REVIEW));
-    expect(f.problems).toEqual(["visual 3 (lib-fix-apa-p1.png, voce di bibliografia 4): curatrice assente"]);
+    expect(f.problems).toEqual(["visual 3 (lib-apa-p1.png, voce di bibliografia 4): curatrice assente"]);
     expect(f.warnings).toEqual([
       "visual 1 (apa-p2.png, voce di bibliografia 5): tesi senza università [known: itemData]",
       "visual 2 (proposed-p1.png, paragrafo 2): citazioni in stile nota dopo OK sul dialogo [known: H-W1]",
@@ -85,7 +85,7 @@ describe("revisione visiva (VR)", () => {
 - Atteso: b
 - Noto: H-W9
 ## Problema 1: y
-- Documento: lib-fix-apa
+- Documento: lib-apa
 - Pagina: apa-p2.png
 - Posizione: voce 1
 - Voce del corpus: eve2020
@@ -105,8 +105,8 @@ describe("revisione visiva (VR)", () => {
         "problem 1: page ieee-p9.png was not rendered",
         "problem 1: nessuna is not a corpus item",
         "problem 1: known issue H-W9 does not exist",
-        "problem 1: page apa-p2.png belongs to apa, not lib-fix-apa",
-        "problem 1: known issue H-W1 does not concern lib-fix-apa",
+        "problem 1: page apa-p2.png belongs to apa, not lib-apa",
+        "problem 1: known issue H-W1 does not concern lib-apa",
       ])
     );
     expect(visualReviewProblems(parseVisualReview("# Revisione visiva\n"), INDEX)).toEqual(['no "## Problema" section and no "Nessun problema di contenuto." line']);

@@ -42,14 +42,14 @@ export const ZOTERO_SCHEMA_URL = "https://github.com/citation-style-language/sch
 
 /**
  * Deroghe allo schema CSL ufficiale. Le prime tre riproducono ciò che scrive Zotero for Word;
- * l'ultima è una differenza del prodotto rispetto a Zotero, tracciata come ipotesi H-W3 in
- * test/WORD_CHECKLIST.md e come it.fails nei test.
+ * l'ultima è una differenza del prodotto rispetto a Zotero (H-W3 di test/WORD_CHECKLIST.md), innocua: il job
+ * word-proxy mostra che Zotero riassegna gli id e ne tiene uno per URI.
  */
 export const RELAXATIONS = [
   "schema: accettato anche l'URL github/raw/master che Zotero scrive al posto dell'enum resource.citationstyles.org",
   "citationItems[].uri: campo legacy che Zotero scrive accanto a uris",
   "properties: ammessi formattedCitation, plainCitation e dontUpdate (scritti da Zotero), non solo noteIndex",
-  "itemData.id non obbligatorio (il prodotto non lo scrive; Zotero sì) — ipotesi H-W3",
+  "itemData.id non obbligatorio (il prodotto non lo scrive; Zotero sì e lo riassegna: H-W3, word-proxy)",
 ] as const;
 
 export interface FieldInfo {
@@ -64,15 +64,15 @@ export interface CitationField {
 }
 
 export interface ZoteroParity {
-  /** docProps/custom.xml contiene preferenze ZOTERO_PREF_* (ipotesi H-W1). */
+  /** docProps/custom.xml contiene preferenze ZOTERO_PREF_* (H-W1: senza, il primo Refresh apre Document Preferences). */
   hasDocumentPrefs: boolean;
-  /** Ogni citazione ha properties.plainCitation (ipotesi H-W2). */
+  /** Ogni citazione ha properties.plainCitation (H-W2: non serve, deciso da word-proxy). */
   allHavePlainCitation: boolean;
-  /** Ogni citazione ha properties.noteIndex, che Zotero scrive (0 nei documenti senza note) (ipotesi H-W2). */
+  /** Ogni citazione ha properties.noteIndex, che Zotero scrive (0 nei documenti senza note) (H-W2: non serve, word-proxy). */
   allHaveNoteIndex: boolean;
-  /** Ogni itemData ha un id e lo stesso URI ha sempre lo stesso id, URI diversi id diversi (ipotesi H-W3). */
+  /** Ogni itemData ha un id e lo stesso URI ha sempre lo stesso id, URI diversi id diversi (H-W3: non serve, word-proxy). */
   consistentItemIds: boolean;
-  /** Ogni citationItem con locator ha anche label (ipotesi H-W4). */
+  /** Ogni citationItem con locator ha anche label (H-W4: non serve, word-proxy). */
   locatorsHaveLabel: boolean;
 }
 
@@ -88,6 +88,8 @@ export interface DocxReport {
   /** Testo visibile che non corrisponde allo stile CSL nelle parti chiave. */
   mismatches: string[];
   parity: ZoteroParity;
+  /** Preferenze del documento ricomposte da ZOTERO_PREF_1…n (null se assenti). */
+  documentPrefs: { styleId: string | null; fieldType: string | null; chunks: number } | null;
 }
 
 export interface ValidateOptions {
@@ -413,6 +415,53 @@ function computeParity(zipHasPrefs: boolean, cites: CitationField[]): ZoteroPari
   };
 }
 
+/** id dello stile CSL vendorizzato (elemento <id>), cioè l'id con cui Zotero lo conosce. */
+export function styleId(style: CitationStyle): string {
+  const m = /<id>([^<]+)<\/id>/.exec(readFixture(STYLE_FILES[style]));
+  if (!m) throw new Error(`${STYLE_FILES[style]}: no <id>`);
+  return m[1];
+}
+
+/**
+ * Preferenze del documento come le scrive Zotero for Word (H-W1): proprietà ZOTERO_PREF_1…n di docProps/custom.xml
+ * (al massimo 255 caratteri ciascuna, numerate senza buchi) che ricomposte danno `<data data-version="3">` con lo
+ * stile e `fieldType` Field; content type e relazione della parte presenti. Lo stile deve essere quello
+ * dell'iniezione. Assenti → null, nessun errore (documento non ancora gestito da Zotero).
+ */
+async function checkDocumentPrefs(zip: JSZip, style: CitationStyle, errors: string[]): Promise<DocxReport["documentPrefs"]> {
+  const custom = await zip.file("docProps/custom.xml")?.async("string");
+  if (!custom || !/ZOTERO_PREF/.test(custom)) return null;
+  const chunks = new Map<number, string>();
+  for (const m of custom.matchAll(/<property\b[^>]*\bname="ZOTERO_PREF_(\d+)"[^>]*>([\s\S]*?)<\/property>/g)) {
+    const value = /<vt:lpwstr>([\s\S]*?)<\/vt:lpwstr>/.exec(m[2]);
+    chunks.set(Number(m[1]), value ? decodeXml(value[1]) : "");
+  }
+  const n = chunks.size;
+  for (let i = 1; i <= n; i++) {
+    if (!chunks.has(i)) errors.push(`ZOTERO_PREF_${i} mancante (le proprietà vanno da _1 a _${n} senza buchi)`);
+    else if (chunks.get(i)!.length > 255) errors.push(`ZOTERO_PREF_${i} oltre 255 caratteri (${chunks.get(i)!.length})`);
+  }
+  if (n === 0) errors.push("docProps/custom.xml: ZOTERO_PREF senza proprietà leggibili");
+  const value = [...chunks.keys()].sort((a, b) => a - b).map((k) => chunks.get(k)).join("");
+  const prefs = {
+    styleId: /<style\b[^>]*\bid="([^"]+)"/.exec(value)?.[1] ?? null,
+    fieldType: /<pref name="fieldType" value="([^"]+)"/.exec(value)?.[1] ?? null,
+    chunks: n,
+  };
+  if (n > 0) {
+    if (!/^<data data-version="3"[ >][\s\S]*<\/data>$/.test(value)) errors.push("ZOTERO_PREF: il valore non è un <data data-version=\"3\"> completo");
+    if (prefs.styleId !== styleId(style)) errors.push(`ZOTERO_PREF: stile ${prefs.styleId} invece di ${styleId(style)} (${style})`);
+    if (prefs.fieldType !== "Field") errors.push(`ZOTERO_PREF: fieldType ${prefs.fieldType} invece di Field`);
+  }
+  const types = (await zip.file("[Content_Types].xml")?.async("string")) ?? "";
+  if (!/PartName="\/docProps\/custom\.xml"[^>]*custom-properties\+xml/.test(types)) errors.push("[Content_Types].xml senza l'Override di /docProps/custom.xml");
+  const rels = (await zip.file("_rels/.rels")?.async("string")) ?? "";
+  if (!/relationships\/custom-properties"[^>]*Target="\/?docProps\/custom\.xml"|Target="\/?docProps\/custom\.xml"[^>]*relationships\/custom-properties"/.test(rels)) {
+    errors.push("_rels/.rels senza la relazione custom-properties verso docProps/custom.xml");
+  }
+  return prefs;
+}
+
 /** Valida un .docx iniettato; non lancia: errori e differenze sono nel report. */
 export async function validateDocx(docx: Buffer | Uint8Array, opts: ValidateOptions = {}): Promise<DocxReport> {
   const style = opts.style ?? "apa";
@@ -426,6 +475,7 @@ export async function validateDocx(docx: Buffer | Uint8Array, opts: ValidateOpti
     errors,
     mismatches: [],
     parity: { hasDocumentPrefs: false, allHavePlainCitation: true, allHaveNoteIndex: true, consistentItemIds: true, locatorsHaveLabel: true },
+    documentPrefs: null,
   };
   let zip: JSZip;
   try {
@@ -470,9 +520,8 @@ export async function validateDocx(docx: Buffer | Uint8Array, opts: ValidateOpti
   if ((opts.requireBibliography ?? true) && report.citations.length > 0 && !report.bibliography) {
     errors.push("citazioni presenti ma nessun campo ZOTERO_BIBL");
   }
-  const custom = zip.file("docProps/custom.xml");
-  const prefs = custom ? /ZOTERO_PREF/.test(await custom.async("string")) : false;
-  report.parity = computeParity(prefs, report.citations);
+  report.documentPrefs = await checkDocumentPrefs(zip, style, errors);
+  report.parity = computeParity(report.documentPrefs !== null, report.citations);
   if (errors.length === 0) renderWithCiteproc(report, style);
   return report;
 }

@@ -17,7 +17,7 @@ export const RENDERED = [
   { session: "embedded", step: "chicago" },
   { session: "embedded", step: "proposed" },
   { session: "embedded", step: "group" },
-  { session: "library", step: "lib-fix-apa" },
+  { session: "library", step: "lib-apa" },
 ];
 const SCALE = "1.5";
 /** What the pages show that is not a product bug (the style or the corpus data does it; Zotero does the same in Word). */
@@ -112,9 +112,15 @@ if (process.argv[1] && process.argv[1].endsWith("render.mjs")) {
     documents: "Every document cites the same 12 corpus items: Single, Same first author and year, Locator and prefix (locator 110, prefix see), Repeated, Edited book and monograph, Cyrillic, Preprint/thesis/report/web page, Same single author and year; then References.",
     corpus: manifest.works.map((w) => ({ id: w.id, key: w.key, itemType: w.itemType, cases: w.cases })),
     knownIssues: [
-      { id: "H-W1", steps: RENDERED.map((r) => r.step).filter((s) => expect[s]?.knownBug === "H-W1"), description: expect.apa.why, requiresDialog: true },
+      // known bugs of expect.json (knownBug of a rendered step): they show as a Document Preferences dialog
+      ...[...new Set(RENDERED.map((r) => expect[r.step]?.knownBug).filter(Boolean))].map((id) => ({
+        id,
+        steps: RENDERED.map((r) => r.step).filter((s) => expect[s]?.knownBug === id),
+        description: expect[RENDERED.find((r) => expect[r.step]?.knownBug === id).step].why,
+        requiresDialog: true,
+      })),
       // reportsRequired: the reviewer must report each of these (evidence that the pages were really reviewed)
-      { id: "itemData", steps: ["apa", "ieee", "vancouver", "harvard", "chicago", "group"], description: expect.ab.why, entries: itemDataEntries, items: itemDataEntries.map((e) => e.item), reportsRequired: true },
+      { id: "itemData", steps: ["apa", "ieee", "vancouver", "harvard", "chicago", "proposed", "group"], description: expect.ab.why, entries: itemDataEntries, items: itemDataEntries.map((e) => e.item), reportsRequired: true },
       ...RENDERING_NOTES,
     ],
     images,

@@ -33,12 +33,11 @@ citazione, salvataggio e riapertura), che word-proxy non copre. Gli esiti si reg
 ## Ipotesi su Word: decise da word-proxy
 
 Decise con Zotero 10.0.6 + `wordcraft-cli` 0.8.0 nel job `word-proxy` (aspettative in `test/word-proxy/expect.json`,
-sezione "word-proxy" di `test/TEST_CASES.md`). Un controllo a campione in Word vero del fix H-W1, quando arriverà,
-resta utile (il plugin Word legge le preferenze dalle proprietà `ZOTERO_PREF_*` concatenate).
+sezione "word-proxy" di `test/TEST_CASES.md`). Un controllo a campione in Word vero del fix H-W1 resta utile (il plugin Word legge le preferenze dalle proprietà `ZOTERO_PREF_*` concatenate).
 
 | # | Ipotesi | Esito in word-proxy |
 |---|---|---|
-| H-W1 | Senza `ZOTERO_PREF_*` in `docProps/custom.xml` il primo Refresh apre **Document Preferences** | **confermata (bug noto)**: il dialogo propone l'ultimo stile di Zotero (`chicago-shortened-notes-bibliography` in un profilo nuovo), non quello dell'iniezione; con OK le citazioni diventano testo in stile nota. Con `ZOTERO_PREF_1` (passi `fix-*`) nessun dialogo e stile applicato. Test `IC-V-H1` resta `it.fails` |
+| H-W1 | Senza `ZOTERO_PREF_*` in `docProps/custom.xml` il primo Refresh apre **Document Preferences** | **confermata e corretta**: prima il dialogo proponeva l'ultimo stile di Zotero (`chicago-shortened-notes-bibliography` in un profilo nuovo) e con OK le citazioni diventavano testo in stile nota; ora `inject_citations` e `inject.js` scrivono `ZOTERO_PREF_1…n` (stile dell'iniezione, `fieldType` Field): nessun dialogo, stile applicato. Test `IC-V-H1` |
 | H-W2 | Mancano `plainCitation` e `noteIndex` | smentita: nessun avviso "citazione modificata", Zotero scrive `noteIndex` 0 |
 | H-W3 | `citationItems[].id` per citazione, `itemData` senza `id` | smentita: Zotero riassegna gli id, un id per URI, bibliografia senza doppioni |
 | H-W4 | `locator` senza `label` | smentita: reso come pagina ("p. 110", "[4, p. 110]") |
