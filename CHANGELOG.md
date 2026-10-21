@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Official MCP Registry entry** (`server.json`, name `io.github.Xevos117/mcp-zotero`): `package.json` carries the matching `mcpName`, and the release workflow publishes `server.json` to [registry.modelcontextprotocol.io](https://registry.modelcontextprotocol.io) after the npm publish (GitHub OIDC login, `mcp-publisher` pinned by version and checksum). The registry checks the `mcpName` of the published npm version, so the listing starts with the first release that contains it. `npm test` validates `server.json` against the official schema and keeps its version, package name and environment variables in sync with `package.json` and the code.
+
 ## [2.0.2] - 2026-10-12
 
 Fixes found by the live test suite and the agent smoke test.

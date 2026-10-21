@@ -443,6 +443,14 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 | H-17/18 | putFulltext | body JSON + API key, 204 / 413 e 500 |
 | H-19 | putFulltext gruppo | PUT su `/groups/777/items/{key}/fulltext` |
 
+## Metadati di distribuzione (`test/utils/release-metadata.test.ts`)
+`server.json` è la voce del MCP Registry, pubblicata da `release.yml` dopo npm; schema ufficiale vendorizzato in `test/fixtures/schemas/`.
+| ID | Scenario | Atteso |
+|---|---|---|
+| RM-01 | `server.json` contro lo schema indicato in `$schema` (Ajv + formati) | valido (descrizione ≤ 100 caratteri, nome reverse-DNS, versioni non range) |
+| RM-02 | versione, `name`, pacchetto npm | `version` e `packages[0].version` = versione di `package.json`, `name` = `mcpName`, `identifier` = nome npm, `mcpName` con prefisso `io.github.<owner>/` col maiuscolo/minuscolo esatto del repository |
+| RM-03 | `environmentVariables` | stessi nomi delle `process.env.X` lette in `src/` (test esclusi); solo `ZOTERO_API_KEY` segreta (e obbligatoria); `choices`/`default` di `UNSAFE_OPERATIONS` e `ZOTERO_LIBRARY_TYPE` |
+
 ## E2E (`test/e2e/stdio-server.e2e.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|

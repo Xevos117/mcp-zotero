@@ -1,0 +1,64 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Xevos117/mcp-zotero",
+  "title": "MCP Zotero",
+  "description": "Unofficial Zotero server: search your library, add papers by DOI, import PDFs, cite in Word",
+  "repository": {
+    "url": "https://github.com/Xevos117/mcp-zotero",
+    "source": "github",
+    "id": "1152178663"
+  },
+  "websiteUrl": "https://github.com/Xevos117/mcp-zotero#readme",
+  "version": "2.0.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@xevos117/mcp-zotero",
+      "version": "2.0.2",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "ZOTERO_API_KEY",
+          "description": "Zotero Web API key (zotero.org/settings/keys) with library read/write and file access",
+          "format": "string",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "ZOTERO_USER_ID",
+          "description": "Your numeric Zotero user ID (shown on zotero.org/settings/keys); the default library is this user's",
+          "format": "string",
+          "isRequired": true
+        },
+        {
+          "name": "ZOTERO_LIBRARY_TYPE",
+          "description": "Default library type: 'user' (personal library) or 'group'",
+          "format": "string",
+          "choices": ["user", "group"],
+          "default": "user"
+        },
+        {
+          "name": "ZOTERO_LIBRARY_ID",
+          "description": "Numeric group ID; required when ZOTERO_LIBRARY_TYPE is 'group', otherwise defaults to ZOTERO_USER_ID",
+          "format": "string"
+        },
+        {
+          "name": "UNPAYWALL_EMAIL",
+          "description": "Email sent to the Unpaywall API to find open-access PDFs; if unset, OA PDF lookup is skipped",
+          "format": "string"
+        },
+        {
+          "name": "UNSAFE_OPERATIONS",
+          "description": "Deletions allowed: 'none' (default, all blocked), 'items' (delete_items) or 'all' (also delete_collection)",
+          "format": "string",
+          "choices": ["none", "items", "all"],
+          "default": "none"
+        }
+      ]
+    }
+  ]
+}
