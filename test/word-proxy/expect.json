@@ -1,0 +1,125 @@
+{
+  "description": "Expectations of the word-proxy steps (test/word-proxy/ci.sh), checked by verify.mjs and compare.mjs. \"_all\" applies to every step. knownBug marks an expectation that documents a product bug: the PR that fixes it flips the expectation.",
+  "_all": {
+    "why": "H-W2: no 'citation changed' alert, noteIndex written by Zotero (0); H-W3: one item id per URI, no duplicate bibliography entries; one bibliography field with every corpus item; nothing in footnotes",
+    "alerts": 0,
+    "otherDialogs": 0,
+    "noteIndex": 0,
+    "oneIdPerUri": true,
+    "citations": 8,
+    "distinctUris": 12,
+    "bibliographyFields": 1,
+    "bibliographyEntries": 12,
+    "placeholderLeft": false,
+    "footnoteCitations": 0,
+    "uriPrefix": "http://zotero.org/users/000000/items/"
+  },
+  "apa": {
+    "knownBug": "H-W1",
+    "why": "H-W1: without ZOTERO_PREF_* the first Refresh opens Document Preferences proposing Zotero's last export style, not the injected one (answered with apa here); H-W4: a locator without label renders as a page; H-W5: items not in the library come from the embedded itemData, without requests",
+    "docPrefsDialog": true,
+    "proposedStyle": "http://www.zotero.org/styles/chicago-shortened-notes-bibliography",
+    "styleInDoc": "http://www.zotero.org/styles/apa",
+    "embeddedFallback": "all",
+    "visibleIncludes": ["(see Eve, 2020b, p. 110)", "(Peroni, Campoy, et al., 2023; Peroni, Hufnagl, et al., 2023)", "(Conneau et al., 2020)"],
+    "bibliographyIncludes": ["In J. Edmond (Ed.), Digital Technology and the Practices of Humanities Research (pp. 105–122)", "Иванов, Н.", "Eve, M. P. (2020a)", "de las Casas, D."]
+  },
+  "ieee": {
+    "knownBug": "H-W1",
+    "docPrefsDialog": true,
+    "styleInDoc": "http://www.zotero.org/styles/ieee",
+    "embeddedFallback": "all",
+    "visibleIncludes": ["see [4, p. 110]", "[2], [3]", "Repeated [1]"]
+  },
+  "vancouver": {
+    "knownBug": "H-W1",
+    "why": "NLM citation-sequence prints no locator in the citation",
+    "docPrefsDialog": true,
+    "styleInDoc": "http://www.zotero.org/styles/nlm-citation-sequence",
+    "embeddedFallback": "all",
+    "visibleIncludes": ["(see 4)", "(2,3)"]
+  },
+  "harvard": {
+    "knownBug": "H-W1",
+    "docPrefsDialog": true,
+    "styleInDoc": "http://www.zotero.org/styles/harvard-cite-them-right",
+    "embeddedFallback": "all",
+    "visibleIncludes": ["(see Eve, 2020b, p. 110)"]
+  },
+  "chicago": {
+    "knownBug": "H-W1",
+    "docPrefsDialog": true,
+    "styleInDoc": "http://www.zotero.org/styles/chicago-author-date",
+    "embeddedFallback": "all",
+    "visibleIncludes": ["(see Eve 2020b, 110)"]
+  },
+  "proposed": {
+    "knownBug": "H-W1",
+    "why": "H-W1, what a user gets by pressing OK: the proposed note style, citations turned into note text in the body",
+    "docPrefsDialog": true,
+    "proposedStyle": "http://www.zotero.org/styles/chicago-shortened-notes-bibliography",
+    "docPrefsAnswer": "http://www.zotero.org/styles/chicago-shortened-notes-bibliography",
+    "styleInDoc": "http://www.zotero.org/styles/chicago-shortened-notes-bibliography",
+    "visibleIncludes": ["Single Conneau et al., “Unsupervised Cross-Lingual Representation Learning at Scale.”"],
+    "visibleExcludes": ["(Conneau et al., 2020)"]
+  },
+  "fix-apa": {
+    "why": "H1 fix (test-only stand-in, add-prefs.mjs): with ZOTERO_PREF_1 in docProps/custom.xml no dialog, the chosen style is applied",
+    "docPrefsDialog": false,
+    "styleInDoc": "http://www.zotero.org/styles/apa",
+    "embeddedFallback": "all",
+    "visibleIncludes": ["(see Eve, 2020b, p. 110)"]
+  },
+  "fix-ieee": {
+    "docPrefsDialog": false,
+    "styleInDoc": "http://www.zotero.org/styles/ieee",
+    "embeddedFallback": "all",
+    "visibleIncludes": ["see [4, p. 110]"]
+  },
+  "again": {
+    "why": "second Refresh of a document Zotero already refreshed (≈W-08): no dialog, same text, items already known to the session",
+    "docPrefsDialog": false,
+    "styleInDoc": "http://www.zotero.org/styles/apa",
+    "embeddedFallback": [],
+    "visibleIncludes": ["(see Eve, 2020b, p. 110)"]
+  },
+  "restyle": {
+    "why": "Document Preferences opened on purpose (≈W-05), style changed to chicago-author-date",
+    "docPrefsDialog": true,
+    "docPrefsAnswer": "http://www.zotero.org/styles/chicago-author-date",
+    "styleInDoc": "http://www.zotero.org/styles/chicago-author-date",
+    "embeddedFallback": [],
+    "visibleIncludes": ["(see Eve 2020b, 110)"]
+  },
+  "group": {
+    "knownBug": "H-W1",
+    "why": "H-W5: group 777 is not in the local Zotero: embedded itemData, no request",
+    "docPrefsDialog": true,
+    "styleInDoc": "http://www.zotero.org/styles/apa",
+    "embeddedFallback": "all",
+    "uriPrefix": "http://zotero.org/groups/777/items/"
+  },
+  "lib-apa": {
+    "knownBug": "H-W1",
+    "why": "path A: the same items in the local user library (URI users/<any id> → local user library): library data, same dialog",
+    "docPrefsDialog": true,
+    "styleInDoc": "http://www.zotero.org/styles/apa",
+    "embeddedFallback": []
+  },
+  "lib-fix-apa": {
+    "docPrefsDialog": false,
+    "styleInDoc": "http://www.zotero.org/styles/apa",
+    "embeddedFallback": []
+  },
+  "lib-group": {
+    "why": "H-W5: group 777 present locally → library items",
+    "docPrefsDialog": false,
+    "styleInDoc": "http://www.zotero.org/styles/apa",
+    "embeddedFallback": [],
+    "uriPrefix": "http://zotero.org/groups/777/items/"
+  },
+  "ab": {
+    "why": "bibliography from the library (lib-fix-apa) against the one from the product's embedded itemData (fix-apa): zoteroItemToCsl does not map university, institution, repository/archiveID and accessDate",
+    "differences": ["[University of Bologna]", "(arXiv:2310.06825). arXiv.", "Specification and guidelines. Research Data Alliance.", "Retrieved October 21, 2026, from"]
+  }
+}

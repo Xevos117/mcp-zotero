@@ -477,12 +477,13 @@ describe("inject_citations (MCP)", () => {
     });
 
     /**
-     * Ipotesi su Word (test/WORD_CHECKLIST.md, H-W1..H-W5): differenze rispetto ai campi che scrive Zotero
-     * for Word. Non è dimostrato che diano problemi in Word: sono it.fails finché la checklist manuale non
-     * le conferma (allora si corregge il prodotto e il caso diventa un test normale) o le smentisce
-     * (allora il caso si rimuove). inject.js produce lo stesso JSON, quindi valgono anche per la skill.
+     * Ipotesi su Word (test/WORD_CHECKLIST.md): H-W2..H-W5 le decide il job word-proxy di test.yml (Zotero desktop
+     * vero sul docx iniettato, test/word-proxy/expect.json: nessun avviso, noteIndex scritto da Zotero, un id per
+     * URI, locator reso come pagina, itemData incorporato per voci e gruppi assenti). Resta H-W1, bug confermato
+     * anche da word-proxy (dialogo Document Preferences al primo Refresh): it.fails finché il prodotto non scrive
+     * le preferenze. inject.js produce lo stesso JSON, quindi vale anche per la skill.
      */
-    describe("ipotesi Word (it.fails finché la checklist non decide)", () => {
+    describe("ipotesi Word: H-W1 (bug noto, confermato da word-proxy)", () => {
       async function productReport() {
         serveItems(h, LIBRARY);
         const input = await dir.file("hyp.docx", await makeDocx(BODY(false)));
@@ -493,19 +494,6 @@ describe("inject_citations (MCP)", () => {
       it.fails("IC-V-H1 docProps/custom.xml con le preferenze ZOTERO_PREF_* (H-W1)", async () => {
         expect((await productReport()).parity.hasDocumentPrefs).toBe(true);
       });
-      it.fails("IC-V-H2 properties.plainCitation presente in ogni citazione (H-W2)", async () => {
-        expect((await productReport()).parity.allHavePlainCitation).toBe(true);
-      });
-      it.fails("IC-V-H2b properties.noteIndex presente in ogni citazione (H-W2)", async () => {
-        expect((await productReport()).parity.allHaveNoteIndex).toBe(true);
-      });
-      it.fails("IC-V-H3 itemData.id presente e citationItems[].id coerenti per URI in tutto il documento (H-W3)", async () => {
-        expect((await productReport()).parity.consistentItemIds).toBe(true);
-      });
-      it.fails("IC-V-H4 locator accompagnato da label (H-W4)", async () => {
-        expect((await productReport()).parity.locatorsHaveLabel).toBe(true);
-      });
-      it.todo("IC-V-H5 voci di un gruppo non sincronizzato nel client Zotero locale (H-W5): verificabile solo in Word");
     });
   });
 });

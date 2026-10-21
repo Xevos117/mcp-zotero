@@ -122,3 +122,94 @@ jobs:
         run: |
           npm run bundle
           npm run smoke -- --bundle dist/mcp-zotero.mcpb
+
+  # Path filter of the word-proxy job (scripts/word-proxy-scope.mjs): a job-level `if`, so docs-only PRs skip it
+  # and the rest of the workflow is never filtered.
+  word-proxy-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.scope.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Scope of the word-proxy job
+        id: scope
+        timeout-minutes: 2
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/changed.txt"
+          else
+            : > "$RUNNER_TEMP/changed.txt"
+          fi
+          node scripts/word-proxy-scope.mjs < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
+
+  # Word checklist proxy: the documents injected by the built server (real corpus, placeholder libraries
+  # users/000000 and groups/777, fake Zotero API) refreshed by the official Zotero desktop build under Xvfb through
+  # wordcraft-cli (Zotero's word-processor protocol), checked against test/word-proxy/expect.json. No secrets, no
+  # account, no network beyond the pinned downloads. Not a required check.
+  word-proxy:
+    name: word-proxy (Zotero desktop + WordCraft)
+    needs: word-proxy-scope
+    if: needs.word-proxy-scope.outputs.run == 'true'
+    # pinned: ubuntu-latest moves to a new release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 3
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+        timeout-minutes: 5
+      - run: npm run build
+        timeout-minutes: 3
+      - name: Zotero and WordCraft (pinned, sha256, cached)
+        id: tools
+        uses: ./.github/actions/word-tools
+        timeout-minutes: 8
+      - name: Inject, refresh through Zotero, check expectations
+        timeout-minutes: 7
+        env:
+          XVFB: Xvfb
+          ZOTERO_DIR: ${{ steps.tools.outputs.zotero }}
+          WORDCRAFT_CLI: ${{ steps.tools.outputs.wordcraft }}
+        run: timeout 400 test/word-proxy/ci.sh "$ZOTERO_DIR" "$WORDCRAFT_CLI" "$RUNNER_TEMP/word-proxy" test/word-proxy/expect.json
+      # Only placeholder data, but checked anyway (fail closed): nothing is uploaded if the check fails
+      - name: Collect and check the artifact
+        id: artifact
+        if: failure()
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/word-proxy" U="$RUNNER_TEMP/word-proxy-artifact"
+          mkdir -p "$U"
+          for s in embedded library; do
+            [ -d "$W/$s" ] || continue
+            mkdir -p "$U/$s"
+            cp "$W/$s"/*.docx "$W/$s"/*.trace "$W/$s"/events.jsonl "$W/$s"/report.json "$U/$s/" 2>/dev/null || true
+          done
+          cp -r "$W/docs" "$U/" 2>/dev/null || true
+          cp "$W/ab.json" "$U/" 2>/dev/null || true
+          node test/word-proxy/check-artifacts.mjs "$U"
+      - name: Upload documents, traces and reports
+        if: failure() && steps.artifact.outcome == 'success'
+        timeout-minutes: 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: word-proxy
+          path: ${{ runner.temp }}/word-proxy-artifact/
+          retention-days: 1
+          if-no-files-found: warn

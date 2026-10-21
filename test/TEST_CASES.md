@@ -359,16 +359,11 @@ Gli output di IC-01/02/03/04/07/19/23 passano anche dal validatore docx (`expect
 | IC-V01 | stili apa, harvard, chicago, ieee, vancouver; singola, coppia + 4 autori, locator/prefix/suffix, unicode + senza autore + istituzionale, chiave ripetuta (num coerenti con l'ordine di prima citazione) | docx valido: parti e content types, XML, campi bilanciati, schema csl-citation con deroghe, URI `users/<id>`; citeproc renderizza 5 citazioni e 7 voci di bibliografia; cognome/anno (o numeri) del testo visibile coincidono con lo stile CSL vero |
 | IC-V02 | `library_type: "group"`, `library_id: "777"` per chiamata | URI `http://zotero.org/groups/777/items/KEY` validi |
 | IC-04 (validato) | ieee senza `num` | struttura valida; il validatore segnala `[?]` come differenza dal numero che scriverà Zotero |
-| IC-V-H1 (`it.fails`) | ipotesi H-W1 | `docProps/custom.xml` con `ZOTERO_PREF_*` — oggi assente |
-| IC-V-H2 (`it.fails`) | ipotesi H-W2 | `properties.plainCitation` in ogni citazione — oggi assente |
-| IC-V-H2b (`it.fails`) | ipotesi H-W2 | `properties.noteIndex` in ogni citazione — oggi assente (caso separato: correggerne uno solo lascia rosso l'altro) |
-| IC-V-H3 (`it.fails`) | ipotesi H-W3 | `itemData.id` presente e `citationItems[].id` coerente per URI — oggi `id` = indice nella citazione, nessun `itemData.id` |
-| IC-V-H4 (`it.fails`) | ipotesi H-W4 | `label` accanto a `locator` — oggi assente |
-| IC-V-H5 (`it.todo`) | ipotesi H-W5 (gruppo non sincronizzato) | verificabile solo in Word |
+| IC-V-H1 (`it.fails`) | H-W1, bug confermato da word-proxy | `docProps/custom.xml` con `ZOTERO_PREF_*` — oggi assente: al primo Refresh Zotero apre Document Preferences e propone il suo ultimo stile |
 
-I casi IC-V-H* descrivono differenze rispetto a ciò che scrive Zotero for Word, non bug dimostrati: restano
-`it.fails` finché la checklist manuale (`test/WORD_CHECKLIST.md`) non le conferma (correzione del prodotto in
-una PR separata, il caso diventa normale) o le smentisce (il caso si rimuove). inject.js scrive lo stesso JSON.
+Le altre ipotesi (H-W2 `plainCitation`/`noteIndex`, H-W3 id per URI, H-W4 `label` del locator, H-W5 voci o gruppi
+assenti dal client) le decide il job `word-proxy` (sezione sotto) con Zotero desktop vero: non servono, i casi
+`it.fails`/`it.todo` corrispondenti sono stati tolti. inject.js scrive lo stesso JSON.
 
 ## Skill inject.js (`test/skills/inject-script.test.ts`, processo node reale)
 | ID | Scenario | Atteso |
@@ -497,6 +492,26 @@ Server avviato con `ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID=777` (e `ZOTE
 | E2E-G12 | `library_id` non numerico ("abc", path traversal, "12a", "", "-1"), `library_type` sconosciuto | isError, nessuna chiamata HTTP |
 | E2E-G13 | group senza `ZOTERO_LIBRARY_ID` | exit code 1 entro 5 s, "requires ZOTERO_LIBRARY_ID", nessuna chiamata HTTP |
 | E2E-G14 | `ZOTERO_LIBRARY_ID` non numerico / `ZOTERO_LIBRARY_TYPE` sconosciuto | exit code 1 con messaggio dedicato |
+
+## word-proxy (job di `test.yml`, `test/word-proxy/`)
+Zotero 10.0.6 desktop (build ufficiale, sha256 fissato) sotto Xvfb esegue Refresh / Document Preferences sui docx
+iniettati da `build/server.js` (corpus reale, librerie segnaposto `users/000000` e `groups/777`, API Zotero finta)
+attraverso `wordcraft-cli` 0.8.0 (protocollo word-processor di Zotero). Un plugin di test registra e risponde ai
+dialoghi. Ogni passo è confrontato con `test/word-proxy/expect.json` da `verify.mjs`; `compare.mjs` confronta la
+bibliografia dalla libreria locale con quella dall'`itemData` incorporato. Nessun account, nessun segreto.
+| ID | Scenario | Atteso |
+|---|---|---|
+| WP-apa…chicago | sessione "embedded" (percorso B, libreria vuota): primo Refresh nei 5 stili | H-W1 (bug noto): dialogo Document Preferences con `chicago-shortened-notes-bibliography` proposto, risposto con lo stile del passo, stile salvato nel documento; nessun avviso, `noteIndex` 0, un id per URI, 8 citazioni, 12 voci, tutte da `itemData` incorporato; "p. 110" del locator, "In J. Edmond (Ed.), …", cirillico, particelle |
+| WP-proposed | OK sullo stile proposto | H-W1: stile a note, citazioni come testo di nota nel corpo |
+| WP-fix-apa/ieee | stesso docx con `ZOTERO_PREF_1` aggiunto da `add-prefs.mjs` (stand-in del fix H1) | nessun dialogo, stile scelto applicato |
+| WP-again / WP-restyle | secondo Refresh; Document Preferences → chicago-author-date | nessun dialogo, stesso testo; stile cambiato senza errori |
+| WP-group | docx dalla libreria di gruppo 777, gruppo assente in Zotero | H-W5: `itemData` incorporato, nessuna richiesta, URI `groups/777` |
+| WP-lib-apa/lib-fix-apa/lib-group | sessione "library" (percorso A): stesse voci con le stesse chiavi nella libreria locale e in un gruppo 777 (`load-items.js`) | voci dalla libreria, nessun fallback; dialogo H-W1 solo senza `ZOTERO_PREF` |
+| WP-ab | bibliografia lib-fix-apa contro fix-apa | uguali salvo le 4 differenze note: `zoteroItemToCsl` non porta università (tesi), istituzione (report), repository/archiveID (preprint), data di accesso (pagina web) |
+| WL-09 | ambito del job (`scripts/word-proxy-scope.mjs`, `test/utils/workflow-logic.test.ts`) | PR: solo se cambiano iniezione, conversione, skill, corpus, word-proxy, il job; PR solo docs: saltato; push su main e manuale: sempre |
+| WL-10 | struttura del job | senza segreti né `environment`, `ubuntu-24.04`, timeout ≤ 10 min, azione composita `word-tools` (versioni e sha256 fissati, cache), artifact solo dopo `check-artifacts.mjs`, conservato 1 giorno |
+| WP-CA | `check-artifacts.mjs` (`test/utils/word-proxy.test.ts`) | fallisce con URI di libreria diversi dai segnaposto, email, home diversa da quella del runner, valori di variabili segrete, file inattesi (anche dentro i docx) |
+| WP-V | `verify.mjs` / `compare.mjs` su documenti costruiti nel test | aspettative rispettate → ok; una differenza → errore con atteso/ottenuto; differenza A/B nuova o sparita → errore |
 
 ## Corpus reale (`test/fixtures/corpus/`, helper `test/helpers/corpus.ts`)
 Opere vere con licenza CC BY / CC0 (conferenza ACL, articolo in cirillico, libro curato, capitolo, monografia, tesi

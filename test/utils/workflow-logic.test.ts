@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error plain .mjs script without type declarations
 import { liveScope } from "../../scripts/live-scope.mjs";
+// @ts-expect-error plain .mjs script without type declarations
+import { wordProxyScope } from "../../scripts/word-proxy-scope.mjs";
 
 /**
  * Logica dei workflow dal vivo che nessun test esegue (gira solo su GitHub): controlli testuali sulle condizioni
@@ -171,5 +173,42 @@ describe("ambito di una run del workflow dal vivo (scripts/live-scope.mjs, WL-08
       timeout: 10_000,
     }).toString();
     expect(out).toBe("live=true\nagent=true\n");
+  });
+});
+
+describe("job word-proxy di test.yml (WL-09, WL-10)", () => {
+  it.each<[string, string, string[], boolean]>([
+    ["PR solo docs", "pull_request", ["README.md", "test/WORD_CHECKLIST.md"], false],
+    ["PR su un tool che non tocca l'iniezione", "pull_request", ["src/tools/search-library.ts"], false],
+    ["PR sull'iniettore", "pull_request", ["src/citation-injector/injector.ts"], true],
+    ["PR sulla conversione in itemData", "pull_request", ["src/utils/csl-to-zotero.ts"], true],
+    ["PR sulla skill (inject.js)", "pull_request", ["skills/zotero-skill-mcp-integrations/scripts/inject.js"], true],
+    ["PR sul corpus", "pull_request", ["test/fixtures/corpus/library.json"], true],
+    ["PR sull'azione word-tools", "pull_request", [".github/actions/word-tools/action.yml"], true],
+    ["push su main", "push", [], true],
+    ["manuale", "workflow_dispatch", [], true],
+  ])("WL-09 %s", (_label, event, files, expected) => {
+    expect(wordProxyScope(event, files)).toBe(expected);
+  });
+
+  it("WL-10 if a livello di job (non on.paths), nessun segreto, runner fissato, timeout, artifact solo dopo il controllo", () => {
+    const test = workflow("test.yml");
+    expect(test).not.toMatch(/^\s+paths:/m);
+    const job = test.slice(test.indexOf("\n  word-proxy:\n"));
+    expect(job).toContain("needs: word-proxy-scope");
+    expect(job).toContain("if: needs.word-proxy-scope.outputs.run == 'true'");
+    expect(job).toContain("runs-on: ubuntu-24.04");
+    expect(Number(job.match(/\n    timeout-minutes: (\d+)/)![1])).toBeLessThanOrEqual(10);
+    expect(job).not.toMatch(/secrets\.|environment:|id-token/);
+    expect(job).toContain("uses: ./.github/actions/word-tools");
+    expect(step(job, "Collect and check the artifact")).toContain("node test/word-proxy/check-artifacts.mjs");
+    const upload = step(job, "Upload documents, traces and reports");
+    expect(upload).toContain("steps.artifact.outcome == 'success'");
+    expect(upload).toContain("retention-days: 1");
+    for (const s of job.split(/\n {6}- /).slice(1)) expect(s, s.split("\n")[0]).toMatch(/timeout-minutes: \d+/);
+    const action = readFileSync(join(ROOT, ".github", "actions", "word-tools", "action.yml"), "utf8");
+    expect(action.match(/sha256=[0-9a-f]{64}/g)).toHaveLength(4);
+    expect(action).toContain("sha256sum -c -");
+    expect(action).toMatch(/actions\/cache@[0-9a-f]{40}/);
   });
 });

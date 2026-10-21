@@ -1,9 +1,12 @@
 # Checklist manuale Word + plugin Zotero (a ogni release)
 
-I test automatici controllano la struttura del docx (zip, XML, campi, JSON CSL, URI) ma non possono
-eseguire Word né il plugin Zotero: LibreOffice non legge i campi Zotero di Word. Questa checklist va
-eseguita a mano **prima di ogni release** su un docx prodotto dalla versione candidata, sia con
-`inject_citations` (server MCP) sia con `inject.js` (skill). Gli esiti si registrano in fondo.
+I test automatici controllano la struttura del docx (zip, XML, campi, JSON CSL, URI) e il job `word-proxy` di
+`test.yml` fa eseguire Refresh e Document Preferences a Zotero desktop vero (stessa logica `integration.js` del
+plugin Word, attraverso `wordcraft-cli`) sui docx iniettati dal corpus reale: le ipotesi H-W1…H-W5 sono decise lì
+(`test/word-proxy/expect.json`). Word non gira in CI: questa checklist va eseguita a mano **prima di ogni
+release** su un docx prodotto dalla versione candidata, sia con `inject_citations` (server MCP) sia con
+`inject.js` (skill), almeno per W-01, W-06, W-07 e W-08 (parser di Word, citazioni native, dialogo di
+citazione, salvataggio e riapertura), che word-proxy non copre. Gli esiti si registrano in fondo.
 
 ## Preparazione
 
@@ -27,18 +30,19 @@ eseguita a mano **prima di ogni release** su un docx prodotto dalla versione can
 | W-07 | Cliccare su una citazione iniettata → Add/Edit Citation | Il dialogo mostra le voci giuste, con locator/prefix dove presenti |
 | W-08 | Salvare, chiudere, riaprire, Refresh | Citazioni e bibliografia restano collegate a Zotero |
 
-## Ipotesi da verificare (non fatti)
+## Ipotesi su Word: decise da word-proxy
 
-Ognuna di queste è un'**ipotesi** da confermare o smentire con i passi sopra; i test automatici le
-tracciano come `it.fails`/`it.todo` in attesa dell'esito.
+Decise con Zotero 10.0.6 + `wordcraft-cli` 0.8.0 nel job `word-proxy` (aspettative in `test/word-proxy/expect.json`,
+sezione "word-proxy" di `test/TEST_CASES.md`). Un controllo a campione in Word vero del fix H-W1, quando arriverà,
+resta utile (il plugin Word legge le preferenze dalle proprietà `ZOTERO_PREF_*` concatenate).
 
-| # | Ipotesi | Come verificarla | Codice coinvolto |
-|---|---|---|---|
-| H-W1 | Il docx non contiene le preferenze del documento (`ZOTERO_PREF_*` in `docProps/custom.xml`): al primo Refresh il plugin potrebbe aprire il dialogo **Document Preferences** invece di aggiornare subito | W-02 su un docx appena iniettato: si apre il dialogo? Lo stile proposto è quello scelto all'iniezione? | `injector.ts` / `inject.js` non scrivono `docProps/custom.xml` |
-| H-W2 | `properties` contiene solo `formattedCitation`: mancano `plainCitation` e `noteIndex` (Zotero scrive `noteIndex: 0` nei documenti senza note). Il plugin potrebbe considerare la citazione modificata a mano, chiedere conferma al Refresh o trattarla come citazione in nota | W-02/W-03: compare l'avviso "You have modified this citation…"? Le citazioni restano nel testo (non diventano note)? | `field-codes.ts` `generateZoteroFieldCode` |
-| H-W3 | `citationItems[].id` è l'indice della voce **dentro ogni citazione** (riparte da 0) e `itemData` non ha `id`: voci diverse condividono lo stesso id; il plugin potrebbe confondere le voci o duplicarle in bibliografia finché non risolve gli `uris` | W-04/W-06 con due citazioni diverse: la bibliografia ha le voci giuste, senza duplicati né scambi? | `injector.ts` `buildCitationItems` (`id: idx`), `inject.js` `buildCitationItems` |
-| H-W4 | `locator` senza `label`: il plugin/citeproc potrebbe non mostrare l'etichetta (p./pp.) o interpretare il locator in modo diverso | W-03/W-07 sulla citazione con `locator`: compare "p. 12"? Il dialogo mostra "Page"? | `buildCitationItems` (nessun `label`) |
-| H-W5 | Voci di una libreria di gruppo non sincronizzata sul computer con Word: gli `uris` `http://zotero.org/groups/<id>/items/<key>` non si risolvono e il plugin potrebbe usare solo `itemData` incorporato o segnalare voci mancanti | Iniettare da una libreria di gruppo che il client Zotero locale non ha sincronizzato, poi W-02/W-04 | URI di gruppo in `buildCitationItems` |
+| # | Ipotesi | Esito in word-proxy |
+|---|---|---|
+| H-W1 | Senza `ZOTERO_PREF_*` in `docProps/custom.xml` il primo Refresh apre **Document Preferences** | **confermata (bug noto)**: il dialogo propone l'ultimo stile di Zotero (`chicago-shortened-notes-bibliography` in un profilo nuovo), non quello dell'iniezione; con OK le citazioni diventano testo in stile nota. Con `ZOTERO_PREF_1` (passi `fix-*`) nessun dialogo e stile applicato. Test `IC-V-H1` resta `it.fails` |
+| H-W2 | Mancano `plainCitation` e `noteIndex` | smentita: nessun avviso "citazione modificata", Zotero scrive `noteIndex` 0 |
+| H-W3 | `citationItems[].id` per citazione, `itemData` senza `id` | smentita: Zotero riassegna gli id, un id per URI, bibliografia senza doppioni |
+| H-W4 | `locator` senza `label` | smentita: reso come pagina ("p. 110", "[4, p. 110]") |
+| H-W5 | Voci o gruppo assenti nel client Zotero | risolta: `itemData` incorporato, nessuna richiesta; con le stesse voci in libreria (gruppo 777 locale) Zotero usa la libreria |
 
 ## Registro esiti
 
