@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // Redacts (or restores) the test-account identifiers in agent-out/ so that artifacts passed between the
 // agent-smoke jobs never carry them on a public repository:
-//   node test/live/agent/redact.mjs redact  <dir>   user id / group id → numeric placeholders, username →
-//                                                   fixed token, API key / email → ***; fails if any survives
+//   node test/live/agent/redact.mjs redact  <dir>   user id / group id → numeric placeholders, username and
+//                                                   group name → fixed tokens, API key / email → ***; fails if
+//                                                   any survives
 //   node test/live/agent/redact.mjs restore <dir>   placeholders → real user id / group id (for the verifier)
 // Text files (.json .jsonl .txt .md .xml) and every XML part of .docx files are processed.
-// Env: ZOTERO_TEST_API_KEY, UNPAYWALL_EMAIL, ZOTERO_TEST_USER_ID, ZOTERO_TEST_USERNAME, ZOTERO_TEST_GROUP_ID.
+// Env: ZOTERO_TEST_API_KEY, UNPAYWALL_EMAIL, ZOTERO_TEST_USER_ID, ZOTERO_TEST_USERNAME, ZOTERO_TEST_GROUP_ID, and
+// ZOTERO_TEST_GROUP_NAME (set by test/live/mask-group-name.mjs): redact fails closed when a group is configured
+// without its name.
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import JSZip from "jszip";
@@ -13,6 +16,7 @@ import JSZip from "jszip";
 const USER_PLACEHOLDER = "100000000000001";
 const GROUP_PLACEHOLDER = "200000000000002";
 const USERNAME_TOKEN = "mzt-redacted-username";
+const GROUP_NAME_TOKEN = "mzt-redacted-group-name";
 const TEXT = /\.(json|jsonl|txt|md|xml)$/i;
 
 const [mode, dir] = process.argv.slice(2);
@@ -25,6 +29,11 @@ const userId = env("ZOTERO_TEST_USER_ID");
 const groupId = env("ZOTERO_TEST_GROUP_ID");
 const secrets = [env("ZOTERO_TEST_API_KEY"), env("UNPAYWALL_EMAIL")].filter((s) => s.length >= 4);
 const username = env("ZOTERO_TEST_USERNAME");
+const groupName = env("ZOTERO_TEST_GROUP_NAME");
+if (mode === "redact" && groupId && !groupName) {
+  console.error("redact: ZOTERO_TEST_GROUP_NAME missing (run test/live/mask-group-name.mjs first in this job)");
+  process.exit(1);
+}
 const digits = (value) => new RegExp(`(?<!\\d)${value}(?!\\d)`, "g");
 
 function transform(text) {
@@ -36,7 +45,10 @@ function transform(text) {
   }
   let out = text;
   for (const s of secrets) out = out.split(s).join("***");
-  if (username.length >= 3) out = out.split(username).join(USERNAME_TOKEN);
+  // longest first: one may contain the other
+  for (const [value, token] of [[username, USERNAME_TOKEN], [groupName, GROUP_NAME_TOKEN]].sort((a, b) => b[0].length - a[0].length)) {
+    if (value.length >= 3) out = out.split(value).join(token);
+  }
   if (/^\d+$/.test(userId)) out = out.replace(digits(userId), USER_PLACEHOLDER);
   if (/^\d+$/.test(groupId)) out = out.replace(digits(groupId), GROUP_PLACEHOLDER);
   return out;
@@ -45,6 +57,7 @@ function transform(text) {
 function survivors(text) {
   const found = secrets.filter((s) => text.includes(s));
   if (username.length >= 3 && text.includes(username)) found.push("username");
+  if (groupName.length >= 3 && text.includes(groupName)) found.push("group name");
   if (/^\d+$/.test(userId) && digits(userId).test(text)) found.push("user id");
   if (/^\d+$/.test(groupId) && digits(groupId).test(text)) found.push("group id");
   return found;

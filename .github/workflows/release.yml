@@ -43,8 +43,10 @@ jobs:
   # fallback; once trusted publishing works, delete the NPM_TOKEN secret and the env line below.
   # Tests run only in the `test` job: publish uses --ignore-scripts, so prepublishOnly never runs
   # with publishing credentials in the environment.
+  # On workflow_dispatch the default checkout is the branch, not the release: check out the tag and refuse to
+  # publish unless package.json has its version (same check as mcp-registry and mcpb-build).
   npm-publish:
-    needs: test
+    needs: [test, skill-zips] # skill-zips creates the release (and its tag) when started by hand with a new tag
     runs-on: ubuntu-latest
     environment: release
     timeout-minutes: 15
@@ -54,6 +56,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         timeout-minutes: 3
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+
+      - name: Check package.json version = release tag
+        timeout-minutes: 1
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          if [ "${TAG#v}" != "$VERSION" ]; then
+            echo "::error::package.json version $VERSION does not match the release tag $TAG"
+            exit 1
+          fi
 
       - uses: actions/setup-node@v7
         timeout-minutes: 3

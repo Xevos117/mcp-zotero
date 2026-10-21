@@ -15,6 +15,7 @@ import {
   itemCoverage,
   auditCalls,
   auditGaps,
+  auditNumberingProblems,
   guardrailFindings,
   // @ts-expect-error plain .mjs script without type declarations
 } from "../../test/live/verify-claims.mjs";
@@ -239,6 +240,57 @@ describe("verify-claims: scenari esplorativi X1..X5 (VC-06)", () => {
     ["non è un array", { X1: {} }, /exploratory is not an array/],
   ])("VC-06c %s → problema", (_label, list, re) => {
     expect(exploratoryFindings(list, messages).problems.join("\n")).toMatch(re);
+  });
+});
+
+describe("verify-claims: chiamate esplorative per call_no dell'audit (VC-06d)", () => {
+  const entry = (n: number, tool: string, input: unknown, text: string, isError = false) => ({ call_no: n, tool_use_id: `u${n}`, tool_name: tool, tool_input: input, is_error: isError, text });
+  // argomento non ASCII: con call_no l'agente non deve ridigitarlo
+  const calls = auditCalls([
+    entry(1, "mcp__zotero__search_library", { query: "Müller–Ødegård “x”" }, "[]"),
+    entry(2, "mcp__zotero__get_items_details", { item_keys: ["ZZZZZZZZ"] }, '{"error":"Input validation error"}', true),
+    entry(3, "Bash", { command: "node test/live/agent/inject.mjs agent-out/a.docx agent-out/b.docx agent-out/m.json users/1", description: "x" }, "{}"),
+  ]);
+  const x = (callsClaimed: unknown[], over: Record<string, unknown> = {}) => ({ id: "X1", rationale: "r", calls: callsClaimed, expected: "e", observed: "o", verdict: "ok", ...over });
+
+  it("VC-06d chiamate citate per call_no (strumento con o senza prefisso, Bash, esito) → nessun problema, argomenti non ridigitati", () => {
+    const r = exploratoryFindings(
+      [
+        x([{ tool: "search_library", call_no: 1, is_error: false }, { tool: "mcp__zotero__get_items_details", call_no: 2, is_error: true }]),
+        x([{ tool: "Bash", call_no: 3, is_error: false }], { id: "X2" }),
+      ],
+      calls
+    );
+    expect(r).toEqual({ problems: [], warnings: [], checks: ["X1 ok", "X2 ok"] });
+  });
+
+  it.each<[string, unknown, RegExp]>([
+    ["call_no inesistente", { tool: "search_library", call_no: 9, is_error: false }, /X1: call 1 \(search_library\): call_no 9 not in the audit/],
+    ["call_no non intero", { tool: "search_library", call_no: "1", is_error: false }, /call_no "1" not in the audit/],
+    ["strumento diverso", { tool: "get_collections", call_no: 1, is_error: false }, /call_no 1 is a search_library call/],
+    ["Bash dichiarato come tool Zotero", { tool: "inject_citations", call_no: 3, is_error: false }, /call_no 3 is a Bash call/],
+    ["is_error mancante", { tool: "search_library", call_no: 1 }, /is_error \(true\|false\) missing/],
+    ["esito diverso", { tool: "get_items_details", call_no: 2, is_error: false }, /call_no 2 claimed is_error false, the audit says true/],
+    ["argomenti invece di call_no con audit numerato", { tool: "search_library", args: { query: "Müller–Ødegård “x”" } }, /no call_no \(the audit numbers every call/],
+  ])("VC-06e %s → problema", (_label, call, re) => {
+    expect(exploratoryFindings([x([call])], calls).problems.join("\n")).toMatch(re);
+  });
+
+  it("VC-06f audit senza numeri (hook del branch base precedenti): confronto per argomenti come prima", () => {
+    const legacy = auditCalls([{ tool_use_id: "a", tool_name: "mcp__zotero__search_library", tool_input: { query: "q" }, is_error: false, text: "[]" }]);
+    expect(exploratoryFindings([x([{ tool: "search_library", args: { query: "q" } }])], legacy).problems).toEqual([]);
+    expect(exploratoryFindings([x([{ tool: "search_library", args: { query: "q2" } }])], legacy).problems).toEqual(["X1: call 1 (search_library) not found in the audit with the same arguments"]);
+    expect(exploratoryFindings([x([{ tool: "search_library", call_no: 1, is_error: false }])], legacy).problems).toEqual(["X1: call 1 (search_library): call_no 1 not in the audit"]);
+  });
+
+  it.each<[string, Array<Record<string, unknown>>, string[]]>([
+    ["senza numeri", [{ tool_name: "Bash" }, { tool_name: "Bash" }], []],
+    ["1..3", [1, 3, 2].map((n) => ({ tool_name: "Bash", call_no: n })), []],
+    ["ripetuto", [1, 2, 2].map((n) => ({ tool_name: "Bash", call_no: n })), ["audit: 1 repeated call_no"]],
+    ["buco", [1, 2, 4].map((n) => ({ tool_name: "Bash", call_no: n })), ["audit: 1 call_no missing between 1 and 4 (lost entries)"]],
+    ["voce senza numero in un audit numerato", [{ tool_name: "Bash", call_no: 1 }, { tool_name: "Bash" }], ["audit: 1 entry without a valid call_no"]],
+  ])("VC-10d numerazione dell'audit: %s", (_label, entries, expected) => {
+    expect(auditNumberingProblems(entries)).toEqual(expected);
   });
 });
 

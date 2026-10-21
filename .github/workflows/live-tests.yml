@@ -80,6 +80,15 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # First step that touches the account: the test group's name is read in-process (never printed), masked in every
+      # later log line of the job and exported as ZOTERO_TEST_GROUP_NAME for the fail-closed check of scrub-report.mjs
+      # (test/live/mask-group-name.mjs).
+      - name: Mask the test group name
+        timeout-minutes: 2
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+        run: node test/live/mask-group-name.mjs
       - name: Require the test account
         timeout-minutes: 1
         env:
@@ -129,6 +138,7 @@ jobs:
           pkill -KILL -f "$pattern" || true
           npm run test:live:cleanup
       - name: Scrub report
+        id: scrub
         if: always()
         timeout-minutes: 2
         env:
@@ -138,8 +148,9 @@ jobs:
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
           UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
         run: node test/live/scrub-report.mjs live-artifacts .vitest/live-report.json .vitest/live-summary.json
+      # Only what the scrubber accepted: after a failed scrub nothing is published (and the job is red)
       - name: Upload scrubbed report
-        if: always()
+        if: always() && steps.scrub.outcome == 'success'
         timeout-minutes: 3
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

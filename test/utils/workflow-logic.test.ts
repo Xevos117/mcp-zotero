@@ -42,4 +42,49 @@ describe("workflow dal vivo e agente smoke (WL)", () => {
   it("WL-03 una run dal vivo o dell'agente in corso non viene annullata da un push più recente", () => {
     for (const text of [agent, live]) expect(text).toMatch(/concurrency:\n {2}group: [^\n]+\n {2}cancel-in-progress: false\n/);
   });
+
+  /** Text of a job, from its key line to the next job. */
+  const job = (text: string, key: string) => {
+    const start = text.indexOf(`\n  ${key}:\n`);
+    expect(start, `job "${key}"`).toBeGreaterThanOrEqual(0);
+    const rest = text.slice(start + 1);
+    const end = rest.slice(1).search(/\n {2}[a-z][\w-]*:\n/);
+    return end < 0 ? rest : rest.slice(0, end + 1);
+  };
+
+  it("WL-04 ogni job che usa la chiave di test maschera prima il nome del gruppo (primo step che tocca l'account)", () => {
+    for (const [text, keys] of [[agent, ["prepare", "agent-run", "verify", "cleanup"]], [live, ["live"]]] as const) {
+      for (const key of keys) {
+        const j = job(text, key);
+        const mask = j.indexOf("- name: Mask the test group name");
+        expect(mask, `${key}: mask step`).toBeGreaterThan(0);
+        expect(step(j, "Mask the test group name")).toContain("run: node test/live/mask-group-name.mjs");
+        // no other step reads a Zotero secret before it
+        expect(j.slice(0, mask)).not.toMatch(/secrets\.ZOTERO_TEST_/);
+      }
+    }
+  });
+
+  it("WL-05 artifact e riepiloghi pubblicati solo dopo uno scrub riuscito; commento con solo pull-requests: write, senza checkout né segreti", () => {
+    expect(step(agent, "Upload scrubbed agent output")).toContain("if: always() && steps.scrub.outcome == 'success'");
+    expect(step(live, "Upload scrubbed report")).toContain("if: always() && steps.scrub.outcome == 'success'");
+    expect(step(agent, "Job summary")).toContain("if: always() && steps.scrub.outcome == 'success'");
+    expect(step(agent, "Job summary")).toContain("node test/live/agent/summary.mjs live-artifacts/agent-out --out live-artifacts/summary.md");
+    const comment = job(agent, "comment");
+    expect(comment).toMatch(/ {4}permissions:\n {6}pull-requests: write\n {4}steps:/);
+    expect(comment).toContain("github.event.pull_request.head.repo.full_name == github.repository");
+    expect(comment).not.toMatch(/actions\/checkout|npm |secrets\.|environment:/);
+    expect(comment).toContain("grep -Evx 'users/100000000000001|groups/200000000000002'");
+  });
+
+  it("WL-06 npm-publish pubblica il tag della release e solo se package.json ha la sua versione", () => {
+    const release = workflow("release.yml");
+    const publish = job(release, "npm-publish");
+    expect(publish).toContain("needs: [test, skill-zips]");
+    expect(publish).toContain("ref: ${{ github.event.release.tag_name || inputs.tag }}");
+    const check = publish.indexOf("- name: Check package.json version = release tag");
+    expect(check).toBeGreaterThan(0);
+    expect(check).toBeLessThan(publish.indexOf("npm publish"));
+    expect(step(publish, "Check package.json version = release tag")).toContain('if [ "${TAG#v}" != "$VERSION" ]; then');
+  });
 });

@@ -15,7 +15,9 @@ must not decide is set by whoever starts the session, the same way in CI and loc
 The hooks: a Bash allowlist (only `node test/live/agent/make-docx.mjs …` and `node test/live/agent/inject.mjs …`
 in their exact shape), deletions only of keys the run created (plus the non-existent `ZZZZZZZZ`/`YYYYYYYY`),
 and an audit log of every Zotero call and Bash command in `agent-audit/audit.jsonl` (denials in
-`agent-audit/denials.jsonl`), outside `agent-out/` where the agent can write.
+`agent-audit/denials.jsonl`), outside `agent-out/` where the agent can write. The audit hook numbers every call
+(`call_no`, told to the agent after each call): the exploratory claims reference calls by that number, and
+verify-claims checks that the numbers run 1..n without repeats or gaps.
 
 ## Local run
 

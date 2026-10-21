@@ -633,8 +633,10 @@ Lo step dei test (18 min) è più corto del job (30 min); poi, sempre:
 - **solo pulizia** (`npm run test:live:cleanup`, cioè `ZOTERO_LIVE_CLEANUP_ONLY=1`): nessuna fixture, tutti i test saltati; pulisce le run indicate in
   `ZOTERO_LIVE_CLEANUP_RUN_IDS` e quelle interrotte (file `.vitest/live-run-<runId>.json` scritto all'avvio e tolto a
   fine teardown), con le stesse regole sui marcatori; sull'account dedicato anche gli avanzi > 6 h;
-- `test/live/scrub-report.mjs`: copia report e riepilogo mascherando chiave, user id, username, gruppo ed email, e
-  fallisce se un segreto sopravvive; artifact conservato 7 giorni.
+- `test/live/scrub-report.mjs`: copia report e riepilogo mascherando chiave, user id, username, id e nome del gruppo ed
+  email, e fallisce (togliendo l'output) se un segreto sopravvive o se c'è un gruppo senza `ZOTERO_TEST_GROUP_NAME`;
+  l'artifact (7 giorni) si carica solo dopo uno scrub riuscito. Il nome del gruppo lo legge, all'inizio del job,
+  `test/live/mask-group-name.mjs` (API con la chiave di test, mai stampato, `::add-mask::`, esportato in `$GITHUB_ENV`).
 Un job separato con `issues: write` apre o aggiorna la issue "Test dal vivo settimanali falliti" solo per i fallimenti
 della run del venerdì, con il link alla run e i nomi dei test (mai dati).
 
@@ -691,8 +693,14 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   il collaudo locale sotto; i limiti sono circa il doppio). La chiave Zotero sta solo nel file
   di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente. Gli artifact fra i job
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
-  nel job successivo), username, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne resta uno
-  (anche dentro i docx); conservazione 1 giorno.
+  nel job successivo), username, nome del gruppo, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne
+  resta uno (anche dentro i docx) o se c'è un gruppo senza il suo nome; conservazione 1 giorno. Ogni job che usa
+  l'account comincia mascherando il nome del gruppo (`mask-group-name.mjs`).
+- **Riepilogo**: dopo lo scrub, `test/live/agent/summary.mjs` scrive il Job Summary (verdetto, problemi e avvisi,
+  tabella degli scenari, esplorativi X1–X5, friction, turni/durata/costo) dalla copia scrubbata; non scrive nulla se
+  nel testo resta un segreto dell'ambiente, il nome del gruppo o un `users|groups/<id>` diverso dai segnaposto. Il job
+  `agent-smoke-comment` (PR dello stesso repo, solo `pull-requests: write`, niente checkout, npm o segreti) ricontrolla
+  marcatore e percorsi e crea o aggiorna un solo commento sulla PR (marcatore `<!-- mcp-zotero-agent-smoke -->`).
 - **Sulle PR** il job dell'agente ripristina `.claude/`, `CLAUDE.md` (e `.mcp.json`, `.claude.json`, `CLAUDE.local.md`) dal branch di base (configurazione dell'agente
   scritta nella PR = non fidata): gira la skill del branch di base. Se lì la skill non c'è ancora (la PR che la
   introduce), il job lo segnala e salta; il primo collaudo vero è l'avvio manuale da `main` dopo il merge.
@@ -728,7 +736,10 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   F7 è passato e i due documenti di F9. **Evidenza dagli hook** (`--audit`, exit 2 senza): F0 (le due sonde fra le
   negazioni; altre negazioni = avvisi), F9 (stesso errore per la chiave sconosciuta, stesso rifiuto per quella
   malformata, 0 citazioni senza zcite) e F10 (esiti attesi per ogni chiamata fissa) si controllano sulle chiamate
-  registrate dall'audit; ogni chiamata esplorativa dichiarata deve comparire con gli stessi argomenti, massimo 5
+  registrate dall'audit; ogni chiamata esplorativa dichiarata si cita con il `call_no` che l'hook di audit le ha dato
+  (e comunicato all'agente): deve esistere, essere dello strumento dichiarato e avere l'esito dichiarato (`is_error`);
+  i numeri dell'audit vanno da 1 a n senza ripetizioni né buchi (un audit senza numeri, degli hook del branch base
+  precedenti, si confronta ancora per argomenti identici), massimo 5
   scenari, verdetto `bug` = check fallito, `unclear` = avviso nel riepilogo. Con `--transcript` (in CI il file di
   esecuzione) ogni chiamata Zotero della trascrizione deve stare nell'audit o fra le negazioni (altrimenti gli hook non
   erano attivi) e il server zotero dev'essere connesso all'avvio.
@@ -766,6 +777,10 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-10a | audit degli hook → chiamate: chiavi create, robustezza, chiamata esplorativa Bash | come dalla trascrizione |
 | VC-10b | chiamata Zotero della trascrizione assente da audit e negazioni / negata | problema / nessuno |
 | VC-10c | sonde F0 negate; altra negazione; nessuna negazione | nessun problema; avviso; due problemi |
+| VC-10d | numerazione dell'audit: assente, 1..3 in disordine, ripetuta, con un buco, voce senza numero | nessun problema / un problema per caso |
+| VC-06d | esplorativi citati per `call_no` (tool con o senza prefisso, Bash, esito), argomento non ASCII mai ridigitato | nessun problema |
+| VC-06e | `call_no` inesistente o non intero, strumento diverso, Bash dichiarato come tool Zotero, `is_error` mancante o diverso, argomenti al posto di `call_no` con audit numerato | un problema per caso |
+| VC-06f | audit senza numeri | confronto per argomenti (uguali / diversi), `call_no` non trovato |
 
 ### Hook dell'agente smoke (`test/utils/agent-hooks.test.ts`), template MCP (`test/utils/render-mcp.test.ts`) e guardia sugli output committati (`test/utils/check-tracked-artifacts.test.ts`, step di `test.yml`)
 | ID | Scenario | Atteso |
@@ -778,7 +793,8 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | AH-02c | chiavi create lette dall'audit (create_collection, add_items_by_doi con PDF; esclusi errori, tool di lettura, Bash) | solo le chiavi create |
 | AH-02d | testo dei risultati: stringa, blocchi MCP, `{content}`, Bash `{stdout, stderr}` | testo concatenato |
 | AH-03a/b | bash-guard come processo: comando ammesso / negato / stdin non JSON | nessun output / `permissionDecision: deny` con motivo e riga in denials.jsonl / negato |
-| AH-03c | audit.mjs (PostToolUse, PostToolUseFailure, tool non registrato) poi delete-guard | audit con le due chiamate Zotero; chiave creata ammessa, altra negata |
+| AH-03c | audit.mjs (PostToolUse, PostToolUseFailure, tool non registrato) poi delete-guard | audit con le due chiamate Zotero e `call_no` 1, 2, restituiti all'agente come `additionalContext` (nessun output per il tool non registrato); chiave creata ammessa, altra negata |
+| AH-03f | 12 hook di audit in parallelo | `call_no` 1..12 senza ripetizioni; il numero comunicato è quello della voce |
 | AH-03d | delete-guard senza `agent-audit/context.json` | negato |
 | AH-03e | `.claude/agent-smoke/settings.json` | tre hook sugli eventi e matcher giusti, comandi via `$CLAUDE_PROJECT_DIR`, timeout |
 | TA-01 | percorsi tracciati sotto `agent-out/`, `agent-audit/`, `.vitest/`, `live-artifacts/` a qualunque profondità; file spostati: riga d'audit, contesto dell'agente, log delle negazioni (anche solo Bash), claims, trascrizione (`session_id` + tool Zotero), riepilogo e report dal vivo, forme con virgolette escape | segnalati (solo percorso e motivo) |
@@ -786,6 +802,12 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | WL-01 | condizioni dello step di verify-claims e dell'avviso "nessuna chiamata" (`test/utils/workflow-logic.test.ts`) | verify sempre dopo un agente riuscito, dopo un fallito solo con l'audit |
 | WL-02 | job obbligatori `live-tests` e `agent-smoke` | `!cancelled()`, controllo su `changes`, verdetto dell'agente che richiede verify riuscito |
 | WL-03 | concurrency di live-tests e agente smoke | `cancel-in-progress: false` |
+| WL-04 | job prepare, agent-run, verify, cleanup e live-tests-run | primo step con segreti Zotero = "Mask the test group name" |
+| WL-05 | upload degli artifact e Job Summary; job `comment` | solo dopo uno scrub riuscito; solo `pull-requests: write`, PR dello stesso repo, niente checkout/npm/segreti/environment, ricontrollo dei percorsi |
+| WL-06 | `release.yml` npm-publish | dopo skill-zips, checkout del tag della release, controllo versione = tag prima di `npm publish` |
+| CR-01a..d | `mask-group-name.mjs` (`test/utils/ci-report.test.ts`): lettura con header e timeout; 503 poi 200, 404, rete giù, nome assente; output `::add-mask::` e `$GITHUB_ENV`; processo senza gruppo, senza chiave, id non numerico | nome; ritenta solo 429/5xx/rete, errori senza il nome; delimitatore casuale, a capo rifiutato; no-op / exit 1 |
+| CR-02a..c | scrub-report e redact con il nome del gruppo; senza `ZOTERO_TEST_GROUP_NAME` ma con un gruppo | nome, id e username mascherati / token; exit 1 senza output |
+| CR-03a..e | `agent/summary.mjs`: riepilogo completo; senza verdetto; testo dell'agente con HTML, menzioni, `\|`, a capo, troppo lungo; `runStats`; controllo prima di pubblicare (segnaposto, user id, nome del gruppo, `users/<id>` senza variabili, gruppo senza nome); processo pulito / con un id | marcatore, tabelle, statistiche; titolo "no verdict"; testo inerte e troncato; ultimo `result`; problemi giusti; file scritto / exit 1 senza file né id nel messaggio |
 | RM-01..03 | template MCP: variabili e default, node e server assoluti, opzionali vuote omesse; variabile obbligatoria mancante; nessun valore nel template | config concreta; errore che la nomina; solo segnaposto |
 | RA-01..02 | runner Agent SDK (`scripts/run-agent.mjs`, `test/utils/run-agent.test.ts`): config dello smoke con `${RUNNER_TEMP}`; variabile o campo obbligatorio mancante | percorsi espansi, output fuori dal workspace; errore |
 | RA-03 | federazione e ambiente dell'agente | attiva solo con rule id e organization id; `ACTIONS_ID_TOKEN_REQUEST_*` rimossi |

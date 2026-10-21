@@ -53,7 +53,7 @@ jobs:
           fi
           changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
           printf '%s\n' "$changed"
-          if printf '%s\n' "$changed" | grep -Eq '^(src/|skills/zotero-skill-mcp-integrations/|\.claude/skills/test-mcp-zotero/|\.claude/agent-smoke/|test/live/agent/|test/live/verify-claims\.mjs|test/live/lock\.mjs|test/live/cleanup\.mjs|test/live/global-setup\.ts|test/live/scrub-report\.mjs|test/live/helpers/|test/fixtures/csl/|test/e2e/server-process\.ts|vitest\.live\.config\.ts|test/helpers/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|scripts/run-agent\.mjs|\.github/agents/agent-smoke\.json|\.github/workflows/claude-agent-smoke\.yml)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|skills/zotero-skill-mcp-integrations/|\.claude/skills/test-mcp-zotero/|\.claude/agent-smoke/|test/live/agent/|test/live/verify-claims\.mjs|test/live/lock\.mjs|test/live/cleanup\.mjs|test/live/global-setup\.ts|test/live/scrub-report\.mjs|test/live/mask-group-name\.mjs|test/live/helpers/|test/fixtures/csl/|test/e2e/server-process\.ts|vitest\.live\.config\.ts|test/helpers/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|scripts/run-agent\.mjs|\.github/agents/agent-smoke\.json|\.github/workflows/claude-agent-smoke\.yml)'; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -119,6 +119,16 @@ jobs:
             echo "available=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # First step that touches the account: the test group's name is read in-process (never printed), masked in every
+      # later log line of the job and exported as ZOTERO_TEST_GROUP_NAME for the fail-closed checks of redact.mjs,
+      # scrub-report.mjs and agent/summary.mjs (test/live/mask-group-name.mjs).
+      - name: Mask the test group name
+        if: steps.skill.outputs.available == 'true'
+        timeout-minutes: 2
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+        run: node test/live/mask-group-name.mjs
       - name: Require secrets and federation variables
         if: steps.skill.outputs.available == 'true'
         timeout-minutes: 1
@@ -226,6 +236,15 @@ jobs:
         timeout-minutes: 3
         with:
           node-version: 24
+      # First step that touches the account: the test group's name is read in-process (never printed), masked in every
+      # later log line of the job and exported as ZOTERO_TEST_GROUP_NAME for the fail-closed checks of redact.mjs,
+      # scrub-report.mjs and agent/summary.mjs (test/live/mask-group-name.mjs).
+      - name: Mask the test group name
+        timeout-minutes: 2
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+        run: node test/live/mask-group-name.mjs
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         timeout-minutes: 5
         with:
@@ -364,6 +383,16 @@ jobs:
         timeout-minutes: 3
         with:
           node-version: 24
+      # First step that touches the account: the test group's name is read in-process (never printed), masked in every
+      # later log line of the job and exported as ZOTERO_TEST_GROUP_NAME for the fail-closed checks of redact.mjs,
+      # scrub-report.mjs and agent/summary.mjs (test/live/mask-group-name.mjs).
+      - name: Mask the test group name
+        if: needs.prepare.outputs.run_id != ''
+        timeout-minutes: 2
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+        run: node test/live/mask-group-name.mjs
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: needs.prepare.outputs.run_id != ''
         timeout-minutes: 5
@@ -408,6 +437,7 @@ jobs:
         run: node test/live/verify-claims.mjs agent-out --audit agent-out/audit.jsonl --transcript agent-out/execution.json
 
       - name: Scrub agent output
+        id: scrub
         if: always() && needs.prepare.outputs.run_id != ''
         timeout-minutes: 2
         env:
@@ -417,8 +447,35 @@ jobs:
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
           UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
         run: node test/live/scrub-report.mjs live-artifacts agent-out
+      # Job Summary and PR comment text (verdict, problems, scenarios, exploratory, friction, turns/cost/duration),
+      # from the scrubbed copy only: agent/summary.mjs writes nothing if a secret or an identifier of the test
+      # account (from the environment, or any users|groups/<id> path) is still in the text.
+      - name: Job summary
+        id: summary
+        if: always() && steps.scrub.outcome == 'success'
+        timeout-minutes: 2
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+          UNPAYWALL_EMAIL: ${{ secrets.UNPAYWALL_EMAIL }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node test/live/agent/summary.mjs live-artifacts/agent-out --out live-artifacts/summary.md
+          cat live-artifacts/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the summary for the PR comment
+        if: always() && steps.summary.outcome == 'success' && github.event_name == 'pull_request'
+        timeout-minutes: 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: agent-smoke-summary
+          path: live-artifacts/summary.md
+          retention-days: 7
+          if-no-files-found: error
+      # Only what the scrubber accepted: after a failed scrub nothing is published
       - name: Upload scrubbed agent output
-        if: always() && needs.prepare.outputs.run_id != ''
+        if: always() && steps.scrub.outcome == 'success'
         timeout-minutes: 3
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -436,6 +493,51 @@ jobs:
         run: |
           if [ "$PREPARE" = "failure" ] || [ "$PREPARE" = "cancelled" ]; then echo "::error::agent-smoke-prepare: $PREPARE"; exit 1; fi
           if [ "$AGENT" = "failure" ] || [ "$AGENT" = "cancelled" ]; then echo "::error::agent-smoke-run: $AGENT"; exit 1; fi
+
+  # One sticky comment per pull request with the summary of the latest run (found by its marker line, updated by
+  # every run). Only same-repo pull requests; the job's token can only write pull requests, and it runs no code of
+  # the pull request: no checkout, no npm, no secrets. It posts the text the verify job wrote and checked, after
+  # checking again that it has the marker and no users|groups/<id> path.
+  comment:
+    name: agent-smoke-comment
+    needs: verify
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.verify.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        id: download
+        continue-on-error: true # no summary (scrub or summary failed, or nothing ran): no comment
+        timeout-minutes: 3
+        with:
+          name: agent-smoke-summary
+          path: ${{ runner.temp }}/summary
+      - name: Create or update the PR comment
+        if: steps.download.outcome == 'success'
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SUMMARY: ${{ runner.temp }}/summary/summary.md
+        run: |
+          set -euo pipefail
+          marker='<!-- mcp-zotero-agent-smoke -->'
+          if [ "$(head -n 1 "$SUMMARY")" != "$marker" ]; then echo "::error::summary without the marker line: not posted"; exit 1; fi
+          if grep -Eo '\b(users|groups)/[0-9]+' "$SUMMARY" | grep -Evx 'users/100000000000001|groups/200000000000002' | grep -q .; then
+            echo "::error::summary with a users/<id> or groups/<id> path: not posted"
+            exit 1
+          fi
+          ids=$(timeout 60 gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id")
+          id=${ids%%$'\n'*}
+          if [ -n "$id" ]; then
+            timeout 60 gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@"$SUMMARY" > /dev/null
+          else
+            timeout 60 gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@"$SUMMARY" > /dev/null
+          fi
 
   # The required check. It runs unless the workflow itself was cancelled (a superseded run ends "cancelled",
   # not red) and is never skipped, since a skipped required check counts as passed: a failed `changes` job, or a
@@ -504,6 +606,15 @@ jobs:
         timeout-minutes: 3
         with:
           node-version: 24
+      # First step that touches the account: the test group's name is read in-process (never printed), masked in every
+      # later log line of the job and exported as ZOTERO_TEST_GROUP_NAME for the fail-closed checks of redact.mjs,
+      # scrub-report.mjs and agent/summary.mjs (test/live/mask-group-name.mjs).
+      - name: Mask the test group name
+        timeout-minutes: 2
+        env:
+          ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+        run: node test/live/mask-group-name.mjs
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         timeout-minutes: 5
         with:

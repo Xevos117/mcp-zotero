@@ -65,7 +65,14 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 `test/live/agent/mcp.template.json`, built-in tools, permission mode `dontAsk` (in CI from
 `.github/agents/agent-smoke.json`) and the hooks of
 `.claude/agent-smoke/settings.json` (Bash allowlist, delete policy, audit log used as evidence by
-`test/live/verify-claims.mjs`). Local runs use the same pieces: `test/live/agent/README.md`.
+`test/live/verify-claims.mjs`; the audit hook numbers every call and the exploratory claims reference calls by
+that `call_no`). Local runs use the same pieces: `test/live/agent/README.md`.
+
+The test account must never be identifiable in public logs, artifacts, summaries or comments (user id, username,
+group id and name, `users|groups/<id>` URIs). Every job that talks to it starts with
+`test/live/mask-group-name.mjs` (reads the group name in-process, `::add-mask::`, exports
+`ZOTERO_TEST_GROUP_NAME`), and `scrub-report.mjs`, `agent/redact.mjs` and `agent/summary.mjs` fail closed when
+an identifier survives (or the group name is missing); an artifact is uploaded only after a successful scrub.
 
 ## CI workflows and agents
 
@@ -73,9 +80,9 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 |---|---|---|
 | `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging, `.mcpb` bundle (`mcpb validate`, `npm run bundle`, smoke of the unpacked bundle) on Node 22/24/26 |
 | `live-tests.yml` | same-repo PRs, `main`, weekly (Friday), manual | `live-tests-run`: `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; `live-tests` (required check) decides from it; weekly failures open/update one issue |
-| `claude-agent-smoke.yml` | same-repo PRs by the owner or `github-actions[bot]` (the agent costs API credits: other people's changes only by hand, after review), manual (run it by hand on `main` after a merge) | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
+| `claude-agent-smoke.yml` | same-repo PRs by the owner or `github-actions[bot]` (the agent costs API credits: other people's changes only by hand, after review), manual (run it by hand on `main` after a merge) | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`, then the Job Summary from the scrubbed output with `test/live/agent/summary.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-comment` (same-repo PRs, only `pull-requests: write`, no checkout) keeps one sticky PR comment with the same summary; `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
 | `deps-update.yml` | 1st of the month, manual | agent (no GitHub token, no install scripts, Context7 MCP for library docs, leaves a patch and optionally an issue text) → open-pr (no npm, no id-token: pushes `deps/<date>` and opens the PR labelled `dipendenze` with `GITHUB_TOKEN`, then starts test/live-tests/agent-smoke on the branch with `workflow_dispatch`) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for those checks on the exact SHA, `--match-head-commit`); issue (majors and postponed updates: opens or comments the open issue labelled `dipendenze`). Published agent text goes through `scripts/check-public-text.mjs` |
-| `release.yml` | GitHub release published, manual | tests, npm publish, then `server.json` to the MCP Registry (`mcp-registry`: only job with id-token besides npm-publish, `mcp-publisher` pinned by version + sha256, GitHub OIDC login), skill zips, `.mcpb` (`mcpb-build` read-only, `mcpb-upload` the only write job: no checkout, no npm); `mcp-registry` and `mcpb-build` check out the release tag and fail unless it equals the `package.json` version (owner only) |
+| `release.yml` | GitHub release published, manual | tests, npm publish, then `server.json` to the MCP Registry (`mcp-registry`: only job with id-token besides npm-publish, `mcp-publisher` pinned by version + sha256, GitHub OIDC login), skill zips, `.mcpb` (`mcpb-build` read-only, `mcpb-upload` the only write job: no checkout, no npm); `npm-publish`, `mcp-registry` and `mcpb-build` check out the release tag and fail unless it equals the `package.json` version (owner only) |
 
 The agents authenticate to the Claude API with Anthropic Workload Identity Federation (environment
 variables `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`,

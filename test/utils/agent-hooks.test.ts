@@ -165,17 +165,37 @@ describe("script degli hook come processi (AH-03)", () => {
     expect(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision).toBe("deny");
   });
 
-  it("AH-03c audit + delete-guard: la chiave creata (registrata dall'audit) si può cancellare, le altre no", async () => {
-    await hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "mcp__zotero__add_items", tool_use_id: "a1", tool_input: { items: [] }, tool_response: [{ type: "text", text: '{"success":[{"item_key":"ITEM2222"}]}' }] }, dir.path);
-    await hook("audit.mjs", { hook_event_name: "PostToolUseFailure", tool_name: "mcp__zotero__get_collections", tool_use_id: "a2", tool_input: {}, error: "403: Forbidden" }, dir.path);
-    await hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "Read", tool_use_id: "a3", tool_input: {}, tool_response: "x" }, dir.path);
+  it("AH-03c audit + delete-guard: la chiave creata (registrata dall'audit) si può cancellare, le altre no; call_no restituito all'agente", async () => {
+    const first = await hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "mcp__zotero__add_items", tool_use_id: "a1", tool_input: { items: [] }, tool_response: [{ type: "text", text: '{"success":[{"item_key":"ITEM2222"}]}' }] }, dir.path);
+    const failed = await hook("audit.mjs", { hook_event_name: "PostToolUseFailure", tool_name: "mcp__zotero__get_collections", tool_use_id: "a2", tool_input: {}, error: "403: Forbidden" }, dir.path);
+    const read = await hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "Read", tool_use_id: "a3", tool_input: {}, tool_response: "x" }, dir.path);
     expect(await lines("audit.jsonl")).toEqual([
-      expect.objectContaining({ run_id: "r", tool_use_id: "a1", tool_name: "mcp__zotero__add_items", is_error: false, text: '{"success":[{"item_key":"ITEM2222"}]}' }),
-      expect.objectContaining({ tool_use_id: "a2", is_error: true, text: "403: Forbidden" }),
+      expect.objectContaining({ run_id: "r", call_no: 1, tool_use_id: "a1", tool_name: "mcp__zotero__add_items", is_error: false, text: '{"success":[{"item_key":"ITEM2222"}]}' }),
+      expect.objectContaining({ call_no: 2, tool_use_id: "a2", is_error: true, text: "403: Forbidden" }),
     ]);
+    expect(JSON.parse(first.stdout)).toEqual({
+      hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: 'audit call_no 1 (mcp__zotero__add_items): reference this call in claims.json as "call_no": 1' },
+    });
+    expect(JSON.parse(failed.stdout).hookSpecificOutput).toMatchObject({ hookEventName: "PostToolUseFailure", additionalContext: expect.stringMatching(/^audit call_no 2 /) });
+    expect(read.stdout).toBe("");
     expect((await hook("delete-guard.mjs", { tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["ITEM2222"] } }, dir.path)).stdout).toBe("");
     const denied = await hook("delete-guard.mjs", { tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["XXXXXXXX"] } }, dir.path);
     expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecisionReason).toMatch(/XXXXXXXX was not created by this run/);
+  });
+
+  it("AH-03f 12 hook audit in parallelo (chiamate parallele dell'agente) → call_no 1..12 senza ripetizioni, uno per voce", async () => {
+    const outs = await Promise.all(
+      Array.from({ length: 12 }, (_, i) =>
+        hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "Bash", tool_use_id: `p${i}`, tool_input: { command: "x" }, tool_response: { stdout: "{}" } }, dir.path)
+      )
+    );
+    const entries = await lines("audit.jsonl");
+    expect(entries.map((e) => e.call_no).sort((a, b) => a - b)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
+    // the number told to the agent is the one in the audit entry of the same call
+    for (const [i, out] of outs.entries()) {
+      const told = Number(/call_no (\d+)/.exec(JSON.parse(out.stdout).hookSpecificOutput.additionalContext)![1]);
+      expect(entries.find((e) => e.tool_use_id === `p${i}`).call_no).toBe(told);
+    }
   });
 
   it("AH-03d delete-guard senza agent-audit/context.json → negato", async () => {

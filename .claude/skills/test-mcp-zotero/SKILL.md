@@ -140,8 +140,11 @@ or run none and say so in the report.
 - Verdict per scenario: `ok` (behaves as expected), `bug` (crash, data touched that should not be,
   silently wrong result, unreadable error), `unclear` (debatable behaviour worth a human look). **A
   `bug` fails the check**; `unclear` is shown as a warning.
-- Record the calls exactly as you sent them (`tool` and `args`): the verifier looks each one up in the
-  audit log. For inject.js use `{"tool": "Bash", "args": {"command": "<the exact command>"}}`.
+- Record each call by its audit number, never by re-typing its arguments: after every Zotero tool call and
+  Bash command the harness adds `audit call_no N (<tool>)` to the result. Write
+  `{"tool": "<tool>", "call_no": N, "is_error": true|false}` (`is_error`: whether that call returned an
+  error); for inject.js the tool is `"Bash"`. The verifier looks the number up in the audit log and checks
+  the tool and the outcome.
 
 The verifier also scans **every** Zotero tool result of the run, fixed path included, for the
 failures listed above, so a crash anywhere fails the check whatever you claim.
@@ -173,7 +176,7 @@ Write exactly this structure (JSON, no comments):
     { "path": "agent-out/<prefix>-p-apa_skill.docx", "producer": "inject.js", "style": "apa", "library_path": "users/123", "source": "agent-out/<prefix>-p-apa.docx", "compare_group": "parity-apa" }
   ],
   "exploratory": [
-    { "id": "X1", "rationale": "one line tied to the diff", "calls": [{ "tool": "add_items_by_doi", "args": { "dois": ["  "], "tags": ["mzt-run:…"] } }], "expected": "…", "observed": "…", "verdict": "ok|bug|unclear" }
+    { "id": "X1", "rationale": "one line tied to the diff", "calls": [{ "tool": "add_items_by_doi", "call_no": 42, "is_error": false }], "expected": "…", "observed": "…", "verdict": "ok|bug|unclear" }
   ],
   "friction": [{ "tool": "get_item_fulltext", "note": "…" }]
 }
