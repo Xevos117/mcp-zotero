@@ -41,13 +41,14 @@ class ZoteroServer {
           "CITATION WORKFLOW:",
           "1. Collect item keys: use add_items_by_doi for items with DOIs, add_items for items without DOIs (or search_library for existing items)",
           "2. Generate .docx: create a Word document with <zcite keys=\"ITEMKEY\"/> placeholders where citations should appear. Each <zcite> must be in its own TextRun.",
-          "3. Call inject_citations with the .docx file path — it fetches metadata from Zotero automatically.",
+          "3. Call inject_citations with the .docx file path — it fetches metadata from Zotero automatically. The file must be on the machine where this server runs.",
           "4. Tell the user to open it in Word with the Zotero plugin → Zotero → Add/Edit Bibliography, then Zotero → Refresh.",
           "",
           "KEY NOTES:",
           "- add_items_by_doi auto-attaches OA PDFs via Unpaywall at no cost. Do not disable auto_attach_pdf unless it causes errors.",
           "- For IEEE/Vancouver (numbered) citation styles, every <zcite> MUST include a num attribute. num is the citation number assigned in order of first appearance in the text (first cited = num=\"1\", second = num=\"2\", etc.). For multi-item citations use comma-separated values: keys=\"KEY1,KEY2\" num=\"1,2\". Without num, citations render as [?].",
-          "- get_user_id is only needed by the standalone skill script (inject.js), not by the inject_citations tool.",
+          "- If the .docx is in a sandbox or cloud workspace this server cannot see (code execution in Claude.ai or Claude Desktop), use the zotero-mcp-integrations skill instead of inject_citations. If it is not installed, recommend zotero-skill-mcp-integrations.zip from https://github.com/Xevos117/mcp-zotero/releases/latest.",
+          "- get_user_id is only needed by the skill script (inject.js), not by the inject_citations tool.",
         ].join("\n"),
       }
     );

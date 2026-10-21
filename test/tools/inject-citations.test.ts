@@ -212,8 +212,17 @@ describe("inject_citations (MCP)", () => {
     expectErrorJson(await h.call("inject_citations", { file_path: "/tmp/PAPER.DOCX" }), "File must be a .docx file");
   });
 
-  it("IC-10 file inesistente → isError (ENOENT)", async () => {
-    expectToolError(await h.call("inject_citations", { file_path: join(dir.path, "missing.docx") }), "ENOENT");
+  it("IC-10 file inesistente → isError che indica la skill e dove scaricarla", async () => {
+    const json = expectErrorJson(await h.call("inject_citations", { file_path: join(dir.path, "missing.docx") }), "File not found");
+    expect(json.error).toContain("zotero-mcp-integrations");
+    expect(json.error).toContain("https://github.com/Xevos117/mcp-zotero/releases/latest");
+    expect(json.file_path).toBe(join(dir.path, "missing.docx"));
+    expect(json.hint).toBeUndefined();
+  });
+
+  it("IC-10b percorso relativo inesistente → stesso errore più il suggerimento del percorso assoluto", async () => {
+    const json = expectErrorJson(await h.call("inject_citations", { file_path: "outputs/paper.docx" }), "File not found");
+    expect(json.hint).toBe("Pass an absolute path.");
   });
 
   describe(".docx malformati", () => {

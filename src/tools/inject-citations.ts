@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
+import { isAbsolute } from "node:path";
 import { injectCitations } from "../citation-injector/injector.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
@@ -31,7 +32,7 @@ Supported attributes (any order):
 OUTPUT:
 A new .docx file (original filename with _cited suffix) with Zotero field codes and a ZOTERO_BIBL bibliography at the end. A cited key that is not in the library, or that is not letters and digits only, is an error and no file is written.
 
-NOTE: If the inject-citations skill is available, prefer the skill workflow (runs in sandbox, no filesystem dependency). This tool serves as the primary path when the skill is not available.`,
+WHERE THE FILE LIVES: this tool reads and writes files on the machine where this MCP server runs. If you create the .docx in a sandbox or cloud workspace that the server cannot see (for example code execution in Claude.ai or Claude Desktop, paths like /mnt/user-data/...), do not call this tool: use the zotero-mcp-integrations skill, which injects the citations inside the sandbox with metadata from get_items_details. If that skill is not installed, recommend it to the user: zotero-skill-mcp-integrations.zip from https://github.com/Xevos117/mcp-zotero/releases/latest.`,
   inputSchema: {
     file_path: z
       .string()
@@ -51,6 +52,12 @@ NOTE: If the inject-citations skill is available, prefer the skill workflow (run
 
 const InjectCitationsSchema = z.object(toolConfig.inputSchema);
 
+const FILE_NOT_FOUND =
+  "File not found on the machine where this MCP server runs. If the document is in a sandbox or cloud workspace " +
+  "(for example code execution in Claude.ai or Claude Desktop), this server cannot read it: use the " +
+  "zotero-mcp-integrations skill, which injects the citations inside the sandbox. If the skill is not installed, " +
+  "ask the user to add zotero-skill-mcp-integrations.zip from https://github.com/Xevos117/mcp-zotero/releases/latest.";
+
 export async function handleInjectCitations(
   zoteroApi: ZoteroApiInterface,
   userId: string,
@@ -65,7 +72,18 @@ export async function handleInjectCitations(
     });
   }
 
-  const result = await injectCitations(file_path, zoteroApi, libraryType, libraryId, style);
+  let result: Awaited<ReturnType<typeof injectCitations>>;
+  try {
+    result = await injectCitations(file_path, zoteroApi, libraryType, libraryId, style);
+  } catch (err) {
+    // A path from a sandbox or cloud workspace (Claude.ai, Claude Desktop code execution) does not exist here:
+    // say so and point to the skill instead of a bare ENOENT.
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    return formatErrorResponse(FILE_NOT_FOUND, {
+      file_path,
+      ...(isAbsolute(file_path) ? {} : { hint: "Pass an absolute path." }),
+    });
+  }
 
   const responseObj: Record<string, unknown> = {
     output_path: result.outputPath,

@@ -330,7 +330,8 @@ test normali. Non restano `it.fails` nella suite.
 | IC-06 | nessuno zcite | found 0, output scritto, nessuna chiamata HTTP |
 | IC-07 | unicode (autori, titolo >30 caratteri, nome file) | XML ben formato, testo corretto |
 | IC-08/09 | .pdf / .DOCX | errore strutturato |
-| IC-10 | file inesistente | isError ENOENT |
+| IC-10 | file inesistente | isError "File not found" con la skill `zotero-mcp-integrations` e il link alla release |
+| IC-10b | percorso relativo inesistente | come IC-10, più `hint` "Pass an absolute path." |
 | IC-11..14 | **.docx malformati**: byte casuali, zip senza document.xml, zip troncato, file vuoto | isError (document.xml citato nel messaggio) |
 | IC-15 | zcite senza keys | ignorato |
 | IC-16 | chiavi 404 (sola e accanto a una valida) | isError "2 cited key(s) not found in the library: …" con tutte le chiavi, senza "404" grezzo, nessun output (come SK-05) |

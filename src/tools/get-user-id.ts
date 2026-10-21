@@ -5,7 +5,7 @@ import { formatJsonResult } from "../utils/error-formatter.js";
 export const toolConfig = {
   name: "get_user_id",
   description:
-    "Returns the Zotero library configured in the server environment: user_id, library_type, library_id and library_path (\"users/<id>\" or \"groups/<id>\"). Pass library_path to the standalone inject-citations skill script (inject.js) to generate Zotero field code URIs. Not needed when using the inject_citations MCP tool, which reads the library internally.",
+    "Returns the Zotero library configured in the server environment: user_id, library_type, library_id and library_path (\"users/<id>\" or \"groups/<id>\"). Pass library_path to the zotero-mcp-integrations skill script (inject.js) to generate Zotero field code URIs. Not needed when using the inject_citations MCP tool, which reads the library internally.",
   inputSchema: {},
 } as const;
 
