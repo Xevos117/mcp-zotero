@@ -113,13 +113,51 @@ describe("delete_items (MCP)", () => {
       expect(h.net.requests("DELETE", ITEMS)).toHaveLength(0);
     });
 
-    it("DI-06 412 sulla DELETE → errore strutturato version_conflict", async () => {
+    it("DI-06 412 ripetuto sulla DELETE → errore version_conflict con http_status e hint, al massimo 2 DELETE", async () => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
       h.net.on("DELETE", ITEMS, zError(412));
-      const json = expectErrorJson(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), "modified by another client");
-      expect(json.error).toMatch(/nothing was deleted\. Retry the same call\./);
+      const json = expectApiError(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), 412);
+      expect(json.error).toMatch(/modified by another client .*also on a second try.*so nothing was deleted\./);
       expect(json.status).toBe("version_conflict");
+      expect(json.hint).toBe("Retry the same call once.");
+      expect(json.deleted_count).toBeUndefined();
+      expect(h.net.requests("GET", ITEMS)).toHaveLength(2);
+      expect(h.net.requests("DELETE", ITEMS)).toHaveLength(2);
+    });
+
+    it("DI-06b 412 poi successo → nuova GET, seconda DELETE con la nuova versione", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      const lib = [article("AAAARRRR"), article("BBBB2222")];
+      h.net.on("GET", ITEMS, (req, hit) => zLibraryQuery(lib, hit === 1 ? 88 : 89)(req, hit));
+      h.net.on("DELETE", ITEMS, (_req, hit) => (hit === 1 ? zError(412) : zDeleted()));
+      const out = await h.call("delete_items", { item_keys: ["AAAARRRR", "BBBB2222"] });
+      expect(out.isError).toBe(false);
+      expect(out.json).toEqual({ deleted_keys: ["AAAARRRR", "BBBB2222"], deleted_count: 2 });
+      expect(h.net.requests("GET", ITEMS)).toHaveLength(2);
+      const dels = h.net.requests("DELETE", ITEMS);
+      expect(dels.map((d) => d.headers.get("If-Unmodified-Since-Version"))).toEqual(["88", "89"]);
+    });
+
+    it("DI-06c 412, nel frattempo una chiave è sparita → seconda DELETE solo sulle rimaste, la sparita in not_found", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      h.net.on("GET", ITEMS, (req, hit) =>
+        zLibraryQuery(hit === 1 ? [article("AAAARRRR"), article("BBBB2222")] : [article("AAAARRRR")], 88 + hit)(req, hit)
+      );
+      h.net.on("DELETE", ITEMS, (_req, hit) => (hit === 1 ? zError(412) : zDeleted()));
+      const out = await h.call("delete_items", { item_keys: ["AAAARRRR", "BBBB2222", "GPNEQQQR"] });
+      expect(out.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1, not_found: ["GPNEQQQR", "BBBB2222"] });
+      expect(h.net.requests("GET", ITEMS)[1].url.searchParams.get("itemKey")).toBe("AAAARRRR,BBBB2222");
+      expect(h.net.requests("DELETE", ITEMS)[1].url.searchParams.get("itemKey")).toBe("AAAARRRR");
+    });
+
+    it("DI-06d 412, nel frattempo sparite tutte → errore not_found, nessuna seconda DELETE", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      h.net.on("GET", ITEMS, (req, hit) => zLibraryQuery(hit === 1 ? [article("AAAARRRR")] : [])(req, hit));
+      h.net.on("DELETE", ITEMS, zError(412));
+      const json = expectErrorJson(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), "No items found");
+      expect(json.status).toBe("not_found");
+      expect(h.net.requests("DELETE", ITEMS)).toHaveLength(1);
     });
 
     it("DI-07 versione di libreria assente → errore strutturato, nessuna DELETE", async () => {

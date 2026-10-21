@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`delete_items` and `delete_collection` on HTTP 412** (the library changed between the version read and the `DELETE`, e.g. a sync or another client): the tool now reads the version again, together with the keys that still exist, and retries the deletion once; keys that disappeared in the meantime are listed in `not_found`. Before, the first 412 returned `version_conflict` and nothing was deleted. A second 412 still returns `status: "version_conflict"`, now with `http_status: 412` and a `hint` to retry the call.
+
 ## [2.0.3] - 2026-10-21
 
 ### Added

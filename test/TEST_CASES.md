@@ -240,7 +240,9 @@ test normali. Non restano `it.fails` nella suite.
 | DC-03 | all | GET versione → DELETE con If-Unmodified-Since-Version |
 | DC-04/05 | senza nome / nome unicode | name = chiave / preservato |
 | DC-06/07 | 404 su GET / su DELETE | errore strutturato not_found, `hint` "Nothing was deleted…" get_collections |
-| DC-08 | 412 | errore strutturato version_conflict ("not deleted. Retry the same call.") |
+| DC-08 | 412 ripetuto | una nuova GET e un solo nuovo tentativo (GET, DELETE, GET, DELETE), poi errore strutturato version_conflict con `http_status` 412 e `hint` "Retry the same call once." |
+| DC-08b | 412 poi successo | seconda DELETE con la versione della nuova GET, collezione cancellata |
+| DC-08c | 412, poi 404 sulla nuova GET | errore strutturato not_found, nessuna seconda DELETE |
 | DC-09 | versione assente | errore strutturato con `hint` di riprovare, nessuna DELETE |
 | DC-10/11/12 | 403/429/500/503 su GET o DELETE, rete | errore strutturato con `http_status` e `hint` |
 | DC-13 | chiave mancante/vuota/numero | isError |
@@ -253,7 +255,10 @@ test normali. Non restano `it.fails` nella suite.
 | DI-03 | 2 chiavi | GET itemKey → DELETE `?itemKey=A,B` con la versione della libreria |
 | DI-04 | cancellazione parziale | not_found; cancellate solo le chiavi trovate |
 | DI-05 | nessuna trovata | errore strutturato con `hint` "Nothing was deleted…", nessuna DELETE |
-| DI-06 | 412 | version_conflict ("nothing was deleted. Retry the same call.") |
+| DI-06 | 412 ripetuto | una nuova GET e un solo nuovo tentativo (2 GET, 2 DELETE), poi errore strutturato version_conflict con `http_status` 412 e `hint` "Retry the same call once.", senza `deleted_count` |
+| DI-06b | 412 poi successo | 2 GET, 2 DELETE, la seconda con `If-Unmodified-Since-Version` della nuova GET; tutte cancellate |
+| DI-06c | 412, nel frattempo una chiave sparita | la nuova GET chiede solo le chiavi da cancellare; seconda DELETE sulle rimaste, la sparita in `not_found` |
+| DI-06d | 412, nel frattempo sparite tutte | errore strutturato not_found, nessuna seconda DELETE |
 | DI-07 | versione assente | errore strutturato con `hint` di riprovare |
 | DI-08 | 20 chiavi | una GET + una DELETE |
 | DI-09 | 50 chiavi (massimo per chiamata) | tutte cancellate, GET di verifica con limit=50 |
@@ -667,7 +672,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 | `add-linked-url-attachment` | LIVE-ALU-01 figlio con content_type e tag; 02 standalone in due collezioni; 03 override; 04 URL non valido, genitore inesistente |
 | `import-pdf-to-zotero` | LIVE-IP-01 PDF figlio: size, md5, fulltext, verificati via API; 02 standalone con filename/titolo/collezioni; 03 nome da Content-Disposition; 04 HTML come PDF → not_pdf, nessun allegato; 05 text/html (LIVE-STALE-5); 06 404; 07 genitore inesistente, URL non valido; 08 override |
 | `find-and-attach-pdfs` (soft per 04/05) | LIVE-FA-01 entrambi/nessuno; 02 chiave sconosciuta e senza DOI; 03 skipped e skip_if_attachment_exists false; 04 collezione dry_run → processed = voci regolari create (LIVE-STALE-2); 05 collezione reale (LIVE-STALE-4); 06 override |
-| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci cancellate definitivamente (non nel cestino); 03 solo sconosciute (LIVE-STALE-1); 04 mista; 05 51/0 chiavi; 06 genitore → anche il figlio; 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione |
+| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci cancellate definitivamente (non nel cestino); 03 solo sconosciute (LIVE-STALE-1); 04 mista; 05 51/0 chiavi; 06 genitore → anche il figlio (ogni asserzione riporta il testo del risultato); 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione |
 | `delete-collection` | LIVE-DC-01 UNSAFE none/items rifiutato; 02-03 (solo fuori safe mode) cancellata con la voce che resta, chiave sconosciuta/vuota |
 | `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente (isError che la nomina, nessun output); 03 override |
 | `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations |
