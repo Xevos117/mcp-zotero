@@ -50,5 +50,11 @@ node test/live/verify-claims.mjs agent-out --audit agent-audit/audit.jsonl --tra
 ZOTERO_LIVE_SAFE_MODE=1 npm run test:live:cleanup -- "$(node -p 'require("./agent-out/context.json").run_id')"
 ```
 
+Visual review (step 5b of the skill): it needs the pages of the word-render job in `agent-render/` (CI downloads
+them). Locally, render them first (Zotero 10 + `wordcraft-cli`, see `test/word-proxy/README.md`):
+`XVFB=Xvfb test/word-proxy/ci.sh <zotero-dir> <wordcraft-cli> /tmp/wp && node test/word-proxy/render.mjs /tmp/wp
+<wordcraft-cli> agent-render`, then add `--render agent-render` to the verify-claims command. Without
+`agent-render/` the agent skips step 5b and verify-claims runs without `--render`.
+
 Expected cost with `claude-sonnet-5-5`: see the "Collaudo locale" paragraph of the agent smoke section in
 `test/TEST_CASES.md`.

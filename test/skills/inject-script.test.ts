@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFile } from "node:child_process";
 import { copyFile, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
@@ -6,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { makeDocx, para, zcite, readDocumentXml, tempDir, TempDir } from "../helpers/fixtures.js";
 import { startHarness } from "../helpers/mcp-harness.js";
 import { ZBASE, zLibraryQuery, zSingle, article } from "../helpers/zotero-fake.js";
-import { citations, expectValidDocx, CitationStyle } from "../helpers/docx-validate.js";
+import { citations, expectValidDocx, styleId, CitationStyle } from "../helpers/docx-validate.js";
 
 /**
  * Script standalone della skill (skills/zotero-skill-mcp-integrations/scripts/inject.js),
@@ -242,8 +243,40 @@ describe("skill inject.js (processo reale)", () => {
         expect(r.stderr).not.toContain("WARNING");
         const report = await expectValidDocx(await readFile(out), { style, libraryPath: "users/424242" });
         expect(report.rendered!.bibliography).toHaveLength(2);
+        // same document preferences as inject_citations (H-W1): the injected style, fieldType Field
+        expect(report.documentPrefs).toEqual({ styleId: styleId(style), fieldType: "Field", chunks: 1 });
       }
     );
+
+    it("SK-V03 preferenze Zotero già presenti → mantenute con WARNING; radice con prefisso → unite, proprietà dell'utente conservate (come inject_citations)", async () => {
+      const NS = "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties";
+      const withCustom = async (name: string, custom: string) => {
+        const zip = await JSZip.loadAsync(await makeDocx(BODY(false)));
+        zip.file("docProps/custom.xml", custom);
+        return dir.file(name, await zip.generateAsync({ type: "nodebuffer" }));
+      };
+      const kept = `<?xml version="1.0"?><Properties xmlns="${NS}" xmlns:vt="v"><property pid='2' name='ZOTERO_PREF_1'><vt:lpwstr>KEEP</vt:lpwstr></property></Properties>`;
+      let out = join(dir.path, "skv-kept-out.docx");
+      let r = await run([await withCustom("skv-kept.docx", kept), out, meta, "424242", "apa"]);
+      expect(r.code).toBe(0);
+      expect(r.stderr).toContain("WARNING: The document already has Zotero document preferences");
+      expect(await (await JSZip.loadAsync(await readFile(out))).file("docProps/custom.xml")!.async("string")).toBe(kept);
+      const own = '<op:property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="Client"><vt:lpwstr>ACME</vt:lpwstr></op:property>';
+      out = join(dir.path, "skv-prefixed-out.docx");
+      r = await run([await withCustom("skv-prefixed.docx", `<?xml version="1.0"?><op:Properties xmlns:op="${NS}" xmlns:vt="v">${own}</op:Properties>`), out, meta, "424242", "apa"]);
+      expect(r.code).toBe(0);
+      expect(r.stderr).not.toContain("WARNING");
+      const custom = await (await JSZip.loadAsync(await readFile(out))).file("docProps/custom.xml")!.async("string");
+      expect(custom).toContain(own);
+      expect(custom).toMatch(/<op:property [^>]*pid="3" name="ZOTERO_PREF_1">/);
+      // a custom properties part that cannot be merged into: left intact, preferences not written, WARNING
+      const odd = '<?xml version="1.0"?><x:Other xmlns:x="y"/>';
+      out = join(dir.path, "skv-odd-out.docx");
+      r = await run([await withCustom("skv-odd.docx", odd), out, meta, "424242", "apa"]);
+      expect(r.code).toBe(0);
+      expect(r.stderr).toContain("WARNING: Zotero document preferences not written");
+      expect(await (await JSZip.loadAsync(await readFile(out))).file("docProps/custom.xml")!.async("string")).toBe(odd);
+    });
 
     it("SK-V02 libreria groups/<id> → URI di gruppo validi", async () => {
       const out = join(dir.path, "skv-group-out.docx");

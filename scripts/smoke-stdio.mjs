@@ -65,7 +65,8 @@ const decodeXml = (s) =>
 
 // Structural check of the injected docx, dependency-light (the full validator with CSL schemas and
 // citeproc is test/helpers/docx-validate.ts): package parts, well-formed XML, balanced fields,
-// parseable CSL JSON, Zotero URIs, visible text = formattedCitation, one bibliography field.
+// parseable CSL JSON, Zotero URIs, visible text = formattedCitation, one bibliography field, Zotero document
+// preferences (ZOTERO_PREF_1 with the apa style and fieldType Field, declared in the package).
 async function checkDocx(buffer, expectedUri) {
   const zip = await JSZip.loadAsync(buffer);
   for (const part of ["[Content_Types].xml", "_rels/.rels", "word/document.xml"]) {
@@ -102,6 +103,16 @@ async function checkDocx(buffer, expectedUri) {
   if (!json.citationItems[0].itemData?.type) throw new Error("citation without itemData.type");
   if (json.properties?.formattedCitation !== cites[0].result) {
     throw new Error(`formattedCitation ${JSON.stringify(json.properties?.formattedCitation)} != visible ${JSON.stringify(cites[0].result)}`);
+  }
+  const custom = decodeXml((await zip.file("docProps/custom.xml")?.async("string")) ?? "");
+  if (!/name="ZOTERO_PREF_1"/.test(custom)) throw new Error("docProps/custom.xml without ZOTERO_PREF_1 (Zotero document preferences)");
+  if (!custom.includes('<style id="http://www.zotero.org/styles/apa"') || !custom.includes('<pref name="fieldType" value="Field"/>')) {
+    throw new Error("ZOTERO_PREF: not the apa style with fieldType Field");
+  }
+  const types = await zip.file("[Content_Types].xml").async("string");
+  const rels = await zip.file("_rels/.rels").async("string");
+  if (!types.includes('PartName="/docProps/custom.xml"') || !rels.includes("relationships/custom-properties")) {
+    throw new Error("docProps/custom.xml not declared in [Content_Types].xml and _rels/.rels");
   }
 }
 

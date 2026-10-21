@@ -3,6 +3,7 @@ import JSZip from "jszip";
 import { generateZoteroFieldCode, generateBibliographyFieldCode } from "../../src/citation-injector/field-codes.js";
 import { escapeXml } from "../../src/citation-injector/xml-utils.js";
 import { makeDocx, documentXml } from "../helpers/fixtures.js";
+import { writeZoteroDocumentPrefs } from "../../src/citation-injector/document-prefs.js";
 import { validateDocx, expectValidDocx, citationNumbers, citations, CitationStyle } from "../helpers/docx-validate.js";
 
 /**
@@ -213,11 +214,51 @@ describe("validatore docx (test/helpers/docx-validate.ts)", () => {
       properties: { formattedCitation: "(Smith, 2023, p. 12)", plainCitation: "(Smith, 2023, p. 12)", noteIndex: 0 },
     };
     let docx = await makeDocx(cslField(zoteroLike, "(Smith, 2023, p. 12)") + generateBibliographyFieldCode());
-    docx = await withPart(docx, "docProps/custom.xml", '<?xml version="1.0"?><Properties><property name="ZOTERO_PREF_1"/></Properties>');
+    const zip = await JSZip.loadAsync(docx);
+    await writeZoteroDocumentPrefs(zip, "apa");
+    docx = await zip.generateAsync({ type: "nodebuffer" });
     const r = await expectValidDocx(docx);
     expect(r.parity).toEqual({ hasDocumentPrefs: true, allHavePlainCitation: true, allHaveNoteIndex: true, consistentItemIds: true, locatorsHaveLabel: true });
 
     const product = await validateDocx(await makeDocx(goodBody()));
     expect(product.parity).toEqual({ hasDocumentPrefs: false, allHavePlainCitation: false, allHaveNoteIndex: false, consistentItemIds: false, locatorsHaveLabel: true });
+  });
+
+  it("DV-16 preferenze del documento (H-W1): ricomposte da ZOTERO_PREF_1…n; stile diverso, buchi, oltre 255 caratteri, parti mancanti → errori", async () => {
+    const prefsDoc = async (props: string, opts: { types?: boolean; rels?: boolean } = {}) => {
+      const zip = await JSZip.loadAsync(await makeDocx(goodBody()));
+      zip.file("docProps/custom.xml", `<?xml version="1.0"?><Properties xmlns:vt="x">${props}</Properties>`);
+      if (opts.types !== false) {
+        const t = await zip.file("[Content_Types].xml")!.async("string");
+        zip.file("[Content_Types].xml", t.replace("</Types>", '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/></Types>'));
+      }
+      if (opts.rels !== false) {
+        const r = await zip.file("_rels/.rels")!.async("string");
+        zip.file("_rels/.rels", r.replace("</Relationships>", '<Relationship Id="rId9" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/></Relationships>'));
+      }
+      return zip.generateAsync({ type: "nodebuffer" });
+    };
+    const prop = (n: number, v: string) => `<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="${n + 1}" name="ZOTERO_PREF_${n}"><vt:lpwstr>${escapeXml(v)}</vt:lpwstr></property>`;
+    const data = (style: string) => `<data data-version="3"><session id="AbCd1234"/><style id="${style}" locale="en-US" hasBibliography="1" bibliographyStyleHasBeenSet="0"/><prefs><pref name="fieldType" value="Field"/></prefs></data>`;
+    const apa = data("http://www.zotero.org/styles/apa");
+    // split over two properties, as Zotero does for long values
+    const ok = await validateDocx(await prefsDoc(prop(1, apa.slice(0, 100)) + prop(2, apa.slice(100))));
+    expect(ok.errors).toEqual([]);
+    expect(ok.documentPrefs).toEqual({ styleId: "http://www.zotero.org/styles/apa", fieldType: "Field", chunks: 2 });
+
+    const wrongStyle = await validateDocx(await prefsDoc(prop(1, data("http://www.zotero.org/styles/ieee"))), { style: "apa" });
+    expect(wrongStyle.errors).toContain("ZOTERO_PREF: stile http://www.zotero.org/styles/ieee invece di http://www.zotero.org/styles/apa (apa)");
+    const gap = await validateDocx(await prefsDoc(prop(1, apa.slice(0, 100)) + prop(3, apa.slice(100))));
+    expect(gap.errors).toContain("ZOTERO_PREF_2 mancante (le proprietà vanno da _1 a _2 senza buchi)");
+    const long = await validateDocx(await prefsDoc(prop(1, apa.replace("AbCd1234", "x".repeat(200)))));
+    expect(long.errors.join("\n")).toMatch(/ZOTERO_PREF_1 oltre 255 caratteri/);
+    const bare = await validateDocx(await prefsDoc(prop(1, apa.replace("Field", "ReferenceMark")), { types: false, rels: false }));
+    expect(bare.errors).toEqual(
+      expect.arrayContaining([
+        "ZOTERO_PREF: fieldType ReferenceMark invece di Field",
+        "[Content_Types].xml senza l'Override di /docProps/custom.xml",
+        "_rels/.rels senza la relazione custom-properties verso docProps/custom.xml",
+      ])
+    );
   });
 });

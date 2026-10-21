@@ -1,0 +1,83 @@
+name: word-tools
+description: >-
+  Zotero desktop and wordcraft-cli for the word-proxy and word-render jobs: system packages (Xvfb, GTK), official
+  archives at pinned versions, cached per version and architecture and checked against their sha256 on every run. Composite steps cannot carry
+  timeout-minutes: every command has its own timeout and the calling step sets timeout-minutes.
+outputs:
+  zotero:
+    description: Zotero directory (contains zotero-bin)
+    value: ${{ steps.paths.outputs.zotero }}
+  wordcraft:
+    description: wordcraft-cli binary
+    value: ${{ steps.paths.outputs.wordcraft }}
+runs:
+  using: composite
+  steps:
+    # Versions are updated by hand (version + sha256 + cache key), not by deps-update: they are not npm packages
+    - name: Versions
+      id: versions
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "zotero=10.0.6"
+          echo "wordcraft=0.8.0"
+          case "$RUNNER_ARCH" in
+            X64)
+              echo "zotero_arch=x86_64"
+              echo "zotero_sha256=246c2574a9ac526abeaf3027ffd22fc45536a5ab25f227bb1df932fca9cedd63"
+              echo "wordcraft_arch=x86_64"
+              echo "wordcraft_sha256=0ece07cf3d91b923dfd80f90310e04983bde66f0279c6b60ddce89596dde0ddf" ;;
+            ARM64)
+              echo "zotero_arch=arm64"
+              echo "zotero_sha256=0df2782926a70d2744286640262c9d3e81725bc68182c0d752d855a2b620ea60"
+              echo "wordcraft_arch=aarch64"
+              echo "wordcraft_sha256=a862de2256e43c987dc8ea009ba52ac25db34091fd649b666133931ac68e02cc" ;;
+            *) echo "::error::word-tools: unsupported runner architecture $RUNNER_ARCH"; exit 1 ;;
+          esac
+        } >> "$GITHUB_OUTPUT"
+    - name: System packages (Xvfb, GTK for Zotero)
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo timeout 180 apt-get update -qq
+        sudo timeout 240 apt-get install -y -qq --no-install-recommends xvfb libgtk-3-0t64 libdbus-glib-1-2 libasound2t64 libxtst6 > /dev/null
+    # The cache holds the downloaded archives, not the unpacked programs: every run checks them against the pinned
+    # sha256 (a cache hit included) and unpacks them again (a few seconds)
+    - name: Cache the Zotero and WordCraft archives
+      id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/word-tools-archives
+        key: word-tools-archives-zotero${{ steps.versions.outputs.zotero }}-wordcraft${{ steps.versions.outputs.wordcraft }}-${{ runner.arch }}
+    - name: Download, verify and unpack Zotero and WordCraft (pinned sha256)
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        ZOTERO_VERSION: ${{ steps.versions.outputs.zotero }}
+        WORDCRAFT_VERSION: ${{ steps.versions.outputs.wordcraft }}
+        ZOTERO_ARCH: ${{ steps.versions.outputs.zotero_arch }}
+        ZOTERO_SHA256: ${{ steps.versions.outputs.zotero_sha256 }}
+        WORDCRAFT_ARCH: ${{ steps.versions.outputs.wordcraft_arch }}
+        WORDCRAFT_SHA256: ${{ steps.versions.outputs.wordcraft_sha256 }}
+      run: |
+        set -euo pipefail
+        mkdir -p ~/word-tools-archives && cd ~/word-tools-archives
+        z="Zotero-${ZOTERO_VERSION}_linux-${ZOTERO_ARCH}.tar.xz"
+        w="wordcraft-${WORDCRAFT_VERSION}-linux-${WORDCRAFT_ARCH}.tar.gz"
+        if [ "$CACHE_HIT" != "true" ]; then
+          timeout 300 curl -sSfL --retry 2 --max-time 280 -o "$z" "https://download.zotero.org/client/release/${ZOTERO_VERSION}/$z"
+          timeout 300 curl -sSfL --retry 2 --max-time 280 -o "$w" "https://github.com/storytold/wordcraft/releases/download/v${WORDCRAFT_VERSION}/$w"
+        fi
+        printf '%s  %s\n%s  %s\n' "$ZOTERO_SHA256" "$z" "$WORDCRAFT_SHA256" "$w" | sha256sum -c -
+        rm -rf ~/word-tools && mkdir -p ~/word-tools && cd ~/word-tools
+        timeout 120 tar xJf ~/word-tools-archives/"$z" && timeout 120 tar xzf ~/word-tools-archives/"$w"
+        mv Zotero_linux-* zotero && mv "wordcraft-${WORDCRAFT_VERSION}-linux-${WORDCRAFT_ARCH}" wordcraft
+    - name: Paths
+      id: paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -x ~/word-tools/zotero/zotero-bin && test -x ~/word-tools/wordcraft/bin/wordcraft-cli
+        echo "zotero=$HOME/word-tools/zotero" >> "$GITHUB_OUTPUT"
+        echo "wordcraft=$HOME/word-tools/wordcraft/bin/wordcraft-cli" >> "$GITHUB_OUTPUT"

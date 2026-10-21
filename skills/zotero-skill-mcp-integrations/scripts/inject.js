@@ -12,7 +12,7 @@
 //
 // Dependencies: jszip (npm install jszip)
 
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
 // Resilient JSZip import: try ESM import first, then fall back to
@@ -760,6 +760,114 @@ function replaceZciteInXml(xml, escapedZciteTag, fieldCodeXml) {
 }
 
 // ---------------------------------------------------------------------------
+// Zotero document preferences (same as src/citation-injector/document-prefs.ts of the MCP server: keep in sync)
+// ---------------------------------------------------------------------------
+
+// docProps/custom.xml with ZOTERO_PREF_1…n (at most 255 characters each), as Zotero for Word writes them: without
+// them the first Refresh opens Document Preferences and proposes Zotero's last style instead of the injected one.
+// A document that already has ZOTERO_PREF_* is left as it is.
+const ZOTERO_STYLE_IDS = {
+  apa: "http://www.zotero.org/styles/apa",
+  ieee: "http://www.zotero.org/styles/ieee",
+  vancouver: "http://www.zotero.org/styles/nlm-citation-sequence",
+  harvard: "http://www.zotero.org/styles/harvard-cite-them-right",
+  chicago: "http://www.zotero.org/styles/chicago-author-date",
+};
+const CUSTOM_PART = "docProps/custom.xml";
+const CUSTOM_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.custom-properties+xml";
+const CUSTOM_REL_TYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties";
+const PREFS_FMTID = "{D5CDD505-2E9C-101B-9397-08002B2CF9AE}";
+const PREF_CHUNK = 255;
+const SESSION_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+const escapeXmlAttr = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function zoteroDocumentData(styleId) {
+  const session = [...randomBytes(8)].map((b) => SESSION_ALPHABET[b % SESSION_ALPHABET.length]).join("");
+  return (
+    `<data data-version="3"><session id="${session}"/>` +
+    `<style id="${escapeXmlAttr(styleId)}" locale="en-US" hasBibliography="1" bibliographyStyleHasBeenSet="0"/>` +
+    `<prefs><pref name="fieldType" value="Field"/></prefs></data>`
+  );
+}
+
+const EXISTING_PREFS_WARNING =
+  "The document already has Zotero document preferences (ZOTERO_PREF_* in docProps/custom.xml): kept as they are, so on the " +
+  "first Refresh Zotero uses the style saved there, not the style of this injection.";
+
+const PREFS_NOT_WRITTEN_WARNING =
+  "Zotero document preferences not written: the document's custom properties part could not be merged into, so Zotero may " +
+  "ask for the document style (Document Preferences) on the first Refresh.";
+
+// Part name of the custom properties: the target of the package relationship if there is one, else docProps/custom.xml
+function customPartName(rels) {
+  for (const m of (rels ?? "").matchAll(/<Relationship\b[^>]*>/g)) {
+    if (!m[0].includes(CUSTOM_REL_TYPE)) continue;
+    const target = /\bTarget=["']([^"']+)["']/.exec(m[0])?.[1];
+    if (target) return target.replace(/^\/+/, "");
+  }
+  return CUSTOM_PART;
+}
+
+// "written", "kept" (the document already has Zotero preferences) or "skipped" (nothing written; an existing part
+// that cannot be merged into is never rewritten)
+async function writeZoteroDocumentPrefs(zip, styleName) {
+  const styleId = ZOTERO_STYLE_IDS[styleName];
+  if (!styleId) return "skipped";
+  const rels = await zip.file("_rels/.rels")?.async("string");
+  const part = customPartName(rels);
+  const existing = await zip.file(part)?.async("string");
+  if (existing && /\bname=["']ZOTERO_PREF_\d+["']/.test(existing)) return "kept";
+
+  const value = zoteroDocumentData(styleId);
+  const chunks = [];
+  for (let i = 0; i < value.length; i += PREF_CHUNK) chunks.push(value.slice(i, i + PREF_CHUNK));
+  const pids = [...(existing ?? "").matchAll(/\bpid=["'](\d+)["']/g)].map((m) => Number(m[1]));
+  let pid = Math.max(1, ...pids);
+  const root = existing ? /<(\w+:)?Properties\b([^>]*?)(\/?)>/.exec(existing) : null;
+  const prefix = root?.[1] ?? "";
+  const properties = chunks
+    .map((chunk, i) => `<${prefix}property fmtid="${PREFS_FMTID}" pid="${++pid}" name="ZOTERO_PREF_${i + 1}"><vt:lpwstr>${escapeXmlAttr(chunk)}</vt:lpwstr></${prefix}property>`)
+    .join("");
+  if (existing) {
+    if (!root) return "skipped";
+    let merged;
+    if (root[3]) {
+      merged = existing.replace(root[0], `<${prefix}Properties${root[2]}>${properties}</${prefix}Properties>`);
+    } else {
+      const close = `</${prefix}Properties>`;
+      const at = existing.lastIndexOf(close);
+      if (at < 0) return "skipped";
+      merged = existing.slice(0, at) + properties + existing.slice(at);
+    }
+    if (!/xmlns:vt=/.test(merged)) merged = merged.replace(`<${prefix}Properties`, `<${prefix}Properties xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"`);
+    if (merged === existing || !merged.includes(properties)) return "skipped";
+    zip.file(part, merged);
+  } else {
+    zip.file(
+      part,
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" ' +
+        `xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">${properties}</Properties>`
+    );
+  }
+  const typesEntry = zip.file("[Content_Types].xml");
+  if (typesEntry) {
+    const types = await typesEntry.async("string");
+    if (!types.includes(`PartName="/${part}"`)) {
+      zip.file("[Content_Types].xml", types.replace("</Types>", `<Override PartName="/${part}" ContentType="${CUSTOM_CONTENT_TYPE}"/></Types>`));
+    }
+  }
+  if (rels !== undefined && !rels.includes(CUSTOM_REL_TYPE)) {
+    const ids = new Set([...rels.matchAll(/\bId=["']([^"']+)["']/g)].map((m) => m[1]));
+    let n = 1;
+    while (ids.has(`rId${n}`)) n++;
+    zip.file("_rels/.rels", rels.replace("</Relationships>", `<Relationship Id="rId${n}" Type="${CUSTOM_REL_TYPE}" Target="${part}"/></Relationships>`));
+  }
+  return "written";
+}
+
+// ---------------------------------------------------------------------------
 // Main pipeline
 // ---------------------------------------------------------------------------
 
@@ -841,8 +949,11 @@ async function main() {
   const biblXml = generateBibliographyFieldCode();
   documentXml = documentXml.replace("</w:body>", `${biblXml}</w:body>`);
 
-  // 7. Write output .docx
+  // 7. Document preferences (style, field type) for Zotero, then write the output .docx
   zip.file("word/document.xml", documentXml);
+  const prefs = await writeZoteroDocumentPrefs(zip, style);
+  if (prefs === "kept") console.error(`WARNING: ${EXISTING_PREFS_WARNING}`);
+  if (prefs === "skipped") console.error(`WARNING: ${PREFS_NOT_WRITTEN_WARNING}`);
   const buffer = await zip.generateAsync({ type: "nodebuffer" });
   await writeFile(outputPath, buffer);
 

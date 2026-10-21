@@ -3,6 +3,7 @@
 // informative only: this script checks what the agent claims in agent-out/claims.json against the
 // Zotero Web API and the evidence of the run, and validates every produced .docx with test/helpers/docx-validate.ts.
 // Usage: ZOTERO_TEST_API_KEY=... node test/live/verify-claims.mjs [agent-out] --audit <audit.jsonl> [--transcript <file>]
+//        [--render <dir with index.json> [--visual-review required|optional]]
 // Evidence: the audit log written by the PostToolUse hooks of .claude/agent-smoke (every Zotero call and Bash
 // command with its result, outside the agent's reach) and the denials.jsonl next to it (PreToolUse denials).
 // The optional transcript (claude-code-action execution file, or a stream-json / session .jsonl) is cross-checked:
@@ -12,6 +13,10 @@
 //   "[object Object]"/undefined/NaN, stack traces) and every write call for keys the run did not create;
 // - checks the guardrail probes (F0), the fixed edge cases (F9, F10) and that every claimed exploratory call
 //   (X1..X5) was really made.
+// With --render (the pages of the word-render job), agent-out/visual-review.md must reference only rendered pages,
+// their documents, corpus items and known issues of index.json; a content problem is a finding (a problem, or a
+// warning when the agent marks it as a known issue that concerns that document); layout remarks never fail.
+// `--visual-review optional` (a pull request whose base branch's skill has no visual review yet) accepts a missing file.
 // Exit 0 = verified, 1 = claims not verified, 2 = setup error. Writes <dir>/verdict.json; the Job Summary and the
 // PR comment are written from its scrubbed copy by test/live/agent/summary.mjs. No secret or library content is
 // printed.
@@ -20,12 +25,15 @@ import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { validateDocx } from "../helpers/docx-validate.ts";
+import { VISUAL_REVIEW, parseVisualReview, visualReviewFindings, visualReviewProblems } from "./agent/visual-review.mjs";
 
 const args = process.argv.slice(2);
 const option = (name) => (args.indexOf(name) >= 0 ? args[args.indexOf(name) + 1] : undefined);
 const TRANSCRIPT = option("--transcript");
 const AUDIT = option("--audit");
-const DIR = resolve(args.find((a, i) => !a.startsWith("--") && !["--transcript", "--audit"].includes(args[i - 1])) ?? "agent-out");
+const RENDER = option("--render");
+const VISUAL = option("--visual-review") ?? "required";
+const DIR = resolve(args.find((a, i) => !a.startsWith("--") && !["--transcript", "--audit", "--render", "--visual-review"].includes(args[i - 1])) ?? "agent-out");
 const ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
 const KEY = process.env.ZOTERO_TEST_API_KEY ?? "";
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -53,6 +61,7 @@ const checks = [];
 /** Audited calls referenced by the exploratory scenarios (verdict.json, shown in the report). */
 const exploratoryCalls = [];
 const fail = (msg) => problems.push(msg);
+const problemsFail = fail;
 const ok = (msg) => checks.push(msg);
 const scrub = (t) => (KEY ? String(t).split(KEY).join("***") : String(t));
 
@@ -893,6 +902,8 @@ async function main() {
   if (!verifiedGroups.some((v) => v.source.spacedKeys && v.source.duplicateKey)) fail('F9: no verified compare_group on the edge document (keys "A, B", a duplicated key)');
   if (!verifiedGroups.some((v) => v.source.zcites === 0 && v.report.fields.length === 0)) fail("F9: no verified compare_group on a document without <zcite>");
 
+  if (RENDER) checkVisualReview(context, auditDir);
+
   // Local runs: the agent cleaned up after itself
   if (context.cleanup === "agent") {
     const libs = new Set(created.map((c) => c.library_path));
@@ -902,6 +913,40 @@ async function main() {
     }
   }
   return finish(context);
+}
+
+/** agent-out/visual-review.md against the index of the rendered pages (word-render). */
+function checkVisualReview(context, auditDir) {
+  // optional: the skill, agent config or hooks that ran predate the visual review (a pull request whose base branch
+  // does not have them yet): whatever the agent wrote is reported as warnings only
+  const fail = VISUAL === "optional" ? (m) => warnings.push(`${m} (visual review optional on this run)`) : problemsFail;
+  const indexPath = join(RENDER, "index.json");
+  if (!existsSync(indexPath)) return fail(`visual review: ${indexPath} missing (word-render output)`);
+  const index = JSON.parse(readFileSync(indexPath, "utf8"));
+  // Every page looked at: the Reads of agent-render/*.png that the audit hook recorded (image-reads.jsonl, outside
+  // the agent's reach), not what the agent says
+  const readsPath = join(auditDir, "image-reads.jsonl");
+  if (!existsSync(readsPath)) {
+    if (VISUAL === "optional") warnings.push("visual review: no audited page reads (the hooks that ran predate the image audit)");
+    else fail(`visual review: ${readsPath} missing: no page read was audited`);
+  } else {
+    const read = new Set(parseTranscript(readFileSync(readsPath, "utf8")).filter((r) => r?.run_id === context.run_id && !r.is_error).map((r) => r.image));
+    const unread = index.images.map((i) => i.image).filter((img) => !read.has(img));
+    if (unread.length) fail(`visual review: ${unread.length} rendered page(s) never read: ${unread.join(", ")}`);
+    else ok(`visual review: all ${index.images.length} rendered pages read (audit)`);
+  }
+  const path = join(DIR, VISUAL_REVIEW);
+  if (!existsSync(path)) {
+    if (VISUAL === "optional") return warnings.push(`visual review: ${VISUAL_REVIEW} not written (the skill that ran predates the visual review)`);
+    return fail(`visual review: ${VISUAL_REVIEW} missing (${index.images.length} rendered pages to review)`);
+  }
+  const parsed = parseVisualReview(readFileSync(path, "utf8"));
+  const invalid = visualReviewProblems(parsed, index);
+  invalid.forEach((p) => fail(`visual review: ${p}`));
+  const findings = visualReviewFindings(parsed);
+  findings.problems.forEach(fail);
+  warnings.push(...findings.warnings);
+  if (!invalid.length) ok(`visual review: ${parsed.problems.length} content problems on ${index.images.length} pages, ${parsed.wordChecks.length} layout remarks`);
 }
 
 function finish(context) {

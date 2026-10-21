@@ -476,6 +476,48 @@ describe("verify-claims: script completo senza rete (VC-09)", () => {
     );
     expect(r.stdout).not.toContain("not-a-real-key");
   });
+
+  it("VC-09c --render: revisione o letture delle pagine mancanti → problema (avviso con --visual-review optional); pagine non lette, riferimenti sbagliati e bug visivi → problemi", async () => {
+    const render = await tempDir();
+    try {
+      await render.file("index.json", JSON.stringify({ corpus: [{ id: "eve2020" }], knownIssues: [{ id: "H-W1", steps: ["apa"] }], images: [{ image: "apa-p1.png", document: "apa" }] }));
+      const args = [dir.path, "--audit", join(dir.path, "audit.jsonl"), "--render", render.path];
+      let r = await node(SCRIPT, args, { env });
+      let verdict = JSON.parse(await readFile(join(dir.path, "verdict.json"), "utf8"));
+      expect(verdict.problems).toContain("visual review: visual-review.md missing (1 rendered pages to review)");
+      expect(verdict.problems).toContain(`visual review: ${join(dir.path, "image-reads.jsonl")} missing: no page read was audited`);
+      r = await node(SCRIPT, [...args, "--visual-review", "optional"], { env });
+      verdict = JSON.parse(await readFile(join(dir.path, "verdict.json"), "utf8"));
+      expect(verdict.warnings).toContain("visual review: visual-review.md not written (the skill that ran predates the visual review)");
+      expect(verdict.warnings).toContain("visual review: no audited page reads (the hooks that ran predate the image audit)");
+      // a read of another run does not count
+      await dir.file("image-reads.jsonl", JSON.stringify({ run_id: "old", image: "apa-p1.png" }) + "\n");
+      r = await node(SCRIPT, args, { env });
+      verdict = JSON.parse(await readFile(join(dir.path, "verdict.json"), "utf8"));
+      expect(verdict.problems).toContain("visual review: 1 rendered page(s) never read: apa-p1.png");
+      await dir.file("image-reads.jsonl", JSON.stringify({ run_id: "r1", read_no: 1, image: "apa-p1.png" }) + "\n");
+      await dir.file(
+        "visual-review.md",
+        "# Revisione visiva\n## Problema 1: curatrice assente\n- Documento: apa\n- Pagina: apa-p1.png\n- Posizione: voce 4\n- Voce del corpus: eve2020\n- Reso: a\n- Atteso: b\n" +
+          "## Problema 2: x\n- Documento: apa\n- Pagina: apa-p7.png\n- Posizione: voce 1\n- Voce del corpus: eve2020\n- Reso: a\n- Atteso: b\n- Noto: H-W1\n"
+      );
+      r = await node(SCRIPT, args, { env });
+      expect(r.code).toBe(1);
+      verdict = JSON.parse(await readFile(join(dir.path, "verdict.json"), "utf8"));
+      expect(verdict.problems).toEqual(expect.arrayContaining(["visual review: problem 2: page apa-p7.png was not rendered", "visual 1 (apa-p1.png, voce 4): curatrice assente"]));
+      expect(verdict.warnings).toContain("visual 2 (apa-p7.png, voce 1): x [known: H-W1]");
+      expect(verdict.problems.filter((p: string) => p.includes("never read"))).toEqual([]);
+      // optional (the base branch predates the visual review): the same findings only as warnings
+      r = await node(SCRIPT, [...args, "--visual-review", "optional"], { env });
+      verdict = JSON.parse(await readFile(join(dir.path, "verdict.json"), "utf8"));
+      expect(verdict.problems.filter((p: string) => p.startsWith("visual"))).toEqual([]);
+      expect(verdict.warnings).toContain("visual review: problem 2: page apa-p7.png was not rendered (visual review optional on this run)");
+    } finally {
+      await render.cleanup();
+      await writeFile(join(dir.path, "visual-review.md"), "");
+      await writeFile(join(dir.path, "image-reads.jsonl"), "");
+    }
+  });
 });
 
 describe("verify-claims: contesto della run fidato (VC-11)", () => {

@@ -5,6 +5,8 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error plain .mjs script without type declarations
 import { liveScope } from "../../scripts/live-scope.mjs";
+// @ts-expect-error plain .mjs script without type declarations
+import { wordProxyScope } from "../../scripts/word-proxy-scope.mjs";
 
 /**
  * Logica dei workflow dal vivo che nessun test esegue (gira solo su GitHub): controlli testuali sulle condizioni
@@ -130,16 +132,33 @@ describe("workflow dal vivo e agente smoke (WL)", () => {
     expect(verdict).toContain("RELEVANT: ${{ needs.changes.outputs.agent }}");
     expect(verdict).toContain('elif [ "$LIVE" != "success" ]; then');
     // id-token only in the agent job, issues: write only in the weekly issue job, pull-requests: write only in comment
-    for (const [perm, only] of [["id-token: write", "agent-run"], ["issues: write", "weekly-issue"], ["pull-requests: write", "comment"]]) {
+    for (const [perm, only] of [["id-token: write", "agent-run"], ["issues: write", "weekly-issue"], ["pull-requests: write", "comment"], ["actions: write", "word-render-cleanup"]]) {
       const keys = jobKeys(agent).filter((k) => job(agent, k).includes(perm));
       expect(keys, perm).toEqual([only]);
     }
     expect(agent).toMatch(/schedule:\n {4}# [^\n]+\n {4}- cron: "23 3 \* \* 5"/);
     expect(agent).toContain('options: ["live+agent", "live"]');
-    expect(agent).toContain("# ── Slot: word-render");
+    // word-render: between the live suite and the agent, same conditions, no secrets; no pages → no agent
+    const render = job(agent, "word-render");
+    expect(render).toContain("needs: [changes, live]");
+    expect(render).toContain("needs.changes.outputs.agent == 'true' &&\n      needs.live.result == 'success' &&");
+    expect(render).not.toMatch(/secrets\.|environment:|id-token/);
+    expect(render).toContain("uses: ./.github/actions/word-tools");
+    expect(step(render, "Render the refreshed pages")).toContain("node test/word-proxy/check-artifacts.mjs");
+    expect(render).toContain("retention-days: 1");
+    expect(job(agent, "agent-run")).toContain("needs: [prepare, word-render]");
+    expect(job(agent, "agent-run")).toContain("needs.word-render.result == 'success'");
+    expect(verdict).toContain('if [ "$RENDER" != "success" ]; then');
+    // the agent config comes from the base branch like the skill and hooks; the audited page reads reach the verifier
+    expect(step(job(agent, "agent-run"), "Agent configuration from the base branch")).toContain(".github/agents/agent-smoke.json; do");
+    expect(step(job(agent, "agent-run"), "Collect the agent output")).toContain("image-reads.jsonl");
+    const cleanup = job(agent, "word-render-cleanup");
+    expect(cleanup).toContain("if: always() && needs.word-render.result != 'skipped'");
+    expect(cleanup).toContain('gh api -X DELETE "repos/$REPO/actions/artifacts/$id"');
+    expect(cleanup).not.toMatch(/secrets\.|checkout|npm /);
     // every job and step with a timeout; actions pinned by SHA
     for (const k of jobKeys(agent)) expect(job(agent, k), k).toMatch(/\n {4}timeout-minutes: \d+/);
-    for (const m of agent.matchAll(/uses: ([^\s]+)/g)) expect(m[1]).toMatch(/@[0-9a-f]{40}$/);
+    for (const m of agent.matchAll(/uses: ([^\s]+)/g)) expect(m[1]).toMatch(/@[0-9a-f]{40}$|^\.\/\.github\/actions\//);
     const steps = agent.split(/\n {6}- /).slice(1);
     for (const st of steps) expect(st, st.slice(0, 60)).toMatch(/\n {8}timeout-minutes: \d+|^\S[^\n]*\n(?: {8}[^\n]*\n)*? {8}timeout-minutes: \d+/);
     expect(workflow("deps-update.yml")).toContain('gh workflow run claude-agent-smoke.yml --repo "$REPO" --ref "$BRANCH" -f scope=live+agent');
@@ -171,5 +190,45 @@ describe("ambito di una run del workflow dal vivo (scripts/live-scope.mjs, WL-08
       timeout: 10_000,
     }).toString();
     expect(out).toBe("live=true\nagent=true\n");
+  });
+});
+
+describe("job word-proxy di test.yml (WL-09, WL-10)", () => {
+  it.each<[string, string, string[], boolean]>([
+    ["PR solo docs", "pull_request", ["README.md", "test/WORD_CHECKLIST.md"], false],
+    ["PR solo sui test unitari", "pull_request", ["test/tools/search-library.test.ts"], false],
+    ["PR su qualunque sorgente del server (i documenti passano da tutto il server)", "pull_request", ["src/utils/zotero-keys.ts"], true],
+    ["PR sull'iniettore", "pull_request", ["src/citation-injector/injector.ts"], true],
+    ["PR sulla conversione in itemData", "pull_request", ["src/utils/csl-to-zotero.ts"], true],
+    ["PR sulla skill (inject.js)", "pull_request", ["skills/zotero-skill-mcp-integrations/scripts/inject.js"], true],
+    ["PR sul corpus", "pull_request", ["test/fixtures/corpus/library.json"], true],
+    ["PR sull'azione word-tools", "pull_request", [".github/actions/word-tools/action.yml"], true],
+    ["push su main", "push", [], true],
+    ["manuale", "workflow_dispatch", [], true],
+  ])("WL-09 %s", (_label, event, files, expected) => {
+    expect(wordProxyScope(event, files)).toBe(expected);
+  });
+
+  it("WL-10 if a livello di job (non on.paths), nessun segreto, runner fissato, timeout, artifact solo dopo il controllo", () => {
+    const test = workflow("test.yml");
+    expect(test).not.toMatch(/^\s+paths:/m);
+    const job = test.slice(test.indexOf("\n  word-proxy:\n"));
+    expect(job).toContain("needs: word-proxy-scope");
+    expect(job).toContain("if: needs.word-proxy-scope.outputs.run == 'true'");
+    expect(job).toContain("runs-on: ubuntu-24.04");
+    expect(Number(job.match(/\n    timeout-minutes: (\d+)/)![1])).toBeLessThanOrEqual(10);
+    expect(job).not.toMatch(/secrets\.|environment:|id-token/);
+    expect(job).toContain("uses: ./.github/actions/word-tools");
+    expect(step(job, "Collect and check the artifact")).toContain("node test/word-proxy/check-artifacts.mjs");
+    const upload = step(job, "Upload documents, traces and reports");
+    expect(upload).toContain("steps.artifact.outcome == 'success'");
+    expect(upload).toContain("retention-days: 1");
+    for (const s of job.split(/\n {6}- /).slice(1)) expect(s, s.split("\n")[0]).toMatch(/timeout-minutes: \d+/);
+    const action = readFileSync(join(ROOT, ".github", "actions", "word-tools", "action.yml"), "utf8");
+    expect(action.match(/sha256=[0-9a-f]{64}/g)).toHaveLength(4);
+    expect(action).toContain("sha256sum -c -");
+    // the archives are checked on every run, a cache hit included
+    expect(action).not.toMatch(/if: steps\.cache\.outputs\.cache-hit/);
+    expect(action).toMatch(/actions\/cache@[0-9a-f]{40}/);
   });
 });

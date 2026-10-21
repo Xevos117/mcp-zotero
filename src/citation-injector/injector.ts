@@ -7,6 +7,7 @@ import { generateZoteroFieldCode, generateBibliographyFieldCode } from "./field-
 import { formatCitationText } from "./citation-formatter.js";
 import { regexEscape, unescapeXml } from "./xml-utils.js";
 import { normalizeZciteTags } from "./zcite-normalizer.js";
+import { EXISTING_PREFS_WARNING, PREFS_NOT_WRITTEN_WARNING, writeZoteroDocumentPrefs } from "./document-prefs.js";
 import { zoteroItemToCsl } from "../utils/csl-to-zotero.js";
 import { LibraryType } from "../utils/library-context.js";
 import { ZOTERO_KEY } from "../utils/zotero-keys.js";
@@ -255,8 +256,14 @@ export async function injectCitations(
   const biblXml = generateBibliographyFieldCode();
   documentXml = documentXml.replace("</w:body>", `${biblXml}</w:body>`);
 
-  // Save
+  // Document preferences (style, field type) where Zotero for Word reads them: no Document Preferences dialog
+  // on the first Refresh, the injected style is applied (H-W1)
   zip.file("word/document.xml", documentXml);
+  const prefs = await writeZoteroDocumentPrefs(zip, style);
+  if (prefs === "kept") warnings.push(EXISTING_PREFS_WARNING);
+  if (prefs === "skipped") warnings.push(PREFS_NOT_WRITTEN_WARNING);
+
+  // Save
   const buffer = await zip.generateAsync({ type: "nodebuffer" });
   await writeFile(outputPath, buffer);
 

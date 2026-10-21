@@ -14,7 +14,7 @@ import {
 import { networkError } from "../helpers/fake-net.js";
 import { ZBASE, zSingle, zError, article, USER_ID } from "../helpers/zotero-fake.js";
 import { makeDocx, para, zcite, readDocumentXml, tempDir, TempDir } from "../helpers/fixtures.js";
-import { citations, expectValidDocx, validateDocx, CitationStyle } from "../helpers/docx-validate.js";
+import { citations, expectValidDocx, validateDocx, styleId, CitationStyle } from "../helpers/docx-validate.js";
 
 const ITEM_ROUTE = new RegExp(`^${ZBASE.replace(/\./g, "\\.")}/items/[A-Z0-9]+$`);
 
@@ -477,35 +477,47 @@ describe("inject_citations (MCP)", () => {
     });
 
     /**
-     * Ipotesi su Word (test/WORD_CHECKLIST.md, H-W1..H-W5): differenze rispetto ai campi che scrive Zotero
-     * for Word. Non è dimostrato che diano problemi in Word: sono it.fails finché la checklist manuale non
-     * le conferma (allora si corregge il prodotto e il caso diventa un test normale) o le smentisce
-     * (allora il caso si rimuove). inject.js produce lo stesso JSON, quindi valgono anche per la skill.
+     * Preferenze del documento (H-W1, test/WORD_CHECKLIST.md): senza ZOTERO_PREF_* il primo Refresh apriva Document
+     * Preferences proponendo l'ultimo stile di Zotero (job word-proxy). Ora il prodotto le scrive con lo stile
+     * dell'iniezione e fieldType Field; il validatore ricompone ZOTERO_PREF_1…n e controlla stile, fieldType, content
+     * type e relazione. Le altre ipotesi (H-W2..H-W5) le decide word-proxy. inject.js scrive le stesse preferenze.
      */
-    describe("ipotesi Word (it.fails finché la checklist non decide)", () => {
-      async function productReport() {
+    it.each<CitationStyle>(["apa", "harvard", "chicago", "ieee", "vancouver"])(
+      "IC-V-H1 stile %s: docProps/custom.xml con ZOTERO_PREF_* (stile dell'iniezione, fieldType Field)",
+      async (style) => {
         serveItems(h, LIBRARY);
-        const input = await dir.file("hyp.docx", await makeDocx(BODY(false)));
-        const out = await h.call("inject_citations", { file_path: input });
-        return validateDocx(await readFile(out.json.output_path));
+        const numbered = style === "ieee" || style === "vancouver";
+        const input = await dir.file(`prefs-${style}.docx`, await makeDocx(BODY(numbered)));
+        const out = await h.call("inject_citations", { file_path: input, style });
+        const r = await expectValidDocx(await readFile(out.json.output_path), { style, libraryPath: `users/${USER_ID}` });
+        expect(r.parity.hasDocumentPrefs).toBe(true);
+        expect(r.documentPrefs).toEqual({ styleId: styleId(style), fieldType: "Field", chunks: 1 });
       }
+    );
 
-      it.fails("IC-V-H1 docProps/custom.xml con le preferenze ZOTERO_PREF_* (H-W1)", async () => {
-        expect((await productReport()).parity.hasDocumentPrefs).toBe(true);
-      });
-      it.fails("IC-V-H2 properties.plainCitation presente in ogni citazione (H-W2)", async () => {
-        expect((await productReport()).parity.allHavePlainCitation).toBe(true);
-      });
-      it.fails("IC-V-H2b properties.noteIndex presente in ogni citazione (H-W2)", async () => {
-        expect((await productReport()).parity.allHaveNoteIndex).toBe(true);
-      });
-      it.fails("IC-V-H3 itemData.id presente e citationItems[].id coerenti per URI in tutto il documento (H-W3)", async () => {
-        expect((await productReport()).parity.consistentItemIds).toBe(true);
-      });
-      it.fails("IC-V-H4 locator accompagnato da label (H-W4)", async () => {
-        expect((await productReport()).parity.locatorsHaveLabel).toBe(true);
-      });
-      it.todo("IC-V-H5 voci di un gruppo non sincronizzato nel client Zotero locale (H-W5): verificabile solo in Word");
+    it("IC-V-H1c parte custom-properties esistente non unibile → preferenze non scritte, parte intatta, avviso", async () => {
+      serveItems(h, LIBRARY);
+      const zip = await JSZip.loadAsync(await makeDocx(BODY(false)));
+      const odd = '<?xml version="1.0"?><x:Other xmlns:x="y"/>';
+      zip.file("docProps/custom.xml", odd);
+      const input = await dir.file("odd.docx", await zip.generateAsync({ type: "nodebuffer" }));
+      const out = await h.call("inject_citations", { file_path: input, style: "apa" });
+      expect(out.isError).toBe(false);
+      expect(out.json.warnings.join(" ")).toContain("Zotero document preferences not written");
+      expect(await (await JSZip.loadAsync(await readFile(out.json.output_path))).file("docProps/custom.xml")!.async("string")).toBe(odd);
+    });
+
+    it("IC-V-H1b preferenze già presenti (documento gestito da Zotero) → lasciate come sono, con un avviso", async () => {
+      serveItems(h, LIBRARY);
+      const zip = await JSZip.loadAsync(await makeDocx(BODY(false)));
+      const zotero = '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="ZOTERO_PREF_1"><vt:lpwstr>KEEP</vt:lpwstr></property>';
+      zip.file("docProps/custom.xml", `<?xml version="1.0"?><Properties xmlns:vt="v">${zotero}</Properties>`);
+      const input = await dir.file("managed.docx", await zip.generateAsync({ type: "nodebuffer" }));
+      const out = await h.call("inject_citations", { file_path: input, style: "ieee" });
+      expect(out.isError).toBe(false);
+      expect(out.json.warnings.join(" ")).toContain("already has Zotero document preferences");
+      const custom = await (await JSZip.loadAsync(await readFile(out.json.output_path))).file("docProps/custom.xml")!.async("string");
+      expect(custom).toBe(`<?xml version="1.0"?><Properties xmlns:vt="v">${zotero}</Properties>`);
     });
   });
 });

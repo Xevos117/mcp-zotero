@@ -216,6 +216,54 @@ describe("script degli hook come processi (AH-03)", () => {
     expect((await lines("audit.jsonl"))[0].call_no).toBe(1);
   });
 
+  it("AH-04a audit: le Read delle pagine renderizzate in image-reads.jsonl con read_no proprio, nessun call_no consumato; altre Read ignorate", async () => {
+    const read = (file_path: string, id: string) => hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "Read", tool_use_id: id, tool_input: { file_path } }, dir.path);
+    for (const r of [await read(join(dir.path, "agent-render", "apa-p1.png"), "r1"), await read("agent-render/apa-p2.png", "r2"), await read(join(dir.path, "agent-out", "x.png"), "r3"), await read(join(dir.path, "agent-render", "index.json"), "r4"), await read(join(dir.path, "agent-render", "..", "agent-out", "a.png"), "r5")]) {
+      expect(r.code).toBe(0);
+      expect(r.stdout).toBe("");
+    }
+    expect((await lines("image-reads.jsonl")).map((e) => [e.read_no, e.image, e.run_id])).toEqual([[1, "apa-p1.png", "r"], [2, "apa-p2.png", "r"]]);
+    await hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "mcp__zotero__get_user_id", tool_use_id: "z", tool_input: {}, tool_response: "{}" }, dir.path);
+    expect((await lines("audit.jsonl"))[0].call_no).toBe(1);
+  });
+
+  describe("AH-04b visual-gate (hook Stop)", () => {
+    const index = (images: string[]) => mkdir(join(dir.path, "agent-render"), { recursive: true }).then(() => writeFile(join(dir.path, "agent-render", "index.json"), JSON.stringify({ images: images.map((image) => ({ image })) })));
+    const stop = () => hook("visual-gate.mjs", { hook_event_name: "Stop", stop_hook_active: true }, dir.path);
+
+    it("senza pagine renderizzate → nessun blocco", async () => {
+      const r = await stop();
+      expect(r.code).toBe(0);
+      expect(r.stdout).toBe("");
+    });
+
+    it("pagine non lette o revisione mancante → decision block con le pagine mancanti, al massimo 2 volte; poi lascia fermare", async () => {
+      await index(["apa-p1.png", "apa-p2.png"]);
+      await hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "Read", tool_use_id: "r1", tool_input: { file_path: join(dir.path, "agent-render", "apa-p1.png") } }, dir.path);
+      const first = await stop();
+      expect(first.code).toBe(0);
+      const out = JSON.parse(first.stdout);
+      expect(Object.keys(out).sort()).toEqual(["decision", "reason"]);
+      expect(out.decision).toBe("block");
+      expect(out.reason).toContain("apa-p2.png");
+      expect(out.reason).not.toContain("apa-p1.png");
+      expect(out.reason).toContain("write agent-out/visual-review.md");
+      expect(JSON.parse((await stop()).stdout).decision).toBe("block");
+      expect((await stop()).stdout).toBe("");
+      expect(await lines("stop-blocks.jsonl")).toHaveLength(2);
+    });
+
+    it("tutte le pagine lette e revisione scritta → nessun blocco; letture di un'altra run non contano", async () => {
+      await index(["apa-p1.png"]);
+      await writeFile(join(dir.path, "agent-audit", "image-reads.jsonl"), JSON.stringify({ run_id: "old", image: "apa-p1.png" }) + "\n");
+      await mkdir(join(dir.path, "agent-out"));
+      await writeFile(join(dir.path, "agent-out", "visual-review.md"), "# Revisione visiva\nNessun problema di contenuto.\n");
+      expect(JSON.parse((await stop()).stdout).reason).toContain("apa-p1.png");
+      await hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "Read", tool_use_id: "r1", tool_input: { file_path: "agent-render/apa-p1.png" } }, dir.path);
+      expect((await stop()).stdout).toBe("");
+    });
+  });
+
   it("AH-03d delete-guard senza agent-audit/context.json → negato", async () => {
     const empty = await tempDir();
     try {
@@ -226,12 +274,13 @@ describe("script degli hook come processi (AH-03)", () => {
     }
   });
 
-  it("AH-03e settings.json: i tre hook sugli eventi e matcher giusti, comandi via $CLAUDE_PROJECT_DIR", async () => {
+  it("AH-03e settings.json: gli hook sugli eventi e matcher giusti (Read per le pagine, Stop per la revisione visiva), comandi via $CLAUDE_PROJECT_DIR", async () => {
     const settings = JSON.parse(await readFile(join(ROOT, ".claude", "agent-smoke", "settings.json"), "utf8"));
     const cmd = (event: string, matcher: string) => settings.hooks[event].find((h: { matcher: string }) => h.matcher === matcher)?.hooks[0];
     expect(cmd("PreToolUse", "Bash").command).toBe('node "$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/bash-guard.mjs"');
     expect(cmd("PreToolUse", "mcp__zotero__delete_items|mcp__zotero__delete_collection").command).toMatch(/delete-guard\.mjs"$/);
-    for (const event of ["PostToolUse", "PostToolUseFailure"]) expect(cmd(event, "mcp__zotero__.*|Bash").command).toMatch(/audit\.mjs"$/);
+    for (const event of ["PostToolUse", "PostToolUseFailure"]) expect(cmd(event, "mcp__zotero__.*|Bash|Read").command).toMatch(/audit\.mjs"$/);
+    expect(settings.hooks.Stop[0].hooks[0].command).toBe('node "$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/visual-gate.mjs"');
     for (const event of Object.values(settings.hooks) as Array<Array<{ hooks: Array<{ timeout: number }> }>>) for (const h of event) expect(h.hooks[0].timeout).toBeGreaterThan(0);
   });
 });

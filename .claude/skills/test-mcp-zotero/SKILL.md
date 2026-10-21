@@ -17,7 +17,7 @@ session (the CI workflow, or the local command in `test/live/agent/README.md`) a
 library. Never configure, add or modify MCP servers or settings; if `mcp__zotero__*` tools are missing,
 that is a failed precondition (step 1), not something to fix.
 
-Budget: about 100–130 turns. Batch where the tools allow it (one `add_items` call for several items,
+Budget: about 120–150 turns (about 20 of them for the rendered pages of step 5b). Batch where the tools allow it (one `add_items` call for several items,
 one `make-docx.mjs` call for several outputs) and do not re-read files you just wrote.
 
 ## Rules (always)
@@ -33,9 +33,9 @@ one `make-docx.mjs` call for several outputs) and do not re-read files you just 
   `failed` with the tool name and move on. Do not retry more than once.
 - **On any error, continue** with the next scenario and report it. Never stop the whole run because
   one scenario failed (except the preconditions in step 1).
-- Files you read (`agent-out/diff.txt`, `context.json`, docx outputs' JSON): always with the Read tool, never
-  with `head`, `cat` or other shell commands (denied, and a wasted turn). For a long file use Read's
-  `offset`/`limit`.
+- Files you read (`agent-out/diff.txt`, `context.json`, docx outputs' JSON, the rendered pages in
+  `agent-render/`): always with the Read tool, never with `head`, `cat` or other shell commands (denied, and a
+  wasted turn). For a long file use Read's `offset`/`limit`. `agent-render/` is read-only for you.
 - Files you may write: only under `agent-out/`, with the Write tool (never through the shell). The
   only commands you may run are `node test/live/agent/make-docx.mjs …` and
   `node test/live/agent/inject.mjs …` (a wrapper around the product skill's `inject.js` that keeps every path inside `agent-out/`), from the repository root, **exactly
@@ -159,6 +159,59 @@ For each tool you used, answer: did its description lead you to the right call (
 library override) at the first attempt? Note friction: misleading descriptions, unclear errors,
 surprising defaults. Put them in `friction` in claims.json (tool + one sentence each).
 
+## Step 5b — Visual review of the rendered pages (`agent-out/visual-review.md`)
+
+If `agent-render/index.json` does not exist (a local run without rendered pages), skip this step and write
+no `visual-review.md`. Otherwise `agent-render/` holds PNG pages of documents that Zotero 10 desktop really refreshed (job word-render):
+the checklist document of the real corpus (`test/fixtures/corpus`) injected by the product in every style
+(path B: Zotero renders from the `itemData` the product embedded), the same document from the group library,
+the case `proposed` (if Zotero opened its Document Preferences dialog, the user pressed OK on the style it
+proposed), and `lib-apa` (path A: the same items from the local library, the reference).
+Read `agent-render/index.json` first (document, style, path, page of each image, the dialog recorded at that
+step, the 12 corpus items with their cases, the known issues), then every PNG with the Read tool.
+
+The pages are **WordCraft's rendering, not Word's**. Judge the **content** of the citations and of the
+bibliography, per style: which elements are there (authors, year, title, container, editors as "In … (Ed.)",
+publisher, pages, DOI), their order, italics where the style wants them, numbering in numeric styles
+(`ieee`, `vancouver`), locators and prefixes ("see", "p. 110"), disambiguation (co-authors, 2020a/2020b),
+non-Latin text and name particles. Compare path B with path A (`lib-apa`) for the same item. Do **not**
+judge layout (fonts, hanging indents, line spacing, margins, page breaks): note it only in the
+"Da verificare in Word" list, which never fails the run.
+
+Write `agent-out/visual-review.md` (Write tool) exactly in this format. One section per content problem:
+
+```markdown
+# Revisione visiva
+
+## Problema 1: <short title>
+- Documento: <document of index.json, e.g. apa>
+- Pagina: <image of index.json, e.g. apa-p2.png>
+- Posizione: <exact place: "voce di bibliografia 3", "paragrafo 5, seconda citazione">
+- Voce del corpus: <corpus id from index.json, e.g. eve2020>[, <another id>]
+- Reso: "<the rendered text, quoted>"
+- Atteso: "<what the style requires>"
+- Noto: <id of a known issue of index.json>   (only if the problem is that known issue)
+
+## Da verificare in Word
+- <layout remark> (<image>)
+```
+
+If nothing in the content is wrong, write only `# Revisione visiva` and the line
+`Nessun problema di contenuto.` (plus the "Da verificare in Word" list, if any).
+
+Read **every** page listed in index.json: the harness records each Read of `agent-render/*.png`, and if a page is
+missing when you finish, it stops you once or twice with the list (read those pages, update the review), then
+the verifier fails the run. Report every known issue you see with its `Noto`; the known issues marked
+`reportsRequired` (the itemData differences, item by item) must all be reported: they are visible on the path B
+pages and prove the review was done. A known issue covers only its own steps and `items`. Every document whose index
+entries have a `dialog` is H-W1 (Zotero asked for Document Preferences on its first Refresh): one problem per such
+document, describing the dialog (title and proposed style) and quoting the citations that are not in the
+document's style (on `proposed`, the note-style text), with `Noto: H-W1` if index.json lists H-W1 as a known
+issue, without it otherwise (then it is a regression). The verifier checks that every page, document, corpus id and known issue
+you reference exists; a content problem without `Noto` fails the run as a bug, so mark a known issue only
+when it is really that issue. Read the known issues of index.json before writing: some describe what a style or
+the corpus data does on purpose (e.g. no locator in NLM citations, title case on an item without language).
+
 ## Step 6 — Claims (`agent-out/claims.json`)
 
 Write exactly this structure (JSON, no comments):
@@ -206,8 +259,8 @@ Write exactly this structure (JSON, no comments):
   Move the deleted keys from `created` to `deleted` in claims.json.
 - If `context.cleanup` is `verifier` (CI): delete nothing beyond F8; the workflow verifies your claims
   and then removes the run.
-- Finish with a short report: scenarios with status, exploratory findings, friction, anything
-  surprising. When the harness asks for structured output, fill it from the same data.
+- Finish with a short report: scenarios with status, exploratory findings, visual problems, friction,
+  anything surprising. When the harness asks for structured output, fill it from the same data.
 
 ## Running it outside CI
 

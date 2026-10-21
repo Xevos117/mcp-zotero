@@ -10,8 +10,12 @@ export const ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
 /** Valid-shape keys that exist in no library (F10, T-delete): deleting them is harmless. */
 export const FAKE_KEYS = new Set(["ZZZZZZZZ", "YYYYYYYY"]);
 
+export function projectDir(input) {
+  return process.env.CLAUDE_PROJECT_DIR || input?.cwd || process.cwd();
+}
+
 export function auditDir(input) {
-  return join(process.env.CLAUDE_PROJECT_DIR || input?.cwd || process.cwd(), "agent-audit");
+  return join(projectDir(input), "agent-audit");
 }
 
 export function readStdin() {
@@ -43,7 +47,12 @@ export function append(input, file, entry) {
  * the same time: each number is claimed by creating agent-audit/call-no/<n> exclusively.
  */
 export function nextCallNo(input) {
-  const dir = join(auditDir(input), "call-no");
+  return nextNo(input, "call-no");
+}
+
+/** Next number of a sequence kept as files in agent-audit/<sequence>/ (see nextCallNo). */
+export function nextNo(input, sequence) {
+  const dir = join(auditDir(input), sequence);
   mkdirSync(dir, { recursive: true });
   for (let n = readdirSync(dir).length + 1; ; n++) {
     try {
@@ -121,6 +130,32 @@ export function createdKeys(entries) {
     }
   }
   return created;
+}
+
+// --- Visual review (audit.mjs records the page reads, visual-gate.mjs checks them) ---
+
+/** File name of a rendered page the Read tool opened (agent-render/<name>.png of this project), or null. */
+export function renderedPageRead(input) {
+  if (input?.tool_name !== "Read") return null;
+  const path = String(input?.tool_input?.file_path ?? "");
+  const dir = join(projectDir(input), "agent-render") + "/";
+  const rel = path.startsWith(dir) ? path.slice(dir.length) : path.startsWith("agent-render/") || path.startsWith("./agent-render/") ? path.replace(/^\.?\/?agent-render\//, "") : null;
+  return rel && /^[A-Za-z0-9._-]+\.png$/.test(rel) ? rel : null;
+}
+
+/** Pages of agent-render/index.json (the word-render output), or null when there is none. */
+export function renderedPages(input) {
+  try {
+    return JSON.parse(readFileSync(join(projectDir(input), "agent-render", "index.json"), "utf8")).images.map((i) => i.image);
+  } catch {
+    return null;
+  }
+}
+
+/** Pages of index.json without an audited Read in this run (image-reads.jsonl). */
+export function unreadPages(pages, reads, run) {
+  const read = new Set(reads.filter((r) => r.run_id === run && !r.is_error).map((r) => r.image));
+  return pages.filter((p) => !read.has(p));
 }
 
 // --- Bash allowlist (bash-guard.mjs) ---
