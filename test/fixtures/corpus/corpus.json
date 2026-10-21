@@ -1,0 +1,356 @@
+{
+  "description": "Real open-licensed fixture corpus. Hand-maintained list of works; scripts/record-corpus.mjs records the sources listed here and fills in the PDF sha256/bytes. See README.md.",
+  "recordedOn": "2026-10-21",
+  "collections": [
+    {
+      "key": "CRPSNLP2",
+      "name": "NLP"
+    },
+    {
+      "key": "CRPSPNS2",
+      "name": "Open science"
+    },
+    {
+      "key": "CRPSMED2",
+      "name": "Medicine"
+    }
+  ],
+  "works": [
+    {
+      "id": "conneau2020",
+      "key": "CNNEAU22",
+      "itemType": "conferencePaper",
+      "cases": [
+        "conference paper",
+        "10 authors",
+        "diacritics (Guzmán)",
+        "Crossref publisher-location"
+      ],
+      "collections": [
+        "NLP"
+      ],
+      "tags": [
+        "multilingual",
+        "language models"
+      ],
+      "sources": {
+        "doi": "10.18653/v1/2020.acl-main.747",
+        "unpaywall": true
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://aclanthology.org/2020.acl-main.747/",
+        "statement": "ACL Anthology footer: \"Materials published in or after 2016 are licensed on a Creative Commons Attribution 4.0 International License\" (also https://aclanthology.org/faq/copyright/)"
+      },
+      "pdf": {
+        "url": "https://www.aclweb.org/anthology/2020.acl-main.747.pdf",
+        "sha256": "9ca6c11ff662675a30052e6fd6cf9d2bf2ef0a7105af71261033f4d3400df659",
+        "bytes": 418035
+      }
+    },
+    {
+      "id": "ivanov2022",
+      "key": "IVANV22K",
+      "itemType": "journalArticle",
+      "cases": [
+        "non-Latin author and title (Cyrillic)",
+        "PDF behind a redirect"
+      ],
+      "collections": [
+        "Medicine"
+      ],
+      "tags": [
+        "cardiology"
+      ],
+      "sources": {
+        "doi": "10.3897/icf.2.e80540",
+        "unpaywall": true
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://interventionalcardioforum.net/article/80540/",
+        "statement": "Article page: \"This is an open access article distributed under the terms of the Creative Commons Attribution License (CC BY 4.0)\""
+      },
+      "pdf": {
+        "url": "https://interventionalcardioforum.net/article/80540/download/pdf/",
+        "sha256": "f0972f17b172d6fd7b31510205f0390ec3a8f3bc7b040fd07c655c02dbed7ea9",
+        "bytes": 532425
+      }
+    },
+    {
+      "id": "edmond2020",
+      "key": "EDMND2DT",
+      "itemType": "book",
+      "cases": [
+        "edited book: editor only, no author"
+      ],
+      "collections": [
+        "Open science"
+      ],
+      "tags": [
+        "digital humanities"
+      ],
+      "sources": {
+        "doi": "10.11647/obp.0192",
+        "thoth": "10.11647/OBP.0192"
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://books.openedition.org/obp/11899",
+        "statement": "Open Book Publishers page on OpenEdition Books: \"Creative Commons - Attribution 4.0 International - CC BY 4.0\"; publisher metadata (Thoth) and Crossref: CC BY 4.0. The page on openbookpublishers.com is behind a browser checkpoint for scripts"
+      },
+      "pdf": null
+    },
+    {
+      "id": "eve2020",
+      "key": "EVEVLN22",
+      "itemType": "bookSection",
+      "cases": [
+        "book chapter with editor (editor only in the book record)",
+        "chapter number in the registry title",
+        "subtitle"
+      ],
+      "collections": [
+        "Open science"
+      ],
+      "tags": [
+        "scholarly communication",
+        "digital humanities"
+      ],
+      "sources": {
+        "doi": "10.11647/obp.0192.05",
+        "containerDoi": "10.11647/obp.0192",
+        "thoth": "10.11647/OBP.0192.05"
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://books.openedition.org/obp/11999",
+        "statement": "Open Book Publishers page on OpenEdition Books: \"Only the text can be used under the Creative Commons - Attribution 4.0 International - CC BY 4.0 license. Other elements (illustrations, attached files) are 'All rights reserved', unless otherwise stated\" (only metadata and abstract are kept, no PDF); Thoth and Crossref: CC BY 4.0"
+      },
+      "pdf": null
+    },
+    {
+      "id": "eve2020b",
+      "key": "EVEQVHS2",
+      "itemType": "journalArticle",
+      "cases": [
+        "same single author and year as eve2020 (APA 2020a/2020b)",
+        "article number instead of pages"
+      ],
+      "collections": [],
+      "tags": [
+        "literary studies"
+      ],
+      "sources": {
+        "doi": "10.16995/olh.538"
+      },
+      "sameYearAs": "eve2020",
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://eprints.bbk.ac.uk/id/eprint/31250/",
+        "statement": "Institutional repository record: \"Published Version of Record Available under License Creative Commons Attribution\" (link to CC BY 4.0); Crossref license http://creativecommons.org/licenses/by/4.0. The journal page is behind a browser checkpoint for scripts"
+      },
+      "pdf": null
+    },
+    {
+      "id": "kochan2017",
+      "key": "KCHAN27S",
+      "itemType": "book",
+      "cases": [
+        "monograph, single author",
+        "subtitle",
+        "several ISBNs"
+      ],
+      "collections": [
+        "Open science"
+      ],
+      "tags": [
+        "philosophy of science"
+      ],
+      "sources": {
+        "doi": "10.11647/obp.0129",
+        "thoth": "10.11647/OBP.0129"
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://books.openedition.org/obp/5036",
+        "statement": "Open Book Publishers page on OpenEdition Books: \"Creative Commons - Attribution 4.0 International - CC BY 4.0\"; publisher metadata (Thoth) and Crossref: CC BY 4.0"
+      },
+      "pdf": null
+    },
+    {
+      "id": "gualandi2022",
+      "key": "GUALAND2",
+      "itemType": "thesis",
+      "cases": [
+        "thesis (DataCite)",
+        "supervisors as contributors",
+        "university only in the repository record"
+      ],
+      "collections": [
+        "Open science"
+      ],
+      "tags": [
+        "FAIR data",
+        "humanities"
+      ],
+      "sources": {
+        "doi": "10.5281/zenodo.6385132",
+        "datacite": true,
+        "zenodo": "6385132"
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://zenodo.org/records/6385132",
+        "statement": "Zenodo record: license cc-by-4.0 (Creative Commons Attribution 4.0 International); DataCite rightsList the same"
+      },
+      "pdf": null
+    },
+    {
+      "id": "rda2020",
+      "key": "RDAFAIR2",
+      "itemType": "report",
+      "cases": [
+        "report typed article-journal by the registry",
+        "institutional author (single-field name)"
+      ],
+      "collections": [
+        "Open science"
+      ],
+      "tags": [
+        "FAIR data"
+      ],
+      "sources": {
+        "doi": "10.15497/rda00050",
+        "datacite": true,
+        "zenodo": "3909563"
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://zenodo.org/records/3909563",
+        "statement": "Zenodo record: license cc-by-4.0; DataCite rightsList: Creative Commons Attribution 4.0 International"
+      },
+      "pdf": null
+    },
+    {
+      "id": "jiang2023",
+      "key": "MSTRAL7B",
+      "itemType": "preprint",
+      "cases": [
+        "arXiv preprint without a journal DOI (DataCite DOI)",
+        "18 authors",
+        "particles (de las Casas, Le Scao, El Sayed)",
+        "diacritics (Lélio, Timothée)"
+      ],
+      "collections": [
+        "NLP"
+      ],
+      "tags": [
+        "language models"
+      ],
+      "sources": {
+        "doi": "10.48550/arXiv.2310.06825",
+        "datacite": true,
+        "arxiv": "2310.06825"
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://arxiv.org/abs/2310.06825",
+        "statement": "arXiv OAI-PMH record: <license>http://creativecommons.org/licenses/by/4.0/</license>; DataCite: Creative Commons Attribution 4.0 International"
+      },
+      "pdf": null
+    },
+    {
+      "id": "turingway",
+      "key": "TURNGWAY",
+      "itemType": "webpage",
+      "cases": [
+        "web page without DOI or date",
+        "collective author (single-field name)"
+      ],
+      "collections": [
+        "Open science"
+      ],
+      "tags": [
+        "reproducibility"
+      ],
+      "sources": {},
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://book.the-turing-way.org/reproducible-research/reproducible-research",
+        "statement": "Page footer: \"Content License: Creative Commons Attribution 4.0 International (CC-BY-4.0)\". Entered by hand from the visible page (title, URL, access date): no request recorded"
+      },
+      "pdf": null
+    },
+    {
+      "id": "peroni2023a",
+      "key": "PERNEDT3",
+      "itemType": "journalArticle",
+      "cases": [
+        "same first author and year as peroni2023b, other co-authors (APA 7 adds co-authors)",
+        "editorial",
+        "small PDF"
+      ],
+      "collections": [
+        "Medicine"
+      ],
+      "tags": [
+        "nutrition"
+      ],
+      "sources": {
+        "doi": "10.3389/fnut.2023.1266725",
+        "unpaywall": true
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://www.frontiersin.org/articles/10.3389/fnut.2023.1266725/full",
+        "statement": "Article page: \"This is an open-access article distributed under the terms of the Creative Commons Attribution License (CC BY)\" (link to CC BY 4.0)"
+      },
+      "pdf": {
+        "url": "https://www.frontiersin.org/articles/10.3389/fnut.2023.1266725/pdf?isPublishedV2=False",
+        "sha256": "c1200c118cfc3bfdef70328f99e30b7e9de906fec1b9ed0e73f03e388911fd6e",
+        "bytes": 99906
+      }
+    },
+    {
+      "id": "peroni2023b",
+      "key": "PERNATP3",
+      "itemType": "journalArticle",
+      "cases": [
+        "same first author and year as peroni2023a",
+        "4 authors",
+        "volume of the previous year (vol. 9, 2022) but published 2023"
+      ],
+      "collections": [
+        "Medicine"
+      ],
+      "tags": [
+        "nutrition",
+        "allergy"
+      ],
+      "sources": {
+        "doi": "10.3389/fnut.2022.1032481",
+        "unpaywall": true
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://www.frontiersin.org/articles/10.3389/fnut.2022.1032481/full",
+        "statement": "Article page: \"This is an open-access article distributed under the terms of the Creative Commons Attribution License (CC BY)\" (link to CC BY 4.0)"
+      },
+      "pdf": null,
+      "sameYearAs": "peroni2023a"
+    }
+  ]
+}

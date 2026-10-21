@@ -1,0 +1,32 @@
+{
+  "description": "Reviewed corrections applied by scripts/record-corpus.mjs on top of what the sources give, when it builds library.json. fields: replace a field; creators: patch the creator whose recorded lastName is the key; item: the whole item, for works with no recorded source.",
+  "works": {
+    "eve2020": {
+      "why": "Crossref puts the chapter number in the title (\"5. Violins in the Subway\"); the book prints the title without it",
+      "fields": {
+        "title": "Violins in the Subway: Scarcity Correlations, Evaluative Cultures, and Disciplinary Authority in the Digital Humanities"
+      }
+    },
+    "jiang2023": {
+      "why": "DataCite splits the particles into the given name (given \"Diego de las\", family \"Casas\"); arXiv lists the authors as Diego de las Casas, Lélio Renard Lavaud, Teven Le Scao, William El Sayed",
+      "creators": {
+        "Casas": { "firstName": "Diego", "lastName": "de las Casas" },
+        "Lavaud": { "firstName": "Lélio", "lastName": "Renard Lavaud" },
+        "Scao": { "firstName": "Teven", "lastName": "Le Scao" },
+        "Sayed": { "firstName": "William", "lastName": "El Sayed" }
+      }
+    },
+    "turingway": {
+      "why": "web page without DOI: entered by hand from the visible page",
+      "item": {
+        "itemType": "webpage",
+        "title": "Guide for Reproducible Research",
+        "creators": [{ "creatorType": "author", "name": "The Turing Way Community" }],
+        "websiteTitle": "The Turing Way",
+        "url": "https://book.the-turing-way.org/reproducible-research/reproducible-research",
+        "accessDate": "2026-10-21",
+        "language": "en"
+      }
+    }
+  }
+}

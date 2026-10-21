@@ -1,0 +1,549 @@
+{
+  "description": "Curated Zotero items of the corpus (Web API data objects), built by scripts/record-corpus.mjs from the cassettes and overrides.json. Do not edit by hand.",
+  "collections": [
+    {
+      "key": "CRPSNLP2",
+      "name": "NLP",
+      "parentCollection": false,
+      "relations": {}
+    },
+    {
+      "key": "CRPSPNS2",
+      "name": "Open science",
+      "parentCollection": false,
+      "relations": {}
+    },
+    {
+      "key": "CRPSMED2",
+      "name": "Medicine",
+      "parentCollection": false,
+      "relations": {}
+    }
+  ],
+  "items": [
+    {
+      "key": "CNNEAU22",
+      "itemType": "conferencePaper",
+      "title": "Unsupervised Cross-lingual Representation Learning at Scale",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Alexis",
+          "lastName": "Conneau"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Kartikay",
+          "lastName": "Khandelwal"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Naman",
+          "lastName": "Goyal"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Vishrav",
+          "lastName": "Chaudhary"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Guillaume",
+          "lastName": "Wenzek"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Francisco",
+          "lastName": "Guzmán"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Edouard",
+          "lastName": "Grave"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Myle",
+          "lastName": "Ott"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Luke",
+          "lastName": "Zettlemoyer"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Veselin",
+          "lastName": "Stoyanov"
+        }
+      ],
+      "date": "2020",
+      "DOI": "10.18653/v1/2020.acl-main.747",
+      "url": "http://dx.doi.org/10.18653/v1/2020.acl-main.747",
+      "proceedingsTitle": "Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics",
+      "conferenceName": "Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics",
+      "publisher": "Association for Computational Linguistics",
+      "place": "Stroudsburg, PA, USA",
+      "pages": "8440-8451",
+      "collections": [
+        "CRPSNLP2"
+      ],
+      "tags": [
+        {
+          "tag": "multilingual"
+        },
+        {
+          "tag": "language models"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "IVANV22K",
+      "itemType": "journalArticle",
+      "title": "Анатомия, дизонтогенеза, патофизиология и патогенеза на болестите на вертебробазиларните артерии",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Николай",
+          "lastName": "Иванов"
+        }
+      ],
+      "date": "2022-02-15",
+      "DOI": "10.3897/icf.2.e80540",
+      "url": "http://dx.doi.org/10.3897/icf.2.e80540",
+      "publicationTitle": "Interventional Cardiology Forum",
+      "journalAbbreviation": "ICF",
+      "publisher": "Pensoft Publishers",
+      "volume": "2",
+      "pages": "5-11",
+      "ISSN": "2738-8972",
+      "collections": [
+        "CRPSMED2"
+      ],
+      "tags": [
+        {
+          "tag": "cardiology"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "EDMND2DT",
+      "itemType": "book",
+      "title": "Digital Technology and the Practices of Humanities Research",
+      "creators": [
+        {
+          "creatorType": "editor",
+          "firstName": "Jennifer",
+          "lastName": "Edmond"
+        }
+      ],
+      "abstractNote": "This timely volume illuminates the different forces underlying the shifting practices in humanities research today, with especial focus on how humanists take ownership of, and are empowered by, technology in unexpected ways. Digital Technology and the Practices of Humanities Research is essential reading for scholars, students, and general readers interested in the changing culture of research practices in the humanities, and in the future of the digital humanities on the whole.",
+      "date": "2020-01-30",
+      "DOI": "10.11647/obp.0192",
+      "url": "http://dx.doi.org/10.11647/obp.0192",
+      "language": "en",
+      "publisher": "Open Book Publishers",
+      "place": "Cambridge, UK",
+      "ISBN": "9781783748396",
+      "collections": [
+        "CRPSPNS2"
+      ],
+      "tags": [
+        {
+          "tag": "digital humanities"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "EVEVLN22",
+      "itemType": "bookSection",
+      "title": "Violins in the Subway: Scarcity Correlations, Evaluative Cultures, and Disciplinary Authority in the Digital Humanities",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Martin Paul",
+          "lastName": "Eve"
+        },
+        {
+          "creatorType": "editor",
+          "firstName": "Jennifer",
+          "lastName": "Edmond"
+        }
+      ],
+      "abstractNote": "Eve begins this chapter with a question: how good are we at independently judging research work, devoid of its enframing apparatus? Using the analogy of hearing a world-famous violinist play in a subway, Eve draws our attention to the current circularity of incentives that exist in both authorship and peer-reviewing practices that not only skew our ability to determine quality but are also severely restricting advances in how scholarly literature are assessed. He argues that all systems of evaluation, from peer-review to aggregation, are economic in character and examines how digital humanities pose a set of challenges to the three elements of academic evaluative cultures: the desired scarcity correlation between the research artefact and the position, a frame for evaluation that denotes scarcity, and a set of disciplinary norms about which frames best denote comparable scarcity. Among the strategies for changing cultures suggested by Eve in this chapter are disciplinary segregation, print simulation, and direct economics.",
+      "date": "2020-01-30",
+      "DOI": "10.11647/obp.0192.05",
+      "url": "http://dx.doi.org/10.11647/obp.0192.05",
+      "language": "en",
+      "bookTitle": "Digital Technology and the Practices of Humanities Research",
+      "publisher": "Open Book Publishers",
+      "place": "Cambridge, UK",
+      "pages": "105-122",
+      "ISBN": "9781783748396",
+      "collections": [
+        "CRPSPNS2"
+      ],
+      "tags": [
+        {
+          "tag": "scholarly communication"
+        },
+        {
+          "tag": "digital humanities"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "EVEQVHS2",
+      "itemType": "journalArticle",
+      "title": "Equivocationary Horseshit: Post-Correlationist Aesthetics and Post-Critical Ethics in the Works of David Foster Wallace",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Martin Paul",
+          "lastName": "Eve"
+        }
+      ],
+      "date": "2020",
+      "DOI": "10.16995/olh.538",
+      "url": "http://dx.doi.org/10.16995/olh.538",
+      "language": "en",
+      "publicationTitle": "Open Library of Humanities",
+      "publisher": "Open Library of the Humanities",
+      "volume": "6",
+      "issue": "1",
+      "pages": "8",
+      "ISSN": "2056-6700",
+      "collections": [],
+      "tags": [
+        {
+          "tag": "literary studies"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "KCHAN27S",
+      "itemType": "book",
+      "title": "Science as Social Existence: Heidegger and the Sociology of Scientific Knowledge",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Jeff",
+          "lastName": "Kochan"
+        }
+      ],
+      "abstractNote": "In this bold and original study, Jeff Kochan constructively combines the sociology of scientific knowledge (SSK) with Martin Heidegger’s early existential conception of science. Kochan shows convincingly that these apparently quite different approaches to science are, in fact, largely compatible, even mutually reinforcing.",
+      "date": "2017-12-18",
+      "DOI": "10.11647/obp.0129",
+      "url": "http://dx.doi.org/10.11647/obp.0129",
+      "language": "en",
+      "publisher": "Open Book Publishers",
+      "place": "Cambridge, UK",
+      "ISBN": "9781783744107",
+      "collections": [
+        "CRPSPNS2"
+      ],
+      "tags": [
+        {
+          "tag": "philosophy of science"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "GUALAND2",
+      "itemType": "thesis",
+      "title": "What do we mean by \"data\" in the arts and humanities? Final Dissertation in Open Science",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Bianca",
+          "lastName": "Gualandi"
+        },
+        {
+          "creatorType": "contributor",
+          "firstName": "Silvio",
+          "lastName": "Peroni"
+        },
+        {
+          "creatorType": "contributor",
+          "firstName": "Luca",
+          "lastName": "Pareschi"
+        }
+      ],
+      "abstractNote": "This dissertation describes the interviews we conducted in late 2021 with 1 representative for each of the 19 disciplinary areas within the department of Classical Philology and Italian Studies (FICLIT) at the University of Bologna. The answers we gathered from participants were analysed using a Grounded Theory approach and allowed us to reflect on the definition of the word \"data\" in the humanities domain, what research materials should be considered to fall within this definition, and what researchers in this field think of the term. In addition, we gathered information on other aspects of research, such as methodologies, possible copyright and privacy concerns, preservation strategies, and more.\nFirst, we extracted a list of 16 research materials that constitute the \"building blocks\" of research in the humanities, as far as our interviewees are concerned; publications emerged as the most important one. The majority of participants included most of the materials they use in research within their definition of data, and this term did not seem to be especially problematic for them, contrary to what has been reported elsewhere. Most researchers also stated they have a precise methodology, although rarely formalised, which is surprising when compared to the available literature. Regarding data management practices, our results mostly confirm what emerged from previous studies, but collaboration was a notable exception: sharing with colleagues, and teamwork appear more common than reported elsewhere. Finally, the attitudes towards open science and open data are mostly positive among the interviewees.\nThe study should be replicated on a larger scale, and include other disciplines, to confirm these findings and paint a more precise picture of how research is done in the humanities and how it can be made more FAIR (findable, accessible, interoperable and re-usable).",
+      "date": "2022-03-25",
+      "DOI": "10.5281/zenodo.6385132",
+      "url": "https://zenodo.org/doi/10.5281/zenodo.6385132",
+      "language": "en",
+      "university": "University of Bologna",
+      "collections": [
+        "CRPSPNS2"
+      ],
+      "tags": [
+        {
+          "tag": "FAIR data"
+        },
+        {
+          "tag": "humanities"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "RDAFAIR2",
+      "itemType": "report",
+      "title": "FAIR Data Maturity Model: specification and guidelines",
+      "creators": [
+        {
+          "creatorType": "author",
+          "name": "Research Data Alliance FAIR Data Maturity Model Working Group"
+        }
+      ],
+      "abstractNote": "The FAIR Data Maturity Model defines a set of indicators, their priorities and evaluation methods for the evaluation of the FAIR principles to be used as a common approach across assessment methodologies.",
+      "date": "2020",
+      "DOI": "10.15497/rda00050",
+      "url": "https://zenodo.org/record/3909563#.YGRNnq8za70",
+      "language": "en",
+      "institution": "Research Data Alliance",
+      "collections": [
+        "CRPSPNS2"
+      ],
+      "tags": [
+        {
+          "tag": "FAIR data"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "MSTRAL7B",
+      "itemType": "preprint",
+      "title": "Mistral 7B",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Albert Q.",
+          "lastName": "Jiang"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Alexandre",
+          "lastName": "Sablayrolles"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Arthur",
+          "lastName": "Mensch"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Chris",
+          "lastName": "Bamford"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Devendra Singh",
+          "lastName": "Chaplot"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Diego",
+          "lastName": "de las Casas"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Florian",
+          "lastName": "Bressand"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Gianna",
+          "lastName": "Lengyel"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Guillaume",
+          "lastName": "Lample"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Lucile",
+          "lastName": "Saulnier"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Lélio",
+          "lastName": "Renard Lavaud"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Marie-Anne",
+          "lastName": "Lachaux"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Pierre",
+          "lastName": "Stock"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Teven",
+          "lastName": "Le Scao"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Thibaut",
+          "lastName": "Lavril"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Thomas",
+          "lastName": "Wang"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Timothée",
+          "lastName": "Lacroix"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "William",
+          "lastName": "El Sayed"
+        }
+      ],
+      "abstractNote": "We introduce Mistral 7B v0.1, a 7-billion-parameter language model engineered for superior performance and efficiency. Mistral 7B outperforms Llama 2 13B across all evaluated benchmarks, and Llama 1 34B in reasoning, mathematics, and code generation. Our model leverages grouped-query attention (GQA) for faster inference, coupled with sliding window attention (SWA) to effectively handle sequences of arbitrary length with a reduced inference cost. We also provide a model fine-tuned to follow instructions, Mistral 7B -- Instruct, that surpasses the Llama 2 13B -- Chat model both on human and automated benchmarks. Our models are released under the Apache 2.0 license.",
+      "date": "2023",
+      "DOI": "10.48550/arXiv.2310.06825",
+      "url": "https://arxiv.org/abs/2310.06825",
+      "repository": "arXiv",
+      "archiveID": "arXiv:2310.06825",
+      "collections": [
+        "CRPSNLP2"
+      ],
+      "tags": [
+        {
+          "tag": "language models"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "TURNGWAY",
+      "itemType": "webpage",
+      "title": "Guide for Reproducible Research",
+      "creators": [
+        {
+          "creatorType": "author",
+          "name": "The Turing Way Community"
+        }
+      ],
+      "websiteTitle": "The Turing Way",
+      "url": "https://book.the-turing-way.org/reproducible-research/reproducible-research",
+      "accessDate": "2026-10-21",
+      "language": "en",
+      "collections": [
+        "CRPSPNS2"
+      ],
+      "tags": [
+        {
+          "tag": "reproducibility"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "PERNEDT3",
+      "itemType": "journalArticle",
+      "title": "Editorial: Role of early life nutrition in immunomodulation and microbiota development",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Diego G.",
+          "lastName": "Peroni"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Cristina",
+          "lastName": "Campoy"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Elvira",
+          "lastName": "Verduci"
+        }
+      ],
+      "date": "2023-10-16",
+      "DOI": "10.3389/fnut.2023.1266725",
+      "url": "http://dx.doi.org/10.3389/fnut.2023.1266725",
+      "publicationTitle": "Frontiers in Nutrition",
+      "journalAbbreviation": "Front. Nutr.",
+      "publisher": "Frontiers Media SA",
+      "volume": "10",
+      "pages": "1266725",
+      "ISSN": "2296-861X",
+      "collections": [
+        "CRPSMED2"
+      ],
+      "tags": [
+        {
+          "tag": "nutrition"
+        }
+      ],
+      "relations": {}
+    },
+    {
+      "key": "PERNATP3",
+      "itemType": "journalArticle",
+      "title": "Lack of iron, zinc, and vitamins as a contributor to the etiology of atopic diseases",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Diego G.",
+          "lastName": "Peroni"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Karin",
+          "lastName": "Hufnagl"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Pasquale",
+          "lastName": "Comberiati"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Franziska",
+          "lastName": "Roth-Walter"
+        }
+      ],
+      "abstractNote": "Micronutritional deficiencies are common in atopic children suffering from atopic dermatitis, food allergy, rhinitis, and asthma. A lack of iron, in particular, may impact immune activation with prolonged deficiencies of iron, zinc, vitamin A, and vitamin D associated with a Th2 signature, maturation of macrophages and dendritic cells (DCs), and the generation of IgE antibodies. In contrast, the sufficiency of these micronutrients establishes immune resilience, promotion of regulatory cells, and tolerance induction. As micronutritional deficiencies mimic an infection, the body’s innate response is to limit access to these nutrients and also impede their dietary uptake. Here, we summarize our current understanding of the physiological function of iron, zinc, and vitamins A and D in relation to immune cells and the clinical consequences of deficiencies in these important nutrients, especially in the perinatal period. Improved dietary uptake of iron is achieved by vitamin C, vitamin A, and whey compounds, whereas zinc bioavailability improves through citrates and proteins. The addition of oil is essential for the dietary uptake of beta-carotene and vitamin D. As for vitamin D, the major source comes via sun exposure and only a small amount is consumed via diet, which should be factored into clinical nutritional studies. We summarize the prevalence of micronutritional deficiencies of iron, zinc, and vitamins in the pediatric population as well as nutritional intervention studies on atopic diseases with whole food, food components, and micronutrients. Dietary uptake via the lymphatic route seems promising and is associated with a lower atopy risk and symptom amelioration. This review provides useful information for clinical studies and concludes/emphasizes that a healthy, varied diet containing dairy products, fish, nuts, fruits, and vegetables as well as supplementing foods or supplementation with micronutrients as needed is essential to combat the atopic march.",
+      "date": "2023-01-09",
+      "DOI": "10.3389/fnut.2022.1032481",
+      "url": "http://dx.doi.org/10.3389/fnut.2022.1032481",
+      "publicationTitle": "Frontiers in Nutrition",
+      "journalAbbreviation": "Front. Nutr.",
+      "publisher": "Frontiers Media SA",
+      "volume": "9",
+      "pages": "1032481",
+      "ISSN": "2296-861X",
+      "collections": [
+        "CRPSMED2"
+      ],
+      "tags": [
+        {
+          "tag": "nutrition"
+        },
+        {
+          "tag": "allergy"
+        }
+      ],
+      "relations": {}
+    }
+  ]
+}

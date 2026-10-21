@@ -1,0 +1,118 @@
+[
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://doi.org/10.15497/rda00050",
+      "accept": "application/vnd.citationstyles.csl+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/vnd.citationstyles.csl+json; charset=utf-8",
+      "body": {
+        "type": "article-journal",
+        "title": "FAIR Data Maturity Model: specification and guidelines",
+        "container-title": "Research Data Alliance",
+        "publisher": "Research Data Alliance",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "DOI": "10.15497/RDA00050",
+        "URL": "https://zenodo.org/record/3909563#.YGRNnq8za70",
+        "language": "en",
+        "copyright": "Creative Commons Attribution 4.0 International",
+        "version": "1",
+        "author": [
+          {
+            "literal": "Research Data Alliance FAIR Data Maturity Model Working Group"
+          }
+        ],
+        "abstract": "The FAIR Data Maturity Model defines a set of indicators, their priorities and evaluation methods for the evaluation of the FAIR principles to be used as a common approach across assessment methodologies."
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://api.datacite.org/dois/10.15497/rda00050",
+      "accept": "application/vnd.api+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "body": {
+        "data": {
+          "id": "10.15497/rda00050",
+          "type": "dois",
+          "attributes": {
+            "doi": "10.15497/rda00050",
+            "publicationYear": 2020,
+            "url": "https://zenodo.org/record/3909563#.YGRNnq8za70",
+            "language": "en",
+            "titles": [
+              {
+                "title": "FAIR Data Maturity Model: specification and guidelines"
+              }
+            ],
+            "creators": [
+              {
+                "name": "Research Data Alliance FAIR Data Maturity Model Working Group",
+                "nameType": "Organizational"
+              }
+            ],
+            "contributors": [],
+            "publisher": "Research Data Alliance",
+            "types": {
+              "resourceTypeGeneral": "Text",
+              "resourceType": "Recommendation",
+              "citeproc": "article-journal"
+            },
+            "rightsList": [
+              {
+                "rights": "Creative Commons Attribution 4.0 International",
+                "rightsUri": "https://creativecommons.org/licenses/by/4.0/legalcode",
+                "rightsIdentifier": "cc-by-4.0"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://zenodo.org/api/records/3909563",
+      "accept": "application/json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": 3909563,
+        "doi": "10.15497/rda00050",
+        "metadata": {
+          "title": "FAIR Data Maturity Model. Specification and Guidelines",
+          "publication_date": "2020-06-25",
+          "resource_type": {
+            "title": "Other",
+            "type": "publication",
+            "subtype": "other"
+          },
+          "license": {
+            "id": "cc-by-4.0"
+          },
+          "creators": [
+            {
+              "name": "FAIR Data Maturity Model Working Group"
+            }
+          ],
+          "contributors": []
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,158 @@
+[
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://doi.org/10.5281/zenodo.6385132",
+      "accept": "application/vnd.citationstyles.csl+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/vnd.citationstyles.csl+json; charset=utf-8",
+      "body": {
+        "type": "thesis",
+        "title": "What do we mean by \"data\" in the arts and humanities? Final Dissertation in Open Science",
+        "publisher": "Zenodo",
+        "issued": {
+          "date-parts": [
+            [
+              2022,
+              3,
+              25
+            ]
+          ]
+        },
+        "DOI": "10.5281/ZENODO.6385132",
+        "URL": "https://zenodo.org/doi/10.5281/zenodo.6385132",
+        "language": "en",
+        "copyright": "Creative Commons Attribution 4.0 International",
+        "author": [
+          {
+            "given": "Bianca",
+            "family": "Gualandi"
+          }
+        ],
+        "contributor": [
+          {
+            "given": "Silvio",
+            "family": "Peroni"
+          },
+          {
+            "given": "Luca",
+            "family": "Pareschi"
+          }
+        ],
+        "abstract": "This dissertation describes the interviews we conducted in late 2021 with 1 representative for each of the 19 disciplinary areas within the department of Classical Philology and Italian Studies (FICLIT) at the University of Bologna. The answers we gathered from participants were analysed using a Grounded Theory approach and allowed us to reflect on the definition of the word \"data\" in the humanities domain, what research materials should be considered to fall within this definition, and what researchers in this field think of the term. In addition, we gathered information on other aspects of research, such as methodologies, possible copyright and privacy concerns, preservation strategies, and more.\nFirst, we extracted a list of 16 research materials that constitute the \"building blocks\" of research in the humanities, as far as our interviewees are concerned; publications emerged as the most important one. The majority of participants included most of the materials they use in research within their definition of data, and this term did not seem to be especially problematic for them, contrary to what has been reported elsewhere. Most researchers also stated they have a precise methodology, although rarely formalised, which is surprising when compared to the available literature. Regarding data management practices, our results mostly confirm what emerged from previous studies, but collaboration was a notable exception: sharing with colleagues, and teamwork appear more common than reported elsewhere. Finally, the attitudes towards open science and open data are mostly positive among the interviewees.\nThe study should be replicated on a larger scale, and include other disciplines, to confirm these findings and paint a more precise picture of how research is done in the humanities and how it can be made more FAIR (findable, accessible, interoperable and re-usable)."
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://api.datacite.org/dois/10.5281/zenodo.6385132",
+      "accept": "application/vnd.api+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "body": {
+        "data": {
+          "id": "10.5281/zenodo.6385132",
+          "type": "dois",
+          "attributes": {
+            "doi": "10.5281/zenodo.6385132",
+            "publicationYear": 2022,
+            "url": "https://zenodo.org/doi/10.5281/zenodo.6385132",
+            "language": "en",
+            "titles": [
+              {
+                "title": "What do we mean by \"data\" in the arts and humanities? Final Dissertation in Open Science"
+              }
+            ],
+            "creators": [
+              {
+                "name": "Gualandi, Bianca",
+                "nameType": "Personal",
+                "givenName": "Bianca",
+                "familyName": "Gualandi"
+              }
+            ],
+            "contributors": [
+              {
+                "name": "Peroni, Silvio",
+                "nameType": "Personal",
+                "givenName": "Silvio",
+                "familyName": "Peroni",
+                "contributorType": "Supervisor"
+              },
+              {
+                "name": "Pareschi, Luca",
+                "nameType": "Personal",
+                "givenName": "Luca",
+                "familyName": "Pareschi",
+                "contributorType": "Supervisor"
+              }
+            ],
+            "publisher": "Zenodo",
+            "types": {
+              "resourceTypeGeneral": "Dissertation",
+              "resourceType": "",
+              "citeproc": "thesis"
+            },
+            "rightsList": [
+              {
+                "rights": "Creative Commons Attribution 4.0 International",
+                "rightsUri": "https://creativecommons.org/licenses/by/4.0/legalcode",
+                "rightsIdentifier": "cc-by-4.0"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://zenodo.org/api/records/6385132",
+      "accept": "application/json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "id": 6385132,
+        "doi": "10.5281/zenodo.6385132",
+        "metadata": {
+          "title": "What do we mean by \"data\" in the arts and humanities? Final Dissertation in Open Science",
+          "publication_date": "2022-03-25",
+          "resource_type": {
+            "title": "Thesis",
+            "type": "publication",
+            "subtype": "dissertation"
+          },
+          "license": {
+            "id": "cc-by-4.0"
+          },
+          "thesis": {
+            "university": "University of Bologna"
+          },
+          "creators": [
+            {
+              "name": "Gualandi, Bianca"
+            }
+          ],
+          "contributors": [
+            {
+              "name": "Peroni, Silvio",
+              "type": "Supervisor"
+            },
+            {
+              "name": "Pareschi, Luca",
+              "type": "Supervisor"
+            }
+          ]
+        }
+      }
+    }
+  }
+]
