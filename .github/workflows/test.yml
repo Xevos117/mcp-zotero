@@ -110,3 +110,15 @@ jobs:
           fi
           echo "npx simulation OK: $RESOLVED"
           rm -rf "$SANDBOX"
+
+      # Claude Desktop extension: manifest schema, then the bundle (clean build + production dependencies only),
+      # unpacked outside the workspace and started as a client would from its manifest (stubbed fetch, fake key)
+      - name: Validate MCPB manifest
+        run: npx mcpb validate manifest.json
+        timeout-minutes: 1
+
+      - name: Build the .mcpb bundle and smoke-test it unpacked
+        timeout-minutes: 8
+        run: |
+          npm run bundle
+          npm run smoke -- --bundle dist/mcp-zotero.mcpb

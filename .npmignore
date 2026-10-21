@@ -17,7 +17,6 @@ vitest.config.*
 # Docs & project files
 .docs/
 CLAUDE.md
-smithery.yaml
 notes.md
 TODO.md
 

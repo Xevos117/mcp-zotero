@@ -27,6 +27,7 @@
     "test:watch": "vitest",
     "build": "tsc",
     "smoke": "node scripts/smoke-stdio.mjs",
+    "bundle": "node scripts/build-mcpb.mjs",
     "start": "node build/server.js",
     "prepublishOnly": "npm test && npm run build",
     "test:e2e": "npm run build && vitest run --config vitest.e2e.config.ts",
@@ -57,6 +58,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.296",
+    "@anthropic-ai/mcpb": "2.1.2",
     "@types/node": "^26.6.4",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",

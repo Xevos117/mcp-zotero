@@ -78,8 +78,10 @@ jobs:
   # registry.modelcontextprotocol.io keeps metadata only and checks that the npm package version named in
   # server.json carries the same mcpName, so this runs after the npm publish. GitHub OIDC login grants the
   # io.github.<repository owner>/* namespace: no secret, and id-token only on this job.
+  # Also after skill-zips: on workflow_dispatch with a new tag, that job creates the release and its tag, which the
+  # checkout below needs.
   mcp-registry:
-    needs: npm-publish
+    needs: [npm-publish, skill-zips]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -89,7 +91,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 3
         with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
           persist-credentials: false
+
+      # The checkout must be the released version (on workflow_dispatch the default ref is the branch, not the tag)
+      - name: Check package.json version = release tag
+        timeout-minutes: 1
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          if [ "${TAG#v}" != "$VERSION" ]; then
+            echo "::error::package.json version $VERSION does not match the release tag $TAG"
+            exit 1
+          fi
 
       # Exact release and checksum (registry_<version>_checksums.txt of that release), bumped deliberately.
       # server.json is checked against package.json (version, mcpName) by npm test in the test job.
@@ -166,3 +181,71 @@ jobs:
           for zip_file in dist-skills/*.zip; do
             gh release upload "$TAG" "$zip_file" --clobber
           done
+
+  # ── 5. Build the Claude Desktop extension (.mcpb) ───────────
+  # Read-only job: the bundle is built (npm run bundle: clean build, production dependencies installed without
+  # scripts, packed with the pinned @anthropic-ai/mcpb) and smoke-tested unpacked, then handed over as an artifact.
+  mcpb-build:
+    needs: [test, skill-zips] # skill-zips creates the release (and its tag) when started by hand with a new tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+      # The checkout must be the released version (on workflow_dispatch the default ref is the branch, not the tag)
+      - name: Check package.json version = release tag
+        timeout-minutes: 1
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          VERSION=$(node -p 'require("./package.json").version')
+          if [ "${TAG#v}" != "$VERSION" ]; then
+            echo "::error::package.json version $VERSION does not match the release tag $TAG"
+            exit 1
+          fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 3
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+        timeout-minutes: 5
+      - run: npx mcpb validate manifest.json
+        timeout-minutes: 1
+      - name: Build and smoke-test the bundle
+        timeout-minutes: 8
+        run: |
+          npm run bundle
+          npm run smoke -- --bundle dist/mcp-zotero.mcpb
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        timeout-minutes: 3
+        with:
+          name: mcpb
+          path: dist/mcp-zotero.mcpb
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── 6. Attach the .mcpb to the release ──────────────────────
+  # The only write job for the bundle: no checkout, no npm.
+  mcpb-upload:
+    needs: [mcpb-build, skill-zips]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # upload the release asset
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        timeout-minutes: 3
+        with:
+          name: mcpb
+      - name: Upload the .mcpb to the GitHub Release
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          # Passed through env, never interpolated into the script (workflow_dispatch input).
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: gh release upload "$TAG" mcp-zotero.mcpb --clobber

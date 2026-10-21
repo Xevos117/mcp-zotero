@@ -31,6 +31,9 @@ shipped as a release zip, not in the npm package).
 - Never edit `build/` by hand; it is gitignored and produced by `npm run build`.
 - Tool errors go through `formatErrorResponse` (`isError: true`); empty results through
   `formatEmptyResult` (no `isError`). Deletions are gated by `UNSAFE_OPERATIONS` (`none|items|all`).
+- Distribution metadata lives in `package.json`, `server.json` (MCP Registry) and `manifest.json` (Claude Desktop
+  extension, built by `npm run bundle` with `scripts/build-mcpb.mjs`); `test/utils/release-metadata.test.ts` keeps
+  versions, environment variables and the tool list in sync, so a new env var or tool means updating both files.
 - `.claude/` is ignored except `.claude/skills/` (versioned project skills). `.npmignore` keeps
   `.claude/` and `CLAUDE.md` out of the npm package; `package.json` `files` is `["build"]`.
 
@@ -40,7 +43,7 @@ shipped as a release zip, not in the npm package).
 |---|---|---|
 | `npm test` | unit + per-tool suites: `src/**/*.test.ts`, `test/**/*.test.ts` (excluding `test/e2e`) | none (fetch faked) |
 | `npm run test:e2e` | builds, then `test/e2e/**` against `build/server.js` over stdio | none (fetch redirected to a local fake) |
-| `npm run smoke` | `scripts/smoke-stdio.mjs`: built server, user + group library, stubbed fetch | none |
+| `npm run smoke` | `scripts/smoke-stdio.mjs`: built server, user + group library, stubbed fetch; `-- --bundle dist/mcp-zotero.mcpb`: the unpacked Claude Desktop bundle, started from its manifest | none |
 | `npm run test:live` | builds, then `test/live/**/*.live.test.ts` against the real Zotero Web API | real (needs `ZOTERO_TEST_API_KEY`, skipped otherwise) |
 
 Run `npm run build`, `npm test`, `npm run test:e2e` and `npm run smoke` (each under a timeout)
@@ -68,11 +71,11 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging on Node 22/24/26 |
+| `test.yml` | every PR (any base, so stacked PRs too), push to `main` | build, unit, smoke, e2e, packaging, `.mcpb` bundle (`mcpb validate`, `npm run bundle`, smoke of the unpacked bundle) on Node 22/24/26 |
 | `live-tests.yml` | same-repo PRs, `main`, weekly (Friday), manual | `live-tests-run`: `npm run test:live` in environment `zotero-live`; always cleans up (`npm run test:live:cleanup`), uploads a scrubbed report; `live-tests` (required check) decides from it; weekly failures open/update one issue |
 | `claude-agent-smoke.yml` | same-repo PRs by the owner or `github-actions[bot]` (the agent costs API credits: other people's changes only by hand, after review), manual (run it by hand on `main` after a merge) | prepare (no id-token: install without scripts, build, account checks, lock) → agent (only job with id-token) → verify (`test/live/verify-claims.mjs`) → `agent-smoke` (required check, decides from the others); `agent-smoke-cleanup` (always, also after a cancellation) cleans up and releases the lock |
 | `deps-update.yml` | 1st of the month, manual | agent (no GitHub token, no install scripts, Context7 MCP for library docs, leaves a patch and optionally an issue text) → open-pr (no npm, no id-token: pushes `deps/<date>` and opens the PR labelled `dipendenze` with `GITHUB_TOKEN`, then starts test/live-tests/agent-smoke on the branch with `workflow_dispatch`) → merge-gate (no npm, main's copy of `scripts/deps-merge-gate.mjs`, waits for those checks on the exact SHA, `--match-head-commit`); issue (majors and postponed updates: opens or comments the open issue labelled `dipendenze`). Published agent text goes through `scripts/check-public-text.mjs` |
-| `release.yml` | GitHub release published, manual | tests, npm publish, then `server.json` to the MCP Registry (`mcp-registry`: only job with id-token besides npm-publish, `mcp-publisher` pinned by version + sha256, GitHub OIDC login), skill zips (owner only) |
+| `release.yml` | GitHub release published, manual | tests, npm publish, then `server.json` to the MCP Registry (`mcp-registry`: only job with id-token besides npm-publish, `mcp-publisher` pinned by version + sha256, GitHub OIDC login), skill zips, `.mcpb` (`mcpb-build` read-only, `mcpb-upload` the only write job: no checkout, no npm); `mcp-registry` and `mcpb-build` check out the release tag and fail unless it equals the `package.json` version (owner only) |
 
 The agents authenticate to the Claude API with Anthropic Workload Identity Federation (environment
 variables `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_SERVICE_ACCOUNT_ID`,

@@ -1,0 +1,18 @@
+# Applied by `mcpb pack` (gitignore syntax) to the staging directory of scripts/build-mcpb.mjs, which already
+# holds only manifest.json, package.json, LICENSE, README.md, build/ and the production node_modules. On top of
+# mcpb's own defaults (.git, .env*, *.map, *.d.ts, *.log, package-lock.json, node_modules/.bin, ...).
+*.pem
+*.key
+*.test.js
+# TypeScript sources of the dependencies: never loaded at runtime
+*.ts
+*.mts
+*.cts
+# Repository-only directories (anchored: node_modules/<pkg>/src is runtime code for some packages)
+/src/
+/test/
+/.claude/
+/.vitest/
+/agent-out/
+/agent-audit/
+/live-artifacts/

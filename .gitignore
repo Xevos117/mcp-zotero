@@ -73,3 +73,6 @@ local/
 agent-out/
 agent-audit/
 live-artifacts/
+
+# Claude Desktop extension bundles (npm run bundle writes dist/mcp-zotero.mcpb)
+*.mcpb

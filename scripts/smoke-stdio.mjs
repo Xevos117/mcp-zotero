@@ -2,12 +2,15 @@
 // Stdio smoke test for the built server, run once against a user library and once against a
 // group library (ZOTERO_LIBRARY_TYPE=group): initialize, tools/list, get_collections and
 // inject_citations through the real zotero-api-client (fetch stubbed, fake credentials, no network).
-// Usage: node scripts/smoke-stdio.mjs [--dump <file>]
+// With --bundle the server is the one inside a Claude Desktop extension (.mcpb): the bundle is unpacked outside
+// the repository (so no dependency resolves from the repo's node_modules) and started with the command, args and
+// env that @anthropic-ai/mcpb derives from its manifest.json and the user_config values, as a client would.
+// Usage: node scripts/smoke-stdio.mjs [--dump <file>] [--bundle <file.mcpb>]
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { writeFileSync } from "node:fs";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { XMLValidator } from "fast-xml-parser";
@@ -19,6 +22,9 @@ const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const stub = fileURLToPath(new URL("./smoke-fetch-stub.mjs", import.meta.url));
 const dumpIdx = process.argv.indexOf("--dump");
 const dumpFile = dumpIdx >= 0 ? process.argv[dumpIdx + 1] : undefined;
+const bundleIdx = process.argv.indexOf("--bundle");
+const bundleFile = bundleIdx >= 0 ? process.argv[bundleIdx + 1] : undefined;
+const FAKE_API_KEY = "smoke-fake-key";
 
 const SCENARIOS = [
   { name: "user", env: { ZOTERO_USER_ID: "000000" }, prefix: "/users/000000" },
@@ -99,11 +105,38 @@ async function checkDocx(buffer, expectedUri) {
   }
 }
 
-function runScenario({ name, env, prefix }, docxPath) {
+/** How to start the server for a scenario: the built server of the repository, or the unpacked bundle. */
+async function serverLaunch({ env }, bundle) {
+  if (!bundle) {
+    return { args: ["build/server.js"], cwd: root, env: { ZOTERO_API_KEY: FAKE_API_KEY, ...env } };
+  }
+  const { getMcpConfigForManifest } = await import("@anthropic-ai/mcpb");
+  const userConfig = {
+    zotero_api_key: FAKE_API_KEY,
+    zotero_user_id: env.ZOTERO_USER_ID,
+    ...(env.ZOTERO_LIBRARY_TYPE ? { zotero_library_type: env.ZOTERO_LIBRARY_TYPE } : {}),
+    ...(env.ZOTERO_LIBRARY_ID ? { zotero_library_id: env.ZOTERO_LIBRARY_ID } : {}),
+  };
+  const home = join(bundle.dir, "..");
+  const config = await getMcpConfigForManifest({
+    manifest: bundle.manifest,
+    extensionPath: bundle.dir,
+    systemDirs: { HOME: home, DESKTOP: home, DOCUMENTS: home, DOWNLOADS: home },
+    userConfig,
+    pathSeparator: sep,
+  });
+  if (!config) throw new Error("bundle: no MCP config from the manifest (required user_config missing?)");
+  if (JSON.stringify(config).includes("${")) throw new Error(`bundle: unresolved variable in ${JSON.stringify(config)}`);
+  // Clients run "node" with their own Node.js runtime: here, the one running this script
+  if (config.command !== "node") throw new Error(`bundle: unexpected command ${config.command}`);
+  return { args: config.args, cwd: bundle.dir, env: config.env };
+}
+
+function runScenario({ name, prefix }, launch, docxPath) {
   return new Promise((resolveScenario, rejectScenario) => {
-    const child = spawn(process.execPath, ["--import", stub, "build/server.js"], {
-      cwd: root,
-      env: { PATH: process.env.PATH, ZOTERO_API_KEY: "smoke-fake-key", SMOKE_LIBRARY_PREFIX: prefix, ...env },
+    const child = spawn(process.execPath, ["--import", stub, ...launch.args], {
+      cwd: launch.cwd,
+      env: { PATH: process.env.PATH, SMOKE_LIBRARY_PREFIX: prefix, ...launch.env },
       stdio: ["pipe", "pipe", "pipe"],
     });
 
@@ -189,17 +222,40 @@ function runScenario({ name, env, prefix }, docxPath) {
   });
 }
 
+/** Unpack the bundle outside the repository and check what it contains. */
+async function unpackBundle(file, workDir) {
+  const { unpackExtension } = await import("@anthropic-ai/mcpb");
+  const dir = join(workDir, "extension");
+  if (!(await unpackExtension({ mcpbPath: file, outputDir: dir, silent: true }))) throw new Error(`cannot unpack ${file}`);
+  const manifest = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8"));
+  if (manifest.version !== pkg.version) throw new Error(`bundle manifest version ${manifest.version} != package.json ${pkg.version}`);
+  const entries = await readdir(dir);
+  const unexpected = entries.filter((e) => !["build", "node_modules", "manifest.json", "package.json", "LICENSE", "README.md"].includes(e));
+  if (unexpected.length) throw new Error(`bundle: unexpected top-level entries ${unexpected.join(", ")}`);
+  // Packages the lockfile marks dev-only (not reachable from the production dependencies) must be absent
+  const lock = JSON.parse(await readFile(join(root, "package-lock.json"), "utf8"));
+  const devOnly = Object.entries(lock.packages).filter(([path, info]) => path && info.dev && existsSync(join(dir, path)));
+  if (devOnly.length) throw new Error(`bundle: dev dependencies bundled: ${devOnly.map(([path]) => path).slice(0, 10).join(", ")}`);
+  return { dir, manifest };
+}
+
 const workDir = await mkdtemp(join(tmpdir(), "mcp-zotero-smoke-"));
 try {
+  const bundle = bundleFile ? await unpackBundle(bundleFile, workDir) : undefined;
   for (const scenario of SCENARIOS) {
     const docxPath = await makeDocx(workDir);
-    const { init, tools } = await runScenario(scenario, docxPath);
+    const { init, tools } = await runScenario(scenario, await serverLaunch(scenario, bundle), docxPath);
+    if (bundle) {
+      const listed = tools.map((t) => t.name).sort().join(",");
+      const declared = bundle.manifest.tools.map((t) => t.name).sort().join(",");
+      if (listed !== declared) throw new Error(`bundle: tools/list [${listed}] != manifest tools [${declared}]`);
+    }
     if (dumpFile && scenario.name === "user") {
       const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name));
       writeFileSync(dumpFile, JSON.stringify({ serverInfo: init.serverInfo, tools: sorted }, null, 2));
     }
     console.log(
-      `smoke OK [${scenario.name}]: protocol ${init.protocolVersion}, ${tools.length} tools, ` +
+      `smoke OK [${bundle ? "bundle " : ""}${scenario.name}]: protocol ${init.protocolVersion}, ${tools.length} tools, ` +
         `get_collections + inject_citations via ${scenario.prefix}`
     );
   }
