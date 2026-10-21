@@ -217,7 +217,8 @@ describe("get_collection_items", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("Collection is empty or not accessible");
+    expect(parsed.error).toBe("Collection not found: no collection with this key in this library, or the API key cannot access it.");
+    expect(parsed.suggestion).toMatch(/get_collections.*never guess keys/);
     expect(parsed.status).toBe("not_found");
   });
 });
@@ -339,7 +340,7 @@ describe("get_items_details", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("At least one item key is required");
+    expect(parsed.error).toBe("At least one item key is required: pass item_keys from search_library, get_collection_items or add_items_by_doi.");
   });
 
   it("returns error when no items found", async () => {
@@ -517,7 +518,7 @@ describe("create_collection", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("Collection name is required");
+    expect(parsed.error).toBe("Collection name is required: pass a non-empty name.");
   });
 
   it("returns error when API POST fails", async () => {
@@ -650,7 +651,7 @@ describe("add_items_by_doi", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("At least one DOI is required");
+    expect(parsed.error).toBe('At least one DOI is required: pass dois as an array, e.g. ["10.1038/s41586-023-06647-8"].');
   });
 
   it("passes collection_key and tags to converter", async () => {
@@ -1287,7 +1288,8 @@ describe("get_item_fulltext", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("Item not found");
+    expect(parsed.error).toBe("Item not found in this library");
+    expect(parsed.hint).toMatch(/search_library/);
   });
 });
 
@@ -1853,7 +1855,8 @@ describe("import_pdf_to_zotero", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("Failed to download file from URL");
+    expect(parsed.error).toBe("Failed to download file from URL (HTTP 403)");
+    expect(parsed.suggestion).toMatch(/login, paywall or bot protection/);
     expect(parsed.status).toBe(403);
   });
 
@@ -2035,7 +2038,8 @@ describe("import_pdf_to_zotero", () => {
     expect(parsed.status).toBe(413);
     expect(parsed.suggestion).toContain("zotero.org/settings/storage");
     expect(parsed.item_key).toBe("QUOTA1");
-    expect(parsed.note).toContain("attachment metadata record was created");
+    expect(parsed.note).toContain("An attachment record (item_key) was created without the file");
+    expect(parsed.note).toMatch(/Tell the user/);
   });
 });
 

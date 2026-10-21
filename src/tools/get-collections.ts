@@ -34,7 +34,7 @@ export async function handleGetCollections(
   if (!Array.isArray(allCollections) || allCollections.length === 0) {
     return formatEmptyResult("No collections found", {
       suggestion:
-        "Create a collection in your Zotero library first",
+        "This library has no collections. Items can still be found with search_library; to organize them, create one with create_collection.",
       helpUrl: "https://www.zotero.org/support/collections",
     });
   }
@@ -48,7 +48,7 @@ export async function handleGetCollections(
   if (collections.length === 0) {
     return formatEmptyResult("No collections found", {
       suggestion:
-        "All collections are in the trash. Use include_trashed=true to see them.",
+        "All collections of this library are in the Zotero trash: call again with include_trashed=true to see them, or create a new one with create_collection.",
     });
   }
 

@@ -72,7 +72,7 @@ WHEN TO USE:
 - Mixed batch: if some items have DOIs and others don't, call add_items_by_doi for the DOIs and add_items for the rest (two separate calls)
 - Prefer add_items_by_doi when DOIs are available AND you don't need to override metadata (it auto-resolves everything and attaches OA PDFs)
 
-BATCH: Pass multiple items in the 'items' array (single API call).
+BATCH: Pass multiple items in the 'items' array (one tool call).
 
 COMMON FIELDS (available for most types):
 title, date, abstractNote, url, DOI, publisher, place, pages, volume, language, extra
@@ -167,7 +167,10 @@ export async function handleAddItems(
   const failed = write.failed.map(({ index, error }) => ({ index, title: items[index].title, error }));
 
   if (success.length === 0 && failed.length > 0) {
-    return formatErrorResponse("All items failed to create", { failed });
+    return formatErrorResponse("All items failed to create", {
+      failed,
+      hint: "Nothing was created. failed[].error gives Zotero's reason per item: fix those items (an invalid collection_key: check it with get_collections) and call again; retrying unchanged will fail again.",
+    });
   }
 
   return formatJsonResult({

@@ -10,13 +10,14 @@ export const toolConfig = {
   description: `Replace <zcite> placeholder tags in a .docx file with native Zotero field codes that Zotero for Word can recognize and manage. The tool fetches item metadata from Zotero automatically — you only need to provide the .docx file.
 
 WORKFLOW — how to create a Word document with live Zotero citations:
-1. Collect item keys: use add_items_by_doi (or search_library for existing items)
+1. Collect item keys: use add_items_by_doi or add_items (or search_library for existing items)
 2. Generate .docx: create a Word document (e.g. with the "docx" npm package) with <zcite keys="ITEMKEY"/> placeholders where citations should appear. Each <zcite> MUST be in its own dedicated TextRun — do NOT mix it with surrounding text.
 3. Call this tool with the .docx file path. It replaces every zcite tag with a Zotero field code and appends a bibliography.
 4. Tell the user to open the file in Word with the Zotero plugin, click Zotero → Add/Edit Bibliography, then Zotero → Refresh.
 
 CITATION STYLES — ask the user which style they want before generating:
 - apa (default): author-year — (Smith, 2023)
+- harvard / chicago: author-date, same placeholder text as apa
 - ieee / vancouver: numbered — [1], [2]
   WARNING: for numbered styles every <zcite> MUST include a num="N" attribute with the sequential citation number. Without num, citations render as [?].
 
@@ -69,6 +70,7 @@ export async function handleInjectCitations(
   if (!file_path.endsWith(".docx")) {
     return formatErrorResponse("File must be a .docx file", {
       file_path,
+      hint: "Only Word .docx files are supported and the name must end in lowercase .docx: convert .doc, .odt or .rtf to .docx first, or create the document as .docx with <zcite> placeholders.",
     });
   }
 
@@ -78,7 +80,14 @@ export async function handleInjectCitations(
   } catch (err) {
     // A path from a sandbox or cloud workspace (Claude.ai, Claude Desktop code execution) does not exist here:
     // say so and point to the skill instead of a bare ENOENT.
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
+      return formatErrorResponse(`Cannot read the file or write the _cited copy next to it (${code}).`, {
+        file_path,
+        hint: "Copy the .docx to a folder this server can write to (e.g. the user's Documents) and call again with that path.",
+      });
+    }
+    if (code !== "ENOENT") throw err;
     return formatErrorResponse(FILE_NOT_FOUND, {
       file_path,
       ...(isAbsolute(file_path) ? {} : { hint: "Pass an absolute path." }),

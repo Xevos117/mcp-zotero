@@ -7,13 +7,14 @@ import { cslToZoteroItem } from "../utils/csl-to-zotero.js";
 import { postInBatches } from "../utils/write-results.js";
 import { OaPdfResult, attachOpenAccessPdfs } from "../utils/oa-pdf.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { UNPAYWALL_EMAIL_HINT, UNPAYWALL_EMAIL_MISSING } from "../utils/unpaywall.js";
 
 export const toolConfig = {
   name: "add_items_by_doi",
   description: `Add items to your Zotero library by resolving DOIs. Works with ANY item type that has a DOI — journal articles, books, datasets, preprints, conference papers, reports, etc. For each DOI, resolves metadata via content negotiation and creates the item in Zotero with the correct type automatically. Returns a list of successfully added items (with item_key and title) and any failures.
 
 WHEN TO USE vs add_items:
-- Use add_items_by_doi when the item HAS a DOI — it auto-resolves all metadata and attaches OA PDFs.
+- Use add_items_by_doi when the item HAS a DOI — it auto-resolves all metadata and attaches open-access PDFs (when the server has UNPAYWALL_EMAIL set).
 - Use add_items when the item does NOT have a DOI, or when you need to override specific metadata fields (add_items_by_doi does not allow metadata overrides).
 - Mixed batch: if some items have DOIs and others don't, make two separate calls — add_items_by_doi for the DOIs and add_items for the rest.
 
@@ -24,7 +25,7 @@ WORKFLOW TIPS:
     dois: z
       .array(z.string().trim().min(1, "DOI must not be empty"))
       .describe(
-        'Array of DOI strings (e.g. ["10.1038/s41586-023-06647-8"]). Each DOI will be resolved and added to Zotero.'
+        'Array of bare DOIs (e.g. ["10.1038/s41586-023-06647-8"], without "https://doi.org/"). Each DOI will be resolved and added to Zotero.'
       ),
     collection_key: zoteroKey()
       .optional()
@@ -39,7 +40,7 @@ WORKFLOW TIPS:
       .boolean()
       .default(true)
       .describe(
-        "Attach freely available OA PDFs via Unpaywall (default: true). This is lightweight and adds no cost — leave enabled. Only set to false if PDF attachment is causing errors."
+        "Attach open-access PDFs found via Unpaywall (default: true; needs UNPAYWALL_EMAIL in the server settings, uses the user's Zotero file storage). Leave enabled unless the user does not want PDFs or attachment is causing errors."
       ),
     ...libraryArgsSchema,
   },
@@ -62,7 +63,7 @@ export async function handleAddItemsByDoi(
   const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (dois.length === 0) {
-    return formatErrorResponse("At least one DOI is required");
+    return formatErrorResponse('At least one DOI is required: pass dois as an array, e.g. ["10.1038/s41586-023-06647-8"].');
   }
 
   const resolved = await resolveDois(dois);
@@ -70,6 +71,9 @@ export async function handleAddItemsByDoi(
   if (resolved.success.length === 0) {
     return formatErrorResponse("All DOI resolutions failed", {
       failed: resolved.failed,
+      hint:
+        "Nothing was created; failed[].error gives the reason per DOI. Pass bare DOIs (10.xxxx/...) and check them for typos. " +
+        "For a DOI that does not resolve, add the item with add_items and its metadata instead. If every DOI failed with a timeout, network or 5xx error, retry later.",
     });
   }
 
@@ -92,7 +96,10 @@ export async function handleAddItemsByDoi(
 
   if (write.created.length === 0) {
     const errorMessages = write.failed.map(({ index, error }) => `Item ${index}: ${error}`).join("; ");
-    return formatErrorResponse(`Zotero API write failed: ${errorMessages}`, { failed });
+    return formatErrorResponse(`Zotero API write failed: ${errorMessages}`, {
+      failed,
+      hint: "Nothing was created. Fix what failed[].error reports (an invalid collection_key: check it with get_collections) and retry; for a rate limit or server error, wait a minute and retry once.",
+    });
   }
 
   const success = write.created.map(({ index, entity }) => {
@@ -117,6 +124,7 @@ export async function handleAddItemsByDoi(
   }
 
   const quotaHit = pdf_results?.some((r) => r.status === "quota_exceeded");
+  const unpaywallOff = pdf_results?.some((r) => r.reason === UNPAYWALL_EMAIL_MISSING);
 
   return formatJsonResult({
     success,
@@ -125,8 +133,9 @@ export async function handleAddItemsByDoi(
     ...(quotaHit
       ? {
           storage_quota_warning:
-            "Zotero storage quota is full. Some PDF attachments were skipped. All items were created successfully (metadata only). Free up space at https://www.zotero.org/settings/storage or upgrade your plan.",
+            "Zotero storage quota is full. Some PDF attachments were skipped. All items were created successfully (metadata only). Tell the user they can free up space or upgrade at https://www.zotero.org/settings/storage, then attach the PDFs with find_and_attach_pdfs.",
         }
       : {}),
+    ...(unpaywallOff ? { hint: UNPAYWALL_EMAIL_HINT } : {}),
   });
 }

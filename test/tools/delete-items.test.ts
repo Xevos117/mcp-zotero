@@ -5,6 +5,7 @@ import {
   expectValidationError,
   expectErrorJson,
   expectToolError,
+  expectApiError,
 } from "../helpers/mcp-harness.js";
 import { networkError, jsonResponse } from "../helpers/fake-net.js";
 import { ZBASE, zError, zDeleted, zLibraryQuery, article, manyArticles, zoteroEntity } from "../helpers/zotero-fake.js";
@@ -34,6 +35,11 @@ describe("delete_items (MCP)", () => {
       expect(json).toEqual(
         expect.objectContaining({ env_var: "UNSAFE_OPERATIONS", current_value: "none", required_values: ["items", "all"] })
       );
+      expect(json.error).toMatch(/disabled in this server's configuration \(UNSAFE_OPERATIONS is 'none'\)\. Nothing was deleted\./);
+      // il modello deve spiegarlo all'utente (valori, dove impostarli, riavvio) e non aggirare il blocco
+      expect(json.hint).toMatch(/^Do not try to get around this with other tools/);
+      expect(json.hint).toContain("'items' (allows delete_items) or 'all' (also delete_collection)");
+      expect(json.hint).toMatch(/server's settings .*claude_desktop_config\.json or \.mcp\.json.*restart the client/);
       expect(h.net.calls).toHaveLength(0);
     });
 
@@ -103,6 +109,7 @@ describe("delete_items (MCP)", () => {
       h.net.on("GET", ITEMS, zLibraryQuery([]));
       const json = expectErrorJson(await h.call("delete_items", { item_keys: ["GPNEQQQR"] }), "No items found");
       expect(json.status).toBe("not_found");
+      expect(json.hint).toMatch(/^Nothing was deleted: none of these keys exists.*search_library/);
       expect(h.net.requests("DELETE", ITEMS)).toHaveLength(0);
     });
 
@@ -111,13 +118,15 @@ describe("delete_items (MCP)", () => {
       h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
       h.net.on("DELETE", ITEMS, zError(412));
       const json = expectErrorJson(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), "modified by another client");
+      expect(json.error).toMatch(/nothing was deleted\. Retry the same call\./);
       expect(json.status).toBe("version_conflict");
     });
 
     it("DI-07 versione di libreria assente → errore strutturato, nessuna DELETE", async () => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, jsonResponse([zoteroEntity(article("AAAARRRR"))]));
-      expectErrorJson(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), "Could not determine library version");
+      const json = expectErrorJson(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), "Could not determine library version");
+      expect(json.hint).toBe("Nothing was deleted. Retry the same call once.");
       expect(h.net.requests("DELETE", ITEMS)).toHaveLength(0);
     });
 
@@ -148,20 +157,20 @@ describe("delete_items (MCP)", () => {
     it.each([403, 404, 429, 500, 503])("DI-10 HTTP %i sulla GET → isError", async (status) => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, zError(status));
-      expectToolError(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), String(status));
+      expectApiError(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), status);
     });
 
     it.each([403, 429, 500])("DI-11 HTTP %i sulla DELETE → isError", async (status) => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
       h.net.on("DELETE", ITEMS, zError(status));
-      expectToolError(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), String(status));
+      expectApiError(await h.call("delete_items", { item_keys: ["AAAARRRR"] }), status);
     });
 
     it("DI-12 errore di rete → isError", async () => {
       h = await startHarness({ unsafeOps: "items" });
       h.net.on("GET", ITEMS, networkError());
-      expectToolError(await h.call("delete_items", { item_keys: ["AAAARRRR"] }));
+      expectApiError(await h.call("delete_items", { item_keys: ["AAAARRRR"] }));
     });
 
     describe("validazione input", () => {

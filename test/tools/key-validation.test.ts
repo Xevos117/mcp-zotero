@@ -47,7 +47,11 @@ describe("validazione delle chiavi Zotero (path traversal, filtri itemKey ignora
 
   for (const [tool, arg, base, put] of CASES) {
     it.each(BAD_KEYS)(`KV-01 ${tool}.${arg} = %j → errore di validazione, nessuna richiesta`, async (key) => {
-      expectValidationError(await h.call(tool, { ...base, [arg]: put(key) }), arg);
+      const out = await h.call(tool, { ...base, [arg]: put(key) });
+      expectValidationError(out, arg);
+      // il messaggio dice il formato e da dove prendere chiavi valide
+      expect(out.text).toContain("expected 8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ (e.g. ABCD2345)");
+      expect(out.text).toContain("never guess keys");
       expect(h.net.calls).toHaveLength(0);
     });
   }

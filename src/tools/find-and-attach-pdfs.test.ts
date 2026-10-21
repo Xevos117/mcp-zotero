@@ -92,7 +92,7 @@ describe("find_and_attach_pdfs handler", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("Provide either item_keys or collection_key, not both");
+    expect(parsed.error).toBe("Provide either item_keys or collection_key, not both: call once per selection.");
   });
 
   it("returns error when neither item_keys nor collection_key provided", async () => {
@@ -105,7 +105,7 @@ describe("find_and_attach_pdfs handler", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("Provide either item_keys or collection_key");
+    expect(parsed.error).toMatch(/^Provide either item_keys or collection_key: item_keys for specific items \(from search_library\), collection_key .*get_collections/);
   });
 
   it("attaches PDF when OA is found", async () => {
@@ -167,7 +167,7 @@ describe("find_and_attach_pdfs handler", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.errors).toBe(1);
     expect(parsed.results[0].status).toBe("error");
-    expect(parsed.results[0].reason).toBe("No DOI");
+    expect(parsed.results[0].reason).toMatch(/^No DOI: Unpaywall needs one\..*import_pdf_to_zotero/);
   });
 
   it("skips items with existing PDF attachment when skip_if_attachment_exists is true", async () => {

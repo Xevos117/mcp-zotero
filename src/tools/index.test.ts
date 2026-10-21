@@ -16,7 +16,7 @@ describe("tool error logging (runTool)", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it.each(["search_library", "get_collections", "get_items_details"])(
-    "%s: a Zotero API error is rethrown and logged once with tool, status and URL",
+    "%s: a Zotero API error becomes a structured error with a hint, logged once with tool, status and URL",
     async (tool) => {
       const writes: string[] = [];
       vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
@@ -24,13 +24,27 @@ describe("tool error logging (runTool)", () => {
         return true;
       });
       const args = tool === "get_items_details" ? { item_keys: ["ABCDR234"] } : {};
-      await expect(handleToolCall(tool, args, failingApi(503), "1")).rejects.toThrow("HTTP 503");
+      const result = await handleToolCall(tool, args, failingApi(503), "1");
+      expect(result.isError).toBe(true);
+      const body = JSON.parse((result.content[0] as { text: string }).text);
+      expect(body).toMatchObject({ http_status: 503, error: expect.stringContaining("temporarily unavailable") });
+      expect(body.hint).toMatch(/retry once/);
+      expect(JSON.stringify(body)).not.toContain("api.zotero.org/users/1");
       const logged = writes.map((w) => JSON.parse(w)).filter((e) => e.message === "Tool execution failed");
       expect(logged).toEqual([
         expect.objectContaining({ level: "error", tool, status: 503, url: "https://api.zotero.org/users/1/items" }),
       ]);
     }
   );
+
+  it("rethrows errors that are not API, timeout or network errors (bugs keep their message)", async () => {
+    const chain: Record<string, unknown> = {};
+    const handler: ProxyHandler<Record<string, unknown>> = {
+      get: (_t, prop) => (prop === "get" ? async () => { throw new RangeError("boom"); } : () => new Proxy(chain, handler)),
+    };
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    await expect(handleToolCall("search_library", {}, new Proxy(chain, handler) as unknown as ZoteroApiInterface, "1")).rejects.toThrow("boom");
+  });
 
   it("rejects unknown tools", async () => {
     await expect(handleToolCall("nope", {}, failingApi(500), "1")).rejects.toThrow("Unknown tool: nope");

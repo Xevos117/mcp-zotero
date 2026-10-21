@@ -4,11 +4,12 @@ import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { formatWriteErrors } from "../utils/write-results.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { COLLECTION_KEY_HINT, ITEM_KEY_HINT } from "../utils/error-hints.js";
 
 export const toolConfig = {
   name: "add_linked_url_attachment",
   description:
-    "Attach a linked URL to an existing Zotero item, or create a standalone linked-URL attachment. Use this to link external PDFs, web pages, or other resources to items already in your library. If parent_item is provided, the attachment is added as a child; otherwise it is standalone.",
+    "Attach a linked URL to an existing Zotero item, or create a standalone linked-URL attachment. Use this to link external PDFs, web pages, or other resources to items already in your library. If parent_item is provided, the attachment is added as a child; otherwise it is standalone. A linked URL stores no file and no full text (get_item_fulltext cannot read it): to store a PDF in Zotero use import_pdf_to_zotero.",
   inputSchema: {
     url: z.string().url().describe("URL of the resource to link"),
     title: z
@@ -24,7 +25,7 @@ export const toolConfig = {
     parent_item: zoteroKey()
       .optional()
       .describe(
-        "Item key of the parent item. If provided, the attachment becomes a child of that item."
+        "Key of the parent item (a regular item, not an attachment or note), from search_library or get_collection_items. If provided, the attachment becomes a child of that item."
       ),
     collections: z
       .array(zoteroKey())
@@ -78,6 +79,9 @@ export async function handleAddLinkedUrlAttachment(
     const errorMsg = formatWriteErrors(response.getErrors());
     return formatErrorResponse("Failed to create linked URL attachment", {
       details: errorMsg,
+      hint: parent_item
+        ? `details has Zotero's reason. parent_item must be an existing regular item, not an attachment or note: ${ITEM_KEY_HINT}`
+        : `details has Zotero's reason. Check the collections keys: ${COLLECTION_KEY_HINT}`,
     });
   }
 

@@ -5,6 +5,7 @@ import {
   expectValidationError,
   expectErrorJson,
   expectToolError,
+  expectApiError,
   ZOTERO_ERROR_STATUSES,
 } from "../helpers/mcp-harness.js";
 import { networkError } from "../helpers/fake-net.js";
@@ -76,6 +77,7 @@ describe("add_linked_url_attachment (MCP)", () => {
       "Failed to create linked URL attachment"
     );
     expect(json).toHaveProperty("details");
+    expect(json.hint).toMatch(/parent_item must be an existing regular item.*search_library/);
   });
 
   // BUG: add-linked-url-attachment.ts:78 — stesso problema di create_collection:
@@ -101,11 +103,11 @@ describe("add_linked_url_attachment (MCP)", () => {
 
   it.each(ZOTERO_ERROR_STATUSES)("ALU-08 HTTP %i → isError", async (status) => {
     h.net.on("POST", ITEMS, zError(status));
-    expectToolError(await h.call("add_linked_url_attachment", { url: URL_ }), String(status));
+    expectApiError(await h.call("add_linked_url_attachment", { url: URL_ }), status);
   });
 
   it("ALU-09 errore di rete → isError", async () => {
     h.net.on("POST", ITEMS, networkError());
-    expectToolError(await h.call("add_linked_url_attachment", { url: URL_ }));
+    expectApiError(await h.call("add_linked_url_attachment", { url: URL_ }));
   });
 });

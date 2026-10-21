@@ -173,3 +173,21 @@ export function carriesApiKey(headers: Headers, key = TEST_API_KEY): boolean {
 
 /** Stati HTTP d'errore Zotero da coprire in ogni tool. */
 export const ZOTERO_ERROR_STATUSES = [403, 404, 412, 429, 500, 503] as const;
+
+/**
+ * Errore dell'API Zotero (o di rete) tradotto da runTool: JSON `{ error, hint, http_status }` con isError.
+ * Senza `status`: errore di rete o timeout (nessun http_status).
+ */
+export function expectApiError(outcome: ToolOutcome, status?: number): any {
+  expect(outcome.isError).toBe(true);
+  expect(outcome.json).toBeTypeOf("object");
+  expect(outcome.json.error).toBeTypeOf("string");
+  expect(outcome.json.hint).toBeTypeOf("string");
+  if (status === undefined) {
+    expect(outcome.json.error).toMatch(/^Network error|timed out/);
+  } else {
+    expect(outcome.json.http_status).toBe(status);
+    expect(outcome.json.error).toContain(`HTTP ${status}`);
+  }
+  return outcome.json;
+}

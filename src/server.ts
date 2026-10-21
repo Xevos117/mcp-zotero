@@ -45,10 +45,12 @@ class ZoteroServer {
           "4. Tell the user to open it in Word with the Zotero plugin → Zotero → Add/Edit Bibliography, then Zotero → Refresh.",
           "",
           "KEY NOTES:",
-          "- add_items_by_doi auto-attaches OA PDFs via Unpaywall at no cost. Do not disable auto_attach_pdf unless it causes errors.",
+          "- add_items_by_doi auto-attaches open-access PDFs found via Unpaywall (needs UNPAYWALL_EMAIL in the server settings; uses the user's Zotero storage). Do not disable auto_attach_pdf unless it causes errors.",
           "- For IEEE/Vancouver (numbered) citation styles, every <zcite> MUST include a num attribute. num is the citation number assigned in order of first appearance in the text (first cited = num=\"1\", second = num=\"2\", etc.). For multi-item citations use comma-separated values: keys=\"KEY1,KEY2\" num=\"1,2\". Without num, citations render as [?].",
           "- If the .docx is in a sandbox or cloud workspace this server cannot see (code execution in Claude.ai or Claude Desktop), use the zotero-mcp-integrations skill instead of inject_citations. If it is not installed, recommend zotero-skill-mcp-integrations.zip from https://github.com/Xevos117/mcp-zotero/releases/latest.",
           "- get_user_id is only needed by the skill script (inject.js), not by the inject_citations tool.",
+          "- Deleting is off unless the server setting UNSAFE_OPERATIONS allows it ('items': delete_items; 'all': also delete_collection). Never work around a blocked deletion with other tools.",
+          "- Errors carry a hint with the next step. When it says the fix is on the user's side (API key, server settings), tell the user instead of retrying.",
         ].join("\n"),
       }
     );
@@ -61,7 +63,7 @@ class ZoteroServer {
     } else {
       const apiKey = process.env.ZOTERO_API_KEY || "";
       if (!apiKey) {
-        throw new Error("Missing ZOTERO_API_KEY environment variable");
+        throw new Error("Missing ZOTERO_API_KEY environment variable (create a key at https://www.zotero.org/settings/keys)");
       }
       // Validate the library configuration eagerly so a misconfigured server fails
       // fast at startup rather than on the first tool call. ZOTERO_LIBRARY_ID takes

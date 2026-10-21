@@ -2,6 +2,7 @@ import { InvalidJsonResponseError, readJsonObject } from "./json-response.js";
 import { fetchWithRetry } from "./fetch-retry.js";
 import { logger } from "./logger.js";
 import { errorMessage } from "./error-formatter.js";
+import { SERVER_SETTINGS } from "./error-hints.js";
 
 export interface UnpaywallOaLocation {
   url_for_pdf: string | null;
@@ -31,16 +32,34 @@ export interface OaPdfLookupResult {
   warning?: string;
 }
 
+/** Per-item reason when the lookup is disabled; tools add UNPAYWALL_EMAIL_HINT once at top level. */
+export const UNPAYWALL_EMAIL_MISSING =
+  "UNPAYWALL_EMAIL is not set or invalid in the server configuration: open-access PDF lookup skipped.";
+
+export const UNPAYWALL_EMAIL_HINT =
+  "No PDF lookup was done (the items themselves are fine). Tell the user that open-access PDF lookup needs UNPAYWALL_EMAIL " +
+  `(a valid email address of theirs, which Unpaywall requires with each request) in ${SERVER_SETTINGS}, and then run find_and_attach_pdfs.`;
+
 const SKIPPED_RESULT: OaPdfLookupResult = {
   found: false,
   pdf_url: null,
   source: null,
   license: null,
   oa_status: null,
-  warning: "UNPAYWALL_EMAIL environment variable is not set or invalid. Set it to a valid email address to enable OA PDF lookup.",
+  warning: UNPAYWALL_EMAIL_MISSING,
 };
 
-const UNAVAILABLE_RESULT: OaPdfLookupResult = { found: false, pdf_url: null, source: null, license: null, oa_status: null };
+/** Unpaywall unreachable or failing: not the same as "no open access copy", so say so. */
+function unavailableResult(what: string): OaPdfLookupResult {
+  return {
+    found: false,
+    pdf_url: null,
+    source: null,
+    license: null,
+    oa_status: null,
+    warning: `Unpaywall lookup failed (${what}): this does not mean there is no open access PDF. Retry later with find_and_attach_pdfs.`,
+  };
+}
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -69,12 +88,16 @@ export async function lookupOaPdfWithFallbacks(doi: string): Promise<{
   } catch (err) {
     const detail = errorMessage(err);
     logger.error("Unpaywall API network error", { doi, error: detail });
-    return { primary: { ...UNAVAILABLE_RESULT }, fallback_urls: [] };
+    return { primary: unavailableResult(detail), fallback_urls: [] };
   }
 
   if (!response.ok) {
     logger.error("Unpaywall API error", { doi, status: response.status });
-    return { primary: { ...UNAVAILABLE_RESULT }, fallback_urls: [] };
+    if (response.status === 404) {
+      // Unpaywall does not know the DOI (not a Crossref DOI, e.g. DataCite): nothing to look up
+      return { primary: { found: false, pdf_url: null, source: null, license: null, oa_status: null }, fallback_urls: [] };
+    }
+    return { primary: unavailableResult(`HTTP ${response.status}`), fallback_urls: [] };
   }
 
   let data: UnpaywallResult;
@@ -83,7 +106,7 @@ export async function lookupOaPdfWithFallbacks(doi: string): Promise<{
   } catch (err) {
     if (!(err instanceof InvalidJsonResponseError)) throw err;
     logger.error("Unpaywall API returned an invalid response", { doi, error: err.message });
-    return { primary: { ...UNAVAILABLE_RESULT }, fallback_urls: [] };
+    return { primary: unavailableResult(err.message), fallback_urls: [] };
   }
 
   const locations = data.is_oa

@@ -1,6 +1,6 @@
 import { InvalidJsonResponseError, readJsonObject } from "./json-response.js";
 import { createHash } from "node:crypto";
-import { ZoteroApiInterface } from "../types/zotero-types.js";
+import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
 import { logger } from "./logger.js";
 import { extractPdfText } from "./pdf-text-extractor.js";
 import { putFulltext } from "./zotero-fulltext.js";
@@ -237,6 +237,7 @@ export async function downloadAndUploadPdf(
       error: {
         code: "item_creation_failed" as const,
         message: `Failed to create attachment item: ${detail}`,
+        ...(isZoteroApiError(err) ? { status: err.response.status } : {}),
         networkDetail: detail,
       },
     };

@@ -46,7 +46,7 @@ describe.skipIf(!live.enabled)("get_item_fulltext (live)", () => {
   it("LIVE-GIF-04 webpage senza allegati → guida a usare l'URL", async () => {
     const r = await s.call("get_item_fulltext", { item_key: live.fixtures.webpage });
     expect(r.isError).toBe(true);
-    expect(r.json).toMatchObject({ error: "This is a web page item. Use the item's URL to fetch its content directly.", url: "https://example.org/mzt-page" });
+    expect(r.json).toMatchObject({ error: expect.stringMatching(/^This is a web page item: Zotero has no PDF text for it\. Fetch its URL directly/), url: "https://example.org/mzt-page" });
   });
 
   it("LIVE-GIF-05 articolo con URL e senza allegati → nessun PDF, guida all'URL", async () => {
@@ -58,11 +58,13 @@ describe.skipIf(!live.enabled)("get_item_fulltext (live)", () => {
 
   it("LIVE-GIF-06 voce senza URL né allegati → nessun PDF", async () => {
     const r = await s.call("get_item_fulltext", { item_key: live.fixtures.noAuthor });
-    expect(r.json.error).toBe("No PDF attachment found for this item.");
+    expect(r.json.error).toMatch(/^No PDF attachment found for this item\. Attach one with find_and_attach_pdfs/);
   });
 
   it("LIVE-GIF-07 chiave inesistente → Item not found; max_characters non numerico → errore", async () => {
-    expect((await s.call("get_item_fulltext", { item_key: FAKE_KEY })).json?.error).toBe("Item not found");
+    const missing = (await s.call("get_item_fulltext", { item_key: FAKE_KEY })).json;
+    expect(missing?.error).toBe("Item not found in this library");
+    expect(missing?.hint).toMatch(/search_library/);
     expect((await s.call("get_item_fulltext", { item_key: parent, max_characters: "x" })).text).toMatch(/max_characters/);
   });
 

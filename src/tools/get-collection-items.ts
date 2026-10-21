@@ -5,17 +5,18 @@ import { formatJsonResult, formatErrorResponse, formatEmptyResult } from "../uti
 import { formatCreators, formatTags } from "../utils/item-formatter.js";
 import { fetchAllPages } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { COLLECTION_KEY_HINT } from "../utils/error-hints.js";
 
 export const toolConfig = {
   name: "get_collection_items",
-  description: "Get all items in a specific Zotero collection. Returns item keys, titles, authors, and dates. Use the collectionKey from get_collections. Use the returned item keys with get_items_details, get_item_fulltext, or inject_citations.",
+  description: "Get all items in a specific Zotero collection (only items directly in it, not those in its subcollections). Returns item keys, titles, authors, and dates. Use the collectionKey from get_collections. Use the returned item keys with get_items_details, get_item_fulltext, or inject_citations.",
   inputSchema: {
-    collectionKey: zoteroKey().describe("The collection key/ID"),
+    collectionKey: zoteroKey().describe("Collection key from get_collections"),
     excludeAttachments: z
       .boolean()
       .default(true)
       .describe(
-        "Exclude attachment and note items (default: true)"
+        "Exclude attachment and note items (default: true). Set false to list them too."
       ),
     ...libraryArgsSchema,
   },
@@ -39,7 +40,8 @@ export async function handleGetCollectionItems(
     if (!allItems || allItems.length === 0) {
       return formatEmptyResult("Collection is empty", {
         collectionKey,
-        suggestion: "Add some items to this collection in Zotero",
+        suggestion:
+          "No items directly in this collection. Items of its subcollections are not listed: find them with get_collections (parentCollection = this key). To add items, pass collection_key to add_items_by_doi or add_items.",
         status: "empty",
       });
     }
@@ -72,7 +74,7 @@ export async function handleGetCollectionItems(
         {
           collectionKey,
           suggestion:
-            "Check that items in this collection have the expected metadata",
+            "The collection contains only attachments or notes, which excludeAttachments=true (the default) hides: call again with excludeAttachments=false to list them.",
           status: "invalid_items",
         }
       );
@@ -87,11 +89,10 @@ export async function handleGetCollectionItems(
     if (isZoteroApiError(err)) {
       if (err.response?.status === 404) {
         return formatErrorResponse(
-          "Collection is empty or not accessible",
+          "Collection not found: no collection with this key in this library, or the API key cannot access it.",
           {
             collectionKey,
-            suggestion:
-              "Verify the collection exists and try adding some items to it",
+            suggestion: COLLECTION_KEY_HINT,
             status: "not_found",
           }
         );

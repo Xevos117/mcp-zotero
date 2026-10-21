@@ -57,7 +57,9 @@ export function getDefaultLibrary(): { type: LibraryType; id: string } {
   }
   const id = getLibraryId();
   if (!id) {
-    throw new Error("Missing ZOTERO_USER_ID or ZOTERO_LIBRARY_ID environment variable");
+    throw new Error(
+      "Missing ZOTERO_USER_ID or ZOTERO_LIBRARY_ID environment variable (the userID is shown at https://www.zotero.org/settings/keys)"
+    );
   }
   assertLibraryId(id, process.env.ZOTERO_LIBRARY_ID ? "ZOTERO_LIBRARY_ID" : "ZOTERO_USER_ID");
   return { type, id };
@@ -68,19 +70,14 @@ export const libraryArgsSchema = {
   library_type: z
     .enum(["user", "group"])
     .optional()
-    .describe(
-      "Override the configured Zotero library type for this call. " +
-      "Defaults to ZOTERO_LIBRARY_TYPE env (or 'user'). " +
-      "Use to target a different library per call without restarting the server."
-    ),
+    .describe("Library for this call: 'user' (personal) or 'group'. Default: the library configured on the server."),
   library_id: z
     .string()
-    .regex(LIBRARY_ID_PATTERN, "library_id must be a numeric Zotero library ID")
+    .regex(LIBRARY_ID_PATTERN, "library_id must be a numeric Zotero user or group ID (a group's ID is the number in its zotero.org/groups/<id> URL)")
     .optional()
     .describe(
-      "Override the configured library ID for this call. " +
-      "Defaults to ZOTERO_LIBRARY_ID env (or ZOTERO_USER_ID). " +
-      "Required when library_type is 'group' and the server is configured for a user library."
+      "Numeric user or group ID for this call (a group's ID is the number in its zotero.org/groups/<id> URL). " +
+      "Default: the configured library. Required with library_type 'group' when the server is configured for a user library."
     ),
 } as const;
 
@@ -109,14 +106,16 @@ export function resolveLibrary(
     } else {
       // The default id belongs to a user library: never reuse it as a group id
       throw new Error(
-        "library_id is required when library_type is 'group' and the server is configured for a user library."
+        "library_id is required when library_type is 'group' and the server is configured for a user library: " +
+        "pass the numeric group ID (the number in the group's zotero.org/groups/<id> URL)."
       );
     }
   }
   if (!id) {
     throw new Error(
-      "Zotero library ID is not set. Provide library_id arg, or set " +
-      "ZOTERO_LIBRARY_ID / ZOTERO_USER_ID in the server environment."
+      "Zotero library ID is not set: the server has no ZOTERO_USER_ID for the personal library. Pass library_id " +
+      "(the numeric user ID), or tell the user to set ZOTERO_USER_ID (the userID shown at " +
+      "https://www.zotero.org/settings/keys) in the server's settings and restart the client."
     );
   }
   assertLibraryId(id, "library_id");

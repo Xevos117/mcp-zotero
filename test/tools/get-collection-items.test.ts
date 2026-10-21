@@ -5,6 +5,7 @@ import {
   expectValidationError,
   expectErrorJson,
   expectToolError,
+  expectApiError,
   expectEmptyResult,
 } from "../helpers/mcp-harness.js";
 import { networkError } from "../helpers/fake-net.js";
@@ -109,6 +110,7 @@ describe("get_collection_items (MCP)", () => {
     const json = expectEmptyResult(await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }), "Collection is empty");
     expect(json.status).toBe("empty");
     expect(json.collectionKey).toBe("CPLQQQQR");
+    expect(json.suggestion).toMatch(/subcollections.*get_collections.*collection_key/);
   });
 
   it("GCI-06 solo allegati → risultato vuoto status 'invalid_items'", async () => {
@@ -118,6 +120,7 @@ describe("get_collection_items (MCP)", () => {
       "No valid items found in collection"
     );
     expect(json.status).toBe("invalid_items");
+    expect(json.suggestion).toMatch(/only attachments or notes.*excludeAttachments=false/);
   });
 
   it("GCI-07 paginazione: 230 item su 3 pagine", async () => {
@@ -132,19 +135,20 @@ describe("get_collection_items (MCP)", () => {
     h.net.on("GET", COLL_ITEMS, zCollectionNotFound());
     const json = expectErrorJson(
       await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }),
-      "Collection is empty or not accessible"
+      "Collection not found"
     );
     expect(json.status).toBe("not_found");
+    expect(json.suggestion).toMatch(/get_collections.*never guess keys/);
   });
 
   it.each([403, 412, 429, 500, 503])("GCI-09 HTTP %i → isError", async (status) => {
     h.net.on("GET", COLL_ITEMS, zError(status));
-    expectToolError(await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }), String(status));
+    expectApiError(await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }), status);
   });
 
   it("GCI-10 errore di rete → isError", async () => {
     h.net.on("GET", COLL_ITEMS, networkError());
-    expectToolError(await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }));
+    expectApiError(await h.call("get_collection_items", { collectionKey: "CPLQQQQR" }));
   });
 
   it("GCI-11 unicode in titoli e tag", async () => {

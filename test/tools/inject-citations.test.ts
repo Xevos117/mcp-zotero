@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { readFile, mkdir, stat } from "node:fs/promises";
+import { readFile, mkdir, stat, writeFile, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { XMLValidator } from "fast-xml-parser";
 import JSZip from "jszip";
@@ -9,6 +9,7 @@ import {
   expectValidationError,
   expectErrorJson,
   expectToolError,
+  expectApiError,
 } from "../helpers/mcp-harness.js";
 import { networkError } from "../helpers/fake-net.js";
 import { ZBASE, zSingle, zError, article, USER_ID } from "../helpers/zotero-fake.js";
@@ -159,6 +160,7 @@ describe("inject_citations (MCP)", () => {
     );
     const out = await h.call("inject_citations", { file_path: input, style: "ieee" });
     expect(out.json.warnings).toEqual([expect.stringContaining("1/2")]);
+    expect(out.json.warnings[0]).toMatch(/show \[\?\] until the user runs Zotero → Refresh in Word.*num="N"/);
     const xml = await readDocumentXml(await readFile(out.json.output_path));
     expect(xml).toContain("[1]");
     expect(xml).toContain("[?]");
@@ -177,7 +179,12 @@ describe("inject_citations (MCP)", () => {
   it("IC-06 nessun zcite → found 0, output scritto, nessuna chiamata Zotero", async () => {
     const input = await dir.file("plain.docx", await makeDocx(para("No citations here.")));
     const out = await h.call("inject_citations", { file_path: input });
-    expect(out.json).toEqual({ output_path: join(dir.path, "plain_cited.docx"), citations_found: 0, citations_injected: 0 });
+    expect(out.json).toEqual({
+      output_path: join(dir.path, "plain_cited.docx"),
+      citations_found: 0,
+      citations_injected: 0,
+      warnings: [expect.stringMatching(/^No <zcite> placeholders found: the output is an unchanged copy\..*footnotes/)],
+    });
     await expect(stat(out.json.output_path)).resolves.toBeTruthy();
     expect(h.net.calls).toHaveLength(0);
   });
@@ -205,6 +212,7 @@ describe("inject_citations (MCP)", () => {
   it("IC-08 file non .docx → errore strutturato senza rete", async () => {
     const json = expectErrorJson(await h.call("inject_citations", { file_path: "/tmp/document.pdf" }), "File must be a .docx file");
     expect(json.file_path).toBe("/tmp/document.pdf");
+    expect(json.hint).toMatch(/lowercase \.docx: convert \.doc, \.odt or \.rtf/);
     expect(h.net.calls).toHaveLength(0);
   });
 
@@ -228,18 +236,33 @@ describe("inject_citations (MCP)", () => {
   describe(".docx malformati", () => {
     it("IC-11 byte casuali (non zip) → isError", async () => {
       const input = await dir.file("random.docx", Buffer.from("this is definitely not a zip file"));
-      expectToolError(await h.call("inject_citations", { file_path: input }));
+      expectToolError(await h.call("inject_citations", { file_path: input }), /^Invalid \.docx file: not a readable ZIP archive \(.*\)\. The file is not a Word document or is corrupted: create it again as \.docx/);
     });
 
     it("IC-12 zip valido senza word/document.xml → isError che cita document.xml", async () => {
       const input = await dir.file("nodoc.docx", await makeDocx("", { omitDocument: true }));
-      expectToolError(await h.call("inject_citations", { file_path: input }), "word/document.xml");
+      expectToolError(await h.call("inject_citations", { file_path: input }), "word/document.xml not found. The file is not a Word document or is corrupted");
     });
 
     it("IC-13 zip troncato → isError", async () => {
       const full = await makeDocx(para(zcite({ keys: "SMITH001" })));
       const input = await dir.file("truncated.docx", full.subarray(0, Math.floor(full.length / 2)));
       expectToolError(await h.call("inject_citations", { file_path: input }));
+    });
+
+    it.skipIf(process.getuid?.() === 0)("IC-14b cartella non scrivibile → errore strutturato che dice di copiare il file altrove", async () => {
+      serveItems(h, { SMITH001: SMITH });
+      const ro = join(dir.path, "readonly");
+      await mkdir(ro);
+      const input = join(ro, "paper.docx");
+      await writeFile(input, await makeDocx(para(zcite({ keys: "SMITH001" }))));
+      await chmod(ro, 0o555);
+      try {
+        const json = expectErrorJson(await h.call("inject_citations", { file_path: input }), "Cannot read the file or write the _cited copy next to it (EACCES)");
+        expect(json.hint).toMatch(/^Copy the \.docx to a folder this server can write to/);
+      } finally {
+        await chmod(ro, 0o755);
+      }
     });
 
     it("IC-14 file vuoto → isError", async () => {
@@ -260,7 +283,8 @@ describe("inject_citations (MCP)", () => {
       serveItems(h, { SMITH001: SMITH });
       const input = await dir.file("missingkey.docx", await makeDocx(para(zcite({ keys: "NOPE2222" })) + para(zcite({ keys: "SMITH001,NOPE3333" }))));
       const out = await h.call("inject_citations", { file_path: input });
-      expectToolError(out, "2 cited key(s) not found in the library: NOPE2222, NOPE3333");
+      expectToolError(out, "2 cited key(s) not found in the library: NOPE2222, NOPE3333. No file was written.");
+      expect(out.text).toMatch(/search_library.*add_items_by_doi/);
       expect(out.text).not.toMatch(/\b404\b/);
       await expect(stat(join(dir.path, "missingkey_cited.docx"))).rejects.toThrow();
     });
@@ -269,7 +293,9 @@ describe("inject_citations (MCP)", () => {
       'IC-24 chiave <zcite> non alfanumerica "%s" → isError, nessuna richiesta, nessun output',
       async (keys) => {
         const input = await dir.file("badkey.docx", await makeDocx(para(zcite({ keys }))));
-        expectToolError(await h.call("inject_citations", { file_path: input }), "Invalid Zotero item key(s) in <zcite>");
+        const out = await h.call("inject_citations", { file_path: input });
+        expectToolError(out, "Invalid Zotero item key(s) in <zcite>");
+        expect(out.text).toMatch(/No file was written\. Use the 8-character keys/);
         expect(h.net.calls).toHaveLength(0);
         await expect(stat(join(dir.path, "badkey_cited.docx"))).rejects.toThrow();
       }
@@ -278,13 +304,13 @@ describe("inject_citations (MCP)", () => {
     it.each([403, 429, 500, 503])("IC-17 HTTP %i → isError", async (status) => {
       h.net.on("GET", ITEM_ROUTE, zError(status));
       const input = await dir.file(`e${status}.docx`, await makeDocx(para(zcite({ keys: "SMITH001" }))));
-      expectToolError(await h.call("inject_citations", { file_path: input }), String(status));
+      expectApiError(await h.call("inject_citations", { file_path: input }), status);
     });
 
     it("IC-18 errore di rete → isError", async () => {
       h.net.on("GET", ITEM_ROUTE, networkError());
       const input = await dir.file("net.docx", await makeDocx(para(zcite({ keys: "SMITH001" }))));
-      expectToolError(await h.call("inject_citations", { file_path: input }));
+      expectApiError(await h.call("inject_citations", { file_path: input }));
     });
   });
 

@@ -4,6 +4,7 @@ import {
   startHarness,
   expectValidationError,
   expectToolError,
+  expectApiError,
   ZOTERO_ERROR_STATUSES,
   expectEmptyResult,
 } from "../helpers/mcp-harness.js";
@@ -75,13 +76,15 @@ describe("get_collections (MCP)", () => {
   it("GC-06 tutte nel cestino → risultato vuoto che suggerisce include_trashed", async () => {
     h.net.on("GET", COLLS, zList([collection("COL00002", "Trashed", { deleted: true })]));
     const json = expectEmptyResult(await h.call("get_collections", {}), "No collections found");
-    expect(json.suggestion).toContain("include_trashed");
+    expect(json.suggestion).toContain("include_trashed=true");
+    expect(json.suggestion).toContain("create_collection");
   });
 
   it("GC-07 nessuna collezione → risultato vuoto con helpUrl", async () => {
     h.net.on("GET", COLLS, zList([]));
     const json = expectEmptyResult(await h.call("get_collections", {}), "No collections found");
     expect(json.helpUrl).toMatch(/^https:\/\/www\.zotero\.org\//);
+    expect(json.suggestion).toMatch(/search_library.*create_collection/);
   });
 
   it("GC-08 nomi unicode preservati", async () => {
@@ -97,18 +100,18 @@ describe("get_collections (MCP)", () => {
 
   it.each(ZOTERO_ERROR_STATUSES)("GC-10 HTTP %i → isError", async (status) => {
     h.net.on("GET", COLLS, zError(status));
-    expectToolError(await h.call("get_collections", {}), String(status));
+    expectApiError(await h.call("get_collections", {}), status);
   });
 
   it("GC-11 errore sulla seconda pagina → isError (nessun risultato parziale)", async () => {
     h.net.on("GET", COLLS, (req) =>
       (req.url.searchParams.get("start") ?? "0") === "0" ? zList(manyCollections(100), { total: 150 }) : zError(500)
     );
-    expectToolError(await h.call("get_collections", {}), "500");
+    expectApiError(await h.call("get_collections", {}), 500);
   });
 
   it("GC-12 errore di rete → isError", async () => {
     h.net.on("GET", COLLS, networkError());
-    expectToolError(await h.call("get_collections", {}));
+    expectApiError(await h.call("get_collections", {}));
   });
 });

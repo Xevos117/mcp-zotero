@@ -168,8 +168,9 @@ describe("import_pdf_to_zotero (MCP)", () => {
   describe("errori di download", () => {
     it.each([403, 404, 500])("IP-07 download HTTP %i → errore strutturato con status", async (status) => {
       h.net.on("GET", "journals.example.org/papers/attention.pdf", statusResponse(status));
-      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Failed to download file");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), `Failed to download file from URL (HTTP ${status})`);
       expect(json.status).toBe(status);
+      expect(json.suggestion).toMatch({ 403: /login, paywall or bot protection/, 404: /does not exist/, 500: /retry once/ }[status]!);
       expect(h.net.requests("POST", ITEMS)).toHaveLength(0);
     });
 
@@ -177,7 +178,8 @@ describe("import_pdf_to_zotero (MCP)", () => {
       h.net.on("GET", "journals.example.org/papers/attention.pdf", networkError("ECONNRESET"));
       const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Network error downloading file");
       expect(json.details).toContain("ECONNRESET");
-      expect(json.suggestion).toBeTypeOf("string");
+      expect(json.suggestion).toMatch(/Retry once if it looks temporary.*PubMed Central, arXiv/);
+      expect(json.suggestion).not.toMatch(/sci-hub/i);
     });
 
     it("IP-09 pagina HTML al posto del PDF → 'not a valid PDF', nessun item creato", async () => {
@@ -188,6 +190,7 @@ describe("import_pdf_to_zotero (MCP)", () => {
       );
       const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "not a valid PDF");
       expect(json.details).toContain("HTML");
+      expect(json.suggestion).toMatch(/^Nothing was created\..*\/pdf\/ instead of \/abs\//);
       expect(h.net.requests("POST", ITEMS)).toHaveLength(0);
     });
 
@@ -202,6 +205,7 @@ describe("import_pdf_to_zotero (MCP)", () => {
       h.net.on("GET", "journals.example.org/papers/attention.pdf", binaryResponse(big));
       const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "100 MB");
       expect(json.size_bytes).toBe(big.length);
+      expect(json.suggestion).toMatch(/up to 100 MB; nothing was created.*Zotero desktop/);
       expect(h.net.requests("POST", ITEMS)).toHaveLength(0);
     }, 30_000);
   });
@@ -210,7 +214,8 @@ describe("import_pdf_to_zotero (MCP)", () => {
     it("IP-12 creazione item rifiutata (failed) → errore strutturato 'import_pdf_to_zotero failed'", async () => {
       servePdf(h.net, PDF_URL);
       h.net.on("POST", ITEMS, zWrite({ fail: { 0: { code: 400, message: "Parent item not found" } } }));
-      expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL, parent_item: "NPPEZZZZ" }), "import_pdf_to_zotero failed");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL, parent_item: "NPPEZZZZ" }), "import_pdf_to_zotero failed");
+      expect(json.hint).toMatch(/parent_item must be an existing regular item.*search_library/);
       expect(h.net.requests("POST", FILE_ROUTE)).toHaveLength(0);
     });
 
@@ -219,6 +224,9 @@ describe("import_pdf_to_zotero (MCP)", () => {
       h.net.on("POST", ITEMS, zError(status));
       const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "import_pdf_to_zotero failed");
       expect(json.details).toContain(String(status));
+      expect(json.status).toBe(status);
+      expect(json.hint).toMatch(/^Nothing was created\. /);
+      if (status === 403) expect(json.hint).toContain("settings/keys");
     });
 
     it("IP-14 quota storage piena (413 in auth) → errore strutturato con item_key orfano e nota", async () => {
@@ -229,6 +237,7 @@ describe("import_pdf_to_zotero (MCP)", () => {
       expect(json).toMatchObject({ status: 413, item_key: "PRPHANQR" });
       expect(json.suggestion).toContain("zotero.org/settings/storage");
       expect(json.note).toContain("delete_items");
+      expect(json.note).toMatch(/Tell the user/);
       expect(h.net.toHost(UPLOAD_HOST)).toHaveLength(0);
     });
 
@@ -238,13 +247,18 @@ describe("import_pdf_to_zotero (MCP)", () => {
       installUploadPipeline(h.net, { authStatus: status });
       const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Upload authorization failed");
       expect(json.status).toBe(status);
+      // il record allegato senza file è già stato creato: il modello deve saperlo prima di riprovare
+      expect(json.item_key).toBeTypeOf("string");
+      expect(json.hint).toMatch(/^An attachment record \(item_key\) was created without the file; a retry creates a new one/);
+      expect(json.hint).toMatch(status === 403 ? /settings\/keys/ : /Retry once after a short wait/);
     });
 
     it("IP-16 auth errore di rete → 'Upload authorization failed'", async () => {
       servePdf(h.net, PDF_URL);
       h.net.on("POST", ITEMS, zWrite());
       installUploadPipeline(h.net, { authStatus: "network" });
-      expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Upload authorization failed");
+      const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Upload authorization failed");
+      expect(json.hint).toMatch(/Retry once after a short wait/);
     });
 
     it("IP-17 upload su storage HTTP 500 → 'File upload failed', niente register", async () => {
@@ -253,6 +267,8 @@ describe("import_pdf_to_zotero (MCP)", () => {
       installUploadPipeline(h.net, { uploadStatus: 500 });
       const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "File upload failed");
       expect(json.status).toBe(500);
+      expect(json.item_key).toBeTypeOf("string");
+      expect(json.hint).toMatch(/a retry creates a new one/);
       expect(h.net.requests("POST", FILE_ROUTE)).toHaveLength(1);
     });
 
@@ -262,6 +278,7 @@ describe("import_pdf_to_zotero (MCP)", () => {
       installUploadPipeline(h.net, { registerStatus: 412 });
       const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "Upload registration failed");
       expect(json.status).toBe(412);
+      expect(json.item_key).toBeTypeOf("string");
     });
 
     it("IP-19 PUT fulltext 413 → successo ma fulltext_indexed=false con motivo", async () => {
@@ -311,7 +328,8 @@ describe("import_pdf_to_zotero (MCP)", () => {
   it("IP-21 ZOTERO_API_KEY assente → errore strutturato senza rete", async () => {
     await h.close();
     h = await startHarness({ envApiKey: "" });
-    expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "ZOTERO_API_KEY");
+    const json = expectErrorJson(await h.call("import_pdf_to_zotero", { url: PDF_URL }), "ZOTERO_API_KEY");
+    expect(json.hint).toMatch(/settings\/keys.*restart the client/);
     expect(h.net.calls).toHaveLength(0);
   });
 

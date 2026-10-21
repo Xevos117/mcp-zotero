@@ -55,6 +55,10 @@ describe("e2e: build/server.js su stdio", () => {
     expect(s.client.getServerVersion()?.version).toBe(pkg.version);
     expect(s.client.getServerCapabilities()?.tools).toBeDefined();
     expect(s.client.getInstructions()).toContain("inject_citations");
+    // prerequisiti e regole che il modello deve conoscere prima di qualsiasi errore
+    expect(s.client.getInstructions()).toContain("needs UNPAYWALL_EMAIL in the server settings");
+    expect(s.client.getInstructions()).toMatch(/UNSAFE_OPERATIONS allows it \('items': delete_items; 'all': also delete_collection\)\. Never work around/);
+    expect(s.client.getInstructions()).toMatch(/Errors carry a hint.*tell the user instead of retrying/);
   });
 
   it("E2E-02 tools/list: 15 tool, ognuno con inputSchema object", async () => {
@@ -237,8 +241,10 @@ describe("e2e: configurazione del processo", () => {
       const di = await call(s, "delete_items", { item_keys: ["AAAARRRR"] });
       expect(di.json.error).toContain("not allowed");
       expect(di.json.current_value).toBe("none");
+      expect(di.json.hint).toMatch(/^Do not try to get around this with other tools.*UNSAFE_OPERATIONS to 'items'.*restart the client/);
       const dc = await call(s, "delete_collection", { collection_key: "CPLQQQQR" });
       expect(dc.json.error).toContain("not allowed");
+      expect(dc.json.hint).toContain("'all' (allows delete_collection and delete_items");
       expect(fake.net.calls).toHaveLength(0);
     } finally {
       await s.close();

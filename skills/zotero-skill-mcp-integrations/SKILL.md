@@ -62,7 +62,7 @@ Use MCP tools to find or add papers:
 
 Note every `item_key` returned — these are needed for citations.
 
-Results and errors: a real failure comes back with `isError: true` and an `{ "error": ... }` body; an empty result (no search hits, empty collection) is a normal result with a `{ "message": ... }` body, not an error. Partial successes (e.g. some DOIs failed) are normal results with a `failed` list.
+Results and errors: a real failure comes back with `isError: true` and an `{ "error": ... }` body; an empty result (no search hits, empty collection) is a normal result with a `{ "message": ... }` body, not an error. Partial successes (e.g. some DOIs failed) are normal results with a `failed` list. Errors and empty results usually carry a `hint` or `suggestion` with the next step: follow it, and when it says the fix is on the user's side (API key, server settings) tell the user instead of retrying.
 
 Group libraries: every tool except `get_user_id` accepts optional `library_type` (`"user"` | `"group"`) and `library_id` (numeric) to target another library for that call. If you do, pass the same library to the inject script in Step 5 (`groups/<id>`).
 
@@ -91,6 +91,8 @@ There are two distinct mechanisms for attaching PDFs. They have different costs 
 
 `add_items_by_doi` has an `auto_attach_pdf` parameter (default: `true`). This performs
 a lightweight Unpaywall lookup and attaches freely available open-access PDFs automatically.
+It needs `UNPAYWALL_EMAIL` in the server settings (without it the result carries a `hint` to relay
+to the user), and the PDFs count against the user's Zotero file storage.
 
 > **Do NOT set `auto_attach_pdf: false`.** It is free, adds negligible latency, and
 > enriches the user's Zotero library at no cost. Only disable it if you encounter

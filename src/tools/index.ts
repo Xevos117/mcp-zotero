@@ -19,7 +19,8 @@ import { handleDeleteItems, toolConfig as deleteItemsConfig } from "./delete-ite
 
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ZodRawShape } from "zod";
-import { logToolError } from "../utils/error-formatter.js";
+import { formatErrorResponse, logToolError } from "../utils/error-formatter.js";
+import { describeError } from "../utils/error-hints.js";
 
 type ToolHandler = (
   zoteroApi: ZoteroApiInterface,
@@ -48,7 +49,10 @@ const tools: Array<{ config: { name: string; description: string; inputSchema: Z
 
 const handlers = new Map(tools.map(({ config, handler }) => [config.name, handler]));
 
-/** Run a tool handler; Zotero API errors it throws are logged here once for every tool. */
+/**
+ * Run a tool handler; Zotero API errors it throws are logged here once for every tool. API, timeout and
+ * network errors become a structured error with a hint on what to do next; anything else (a bug) is rethrown.
+ */
 async function runTool(
   name: string,
   handler: ToolHandler,
@@ -61,7 +65,10 @@ async function runTool(
     return await handler(zoteroApi, userId, args, unsafeOps);
   } catch (err) {
     logToolError(name, err);
-    throw err;
+    const described = describeError(err);
+    if (!described) throw err;
+    const { error, ...details } = described;
+    return formatErrorResponse(error, details);
   }
 }
 
