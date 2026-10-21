@@ -22,12 +22,6 @@ const manifest = readJson("manifest.json");
 const Ajv = ((AjvModule as any).default ?? AjvModule) as new (opts: Record<string, unknown>) => any;
 const addFormats = ((addFormatsModule as any).default ?? addFormatsModule) as (ajv: unknown) => void;
 
-/** First sentence of a tool description: the short description listed in manifest.json. */
-function firstSentence(text: string): string {
-  const m = /^[\s\S]*?[.!?](?=\s|$)/.exec(text.trim());
-  return (m ? m[0] : text).replace(/\s+/g, " ").trim();
-}
-
 /** Environment variables read by the server code (`process.env.NAME` in src/, tests excluded). */
 function envVarsReadBySource(): string[] {
   const names = new Set<string>();
@@ -103,9 +97,14 @@ describe("metadati di distribuzione: manifest.json dell'estensione Claude Deskto
     expect(major(manifest.compatibility.runtimes.node)).toBe(major(pkg.engines.node));
   });
 
-  it("RM-05 tools del manifest = tool registrati, stesso ordine, descrizione = prima frase di quella del codice", () => {
+  // Only names are compared with the code: the manifest carries its own one-line summaries, so rewording a
+  // tool description in src/ does not require touching manifest.json
+  it("RM-05 tools del manifest = tool registrati, stesso ordine, ciascuno con un riassunto di una riga", () => {
     expect(manifest.tools_generated).toBe(false);
-    expect(manifest.tools).toEqual(tools.map((t) => ({ name: t.name, description: firstSentence(t.description ?? "") })));
+    expect(manifest.tools.map((t: { name: string }) => t.name)).toEqual(tools.map((t) => t.name));
+    for (const t of manifest.tools as Array<{ name: string; description: string }>) {
+      expect(t.description, t.name).toMatch(/^[^\n]{10,100}$/);
+    }
   });
 
   it("RM-06 env dal user_config: stesse variabili di server.json, chiave sensibile, opzionali sempre con default", () => {
@@ -123,6 +122,8 @@ describe("metadati di distribuzione: manifest.json dell'estensione Claude Deskto
       // An optional value without a default reaches the server as the literal "${user_config.<key>}"
       if (!option.required) expect(option.default, key).toBe(v.default ?? "");
     }
+    // Deletions stay off unless the user changes the setting
+    expect(config.unsafe_operations).toMatchObject({ type: "string", required: false, default: "none" });
     expect(Object.keys(config).sort()).toEqual(
       Object.values(env).map((e) => /user_config\.([a-z_]+)/.exec(e)![1]).sort()
     );

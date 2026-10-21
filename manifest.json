@@ -38,63 +38,63 @@
   "tools": [
     {
       "name": "get_collections",
-      "description": "List all collections (folders) in your Zotero library."
+      "description": "List the collections (folders) of the library."
     },
     {
       "name": "get_collection_items",
-      "description": "Get all items in a specific Zotero collection."
+      "description": "List the items in a collection."
     },
     {
       "name": "get_items_details",
-      "description": "Get metadata for multiple Zotero items in a single call."
+      "description": "Get the full metadata of several items at once."
     },
     {
       "name": "search_library",
-      "description": "Search your Zotero library or list items sorted by a field."
+      "description": "Search the library or list items sorted by a field."
     },
     {
       "name": "create_collection",
-      "description": "Create a new collection (folder) in your Zotero library."
+      "description": "Create a collection, optionally inside another one."
     },
     {
       "name": "add_items_by_doi",
-      "description": "Add items to your Zotero library by resolving DOIs."
+      "description": "Add items by DOI, with open-access PDFs when available."
     },
     {
       "name": "inject_citations",
-      "description": "Replace <zcite> placeholder tags in a .docx file with native Zotero field codes that Zotero for Word can recognize and manage."
+      "description": "Turn <zcite> placeholders in a .docx file into live Zotero citations."
     },
     {
       "name": "get_item_fulltext",
-      "description": "Get the full text content of a Zotero item's PDF attachment via Zotero's fulltext index."
+      "description": "Read the full text Zotero has indexed for an item's PDF."
     },
     {
       "name": "get_user_id",
-      "description": "Returns the Zotero library configured in the server environment: user_id, library_type, library_id and library_path (\"users/<id>\" or \"groups/<id>\")."
+      "description": "Show the configured library (user or group) and its ID."
     },
     {
       "name": "add_linked_url_attachment",
-      "description": "Attach a linked URL to an existing Zotero item, or create a standalone linked-URL attachment."
+      "description": "Attach a link to a web page or file to an item."
     },
     {
       "name": "add_items",
-      "description": "Add items to Zotero by providing metadata directly."
+      "description": "Add items from metadata, for any Zotero item type (e.g. items without a DOI)."
     },
     {
       "name": "import_pdf_to_zotero",
-      "description": "Download a PDF from a URL and upload it to Zotero storage as an imported_url attachment."
+      "description": "Download a PDF from a URL and store it in Zotero."
     },
     {
       "name": "find_and_attach_pdfs",
-      "description": "For each Zotero item, check Unpaywall for open access PDFs and attach them."
+      "description": "Find open-access PDFs for existing items and attach them."
     },
     {
       "name": "delete_collection",
-      "description": "Delete a collection (folder) from your Zotero library."
+      "description": "Delete a collection, keeping its items (needs deletions set to 'all')."
     },
     {
       "name": "delete_items",
-      "description": "Delete one or more items from your Zotero library: they are permanently deleted (not moved to the Zotero trash)."
+      "description": "Permanently delete items (needs deletions set to 'items' or 'all')."
     }
   ],
   "tools_generated": false,
@@ -162,7 +162,7 @@
     "unsafe_operations": {
       "type": "string",
       "title": "Deletions allowed",
-      "description": "'none' (default: no deletions), 'items' (delete_items, permanent) or 'all' (also delete_collection).",
+      "description": "'none' (default): deletions disabled. 'items': enables delete_items (permanent: deleted items do not go to the Zotero trash). 'all': enables delete_items and delete_collection (the items of a deleted collection stay in the library).",
       "default": "none",
       "required": false
     }

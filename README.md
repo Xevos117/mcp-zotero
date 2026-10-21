@@ -175,7 +175,12 @@ To enable deletion, set the `UNSAFE_OPERATIONS` environment variable to one of t
 
 The extension bundles the server and its dependencies and runs with the Node.js runtime that ships with Claude
 Desktop, so no separate Node.js or npm install is needed. The API key is declared as a sensitive setting (masked
-input, stored securely by the client).
+input, stored securely by the client). Deletions stay disabled unless you change *Deletions allowed* in the
+extension settings.
+
+The extension contains only the MCP server: the Claude skills in [`skills/`](skills/) (citation injection inside
+the sandbox, scientific writing) are installed separately from their `.zip` files in the same release, as described
+in [Claude Skill Setup](#claude-skill-setup-for-claudeai-projects-and-claude-desktop).
 
 ### Manual configuration (any MCP client)
 

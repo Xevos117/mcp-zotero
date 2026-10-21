@@ -6,9 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- **One-click Claude Desktop extension** (`mcp-zotero.mcpb`, attached to each GitHub release): `manifest.json` (MCPB manifest 0.3) maps the Claude Desktop settings (API key stored as a sensitive value, user ID, optional library type and group ID, Unpaywall email, allowed deletions) to the server's environment variables and lists the 15 tools. `npm run bundle` builds it from a clean build with production dependencies only (about 5.5 MB); CI validates the manifest, builds the bundle and runs the stdio smoke test on the unpacked bundle, started from its manifest as a client would. `npm test` keeps the manifest in sync with `package.json` (version, entry point, Node.js version), `server.json` (environment variables) and the registered tools.
-
+- **One-click Claude Desktop extension** (`mcp-zotero.mcpb`, attached to each GitHub release): `manifest.json` (MCPB manifest 0.3) maps the Claude Desktop settings (API key stored as a sensitive value, user ID, optional library type and group ID, Unpaywall email, allowed deletions, off by default) to the server's environment variables and lists the 15 tools with one-line summaries. The bundle does not contain the Claude skills: the MCPB format has no field for them, so they stay separate release zips. `npm run bundle` builds it from a clean build with production dependencies only (about 5.5 MB); CI validates the manifest, builds the bundle and runs the stdio smoke test on the unpacked bundle, started from its manifest as a client would. `npm test` keeps the manifest in sync with `package.json` (version, entry point, Node.js version), `server.json` (environment variables) and the registered tools.
 - **Official MCP Registry entry** (`server.json`, name `io.github.Xevos117/mcp-zotero`): `package.json` carries the matching `mcpName`, and the release workflow publishes `server.json` to [registry.modelcontextprotocol.io](https://registry.modelcontextprotocol.io) after the npm publish (GitHub OIDC login, `mcp-publisher` pinned by version and checksum). The registry checks the `mcpName` of the published npm version, so the listing starts with the first release that contains it. `npm test` validates `server.json` against the official schema and keeps its version, package name and environment variables in sync with `package.json` and the code.
+
+### Removed
+
+- **`smithery.yaml`**: Smithery no longer reads it (its current documentation has no `smithery.yaml`; local stdio servers are published there as an MCPB bundle such as the `.mcpb` above). Deployments that used the `startCommand` of that file should use the npm package or the `.mcpb`.
 
 ### Fixed
 

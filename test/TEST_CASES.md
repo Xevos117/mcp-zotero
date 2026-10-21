@@ -451,8 +451,8 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 | RM-02 | versione, `name`, pacchetto npm | `version` e `packages[0].version` = versione di `package.json`, `name` = `mcpName`, `identifier` = nome npm, `mcpName` con prefisso `io.github.<owner>/` col maiuscolo/minuscolo esatto del repository |
 | RM-03 | `environmentVariables` | stessi nomi delle `process.env.X` lette in `src/` (test esclusi); solo `ZOTERO_API_KEY` segreta (e obbligatoria); `choices`/`default` di `UNSAFE_OPERATIONS` e `ZOTERO_LIBRARY_TYPE` |
 | RM-04 | `manifest.json` (estensione Claude Desktop) contro lo schema MCPB della sua `manifest_version` (0.3, dal pacchetto `@anthropic-ai/mcpb`) | valido; `version` = package.json, `entry_point` = `main`, args `${__dirname}/build/server.js`, Node minimo = `engines` |
-| RM-05 | `tools` del manifest | nomi e ordine dei 15 tool registrati, descrizione = prima frase della descrizione nel codice, `tools_generated: false` |
-| RM-06 | `mcp_config.env` e `user_config` | stesse variabili di `server.json`; obbligatorie e sensibili coincidono con `isRequired`/`isSecret`; ogni opzione facoltativa ha un default (stringa vuota o il default di `server.json`), altrimenti al server arriverebbe il letterale `${user_config.<chiave>}` |
+| RM-05 | `tools` del manifest | nomi e ordine dei 15 tool registrati, ciascuno con un riassunto proprio di una riga (10-100 caratteri, non confrontato col codice: riformulare una descrizione in `src/` non tocca il manifest), `tools_generated: false` |
+| RM-06 | `mcp_config.env` e `user_config` | stesse variabili di `server.json`; obbligatorie e sensibili coincidono con `isRequired`/`isSecret`; ogni opzione facoltativa ha un default (stringa vuota o il default di `server.json`), altrimenti al server arriverebbe il letterale `${user_config.<chiave>}`; `unsafe_operations` facoltativa con default `none` |
 
 Smoke del bundle (`npm run smoke -- --bundle dist/mcp-zotero.mcpb`, in `test.yml` e `release.yml`): il .mcpb viene spacchettato
 fuori dal repository, comando/args/env vengono calcolati da `getMcpConfigForManifest` di `@anthropic-ai/mcpb` (come un client),
