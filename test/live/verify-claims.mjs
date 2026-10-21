@@ -50,6 +50,8 @@ const INVALID_ZCITE = "Invalid Zotero item key(s) in <zcite>";
 const problems = [];
 const warnings = [];
 const checks = [];
+/** Audited calls referenced by the exploratory scenarios (verdict.json, shown in the report). */
+const exploratoryCalls = [];
 const fail = (msg) => problems.push(msg);
 const ok = (msg) => checks.push(msg);
 const scrub = (t) => (KEY ? String(t).split(KEY).join("***") : String(t));
@@ -418,13 +420,23 @@ function limitProblem(call, max) {
   return null;
 }
 
-/** F9 checks: the same failure from inject_citations and from inject.js (unknown key, malformed key), 0 found without zcite. */
-export function edgeCaseProblems(messages) {
+/**
+ * F9 checks (the same failure from inject_citations and from inject.js for the unknown and the malformed key, 0
+ * found without zcite) and F10 rows. Also returns the calls used as their evidence: an exploratory scenario may not
+ * claim one of them.
+ * @returns {{ problems: string[], evidence: Set<object> }}
+ */
+export function edgeCaseEvidence(messages) {
   const out = [];
+  const evidence = new Set();
   const calls = toolCalls(messages);
   const injects = calls.filter((c) => c.tool === "inject_citations" && c.result);
   const skill = calls.filter((c) => c.name === "Bash" && INJECT_CMD.test(String(c.input?.command ?? "")) && c.result);
-  const has = (list, pred) => list.some(pred);
+  const has = (list, pred) => {
+    const found = list.find(pred);
+    if (found) evidence.add(found);
+    return found !== undefined;
+  };
   const fakeIn = (text) => [...FAKE_KEYS].some((k) => text.includes(k));
   if (!has(injects, (c) => c.result.isError && c.result.text.includes(INVALID_ZCITE))) out.push(`F9: no inject_citations call rejected a malformed <zcite> key ("${INVALID_ZCITE}")`);
   if (!has(skill, (c) => c.result.text.includes(INVALID_ZCITE) && !/"injected"/.test(c.result.text))) out.push("F9: no inject.js run rejected a malformed <zcite> key with the same message");
@@ -436,11 +448,16 @@ export function edgeCaseProblems(messages) {
     const found = calls.filter((c) => match(c) && c.result);
     if (found.length === 0) out.push(`F10: ${desc} not called`);
     else {
+      evidence.add(found[0]);
       const problem = expect(found[0]);
       if (problem) out.push(`F10: ${desc}: ${problem}`);
     }
   }
-  return out;
+  return { problems: out, evidence };
+}
+
+export function edgeCaseProblems(messages) {
+  return edgeCaseEvidence(messages).problems;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -454,16 +471,20 @@ export function canonical(value) {
   return JSON.stringify(value) ?? "null";
 }
 
+const MAX_INPUT_SHOWN = 300;
+
 /**
  * At most 5 exploratory scenarios, each with a rationale, at least one call and a verdict; every claimed call
  * was really made. A call is referenced by the call_no the audit hook gave it: the audited call with that number
- * must exist, be of the claimed tool and have the claimed outcome (is_error). With an audit that has no numbers
+ * must exist, be of the claimed tool and have the claimed outcome (is_error), and belong to one scenario only and
+ * not be the evidence of a fixed check (`reserved`, from edgeCaseEvidence). With an audit that has no numbers
  * (older hooks) a call is matched by tool and exact arguments instead; once the audit is numbered, claims must
- * use call_no. "bug" fails the check, "unclear" is a warning.
- * @returns {{ problems: string[], warnings: string[], checks: string[] }}
+ * use call_no. "bug" fails the check, "unclear" is a warning. `calls` lists every referenced audited call with its
+ * input as the audit recorded it (truncated), so the report shows what was really sent.
+ * @returns {{ problems: string[], warnings: string[], checks: string[], calls: Array<{ scenario: string, call_no: number, tool: string, input: string }> }}
  */
-export function exploratoryFindings(list, messages) {
-  const res = { problems: [], warnings: [], checks: [] };
+export function exploratoryFindings(list, messages, reserved = new Set()) {
+  const res = { problems: [], warnings: [], checks: [], calls: [] };
   if (list === undefined) return res;
   if (!Array.isArray(list)) {
     res.problems.push("exploratory is not an array");
@@ -476,6 +497,7 @@ export function exploratoryFindings(list, messages) {
   const made = calls.map((c) => ({ tool: c.tool, name: c.name, args: argsOf(c.name, c.input) }));
   const byNo = new Map(calls.filter((c) => Number.isInteger(c.callNo)).map((c) => [c.callNo, c]));
   const numbered = byNo.size > 0;
+  const owner = new Map();
   const ids = new Set();
   for (const x of list.slice(0, MAX_EXPLORATORY)) {
     const id = String(x?.id ?? "");
@@ -497,6 +519,18 @@ export function exploratoryFindings(list, messages) {
         else if (!(audited.tool === short || (audited.tool === null && audited.name === tool))) res.problems.push(`${label}: call_no ${call.call_no} is a ${audited.tool ?? audited.name} call`);
         else if (typeof call.is_error !== "boolean") res.problems.push(`${label}: is_error (true|false) missing`);
         else if (call.is_error !== audited.result.isError) res.problems.push(`${label}: call_no ${call.call_no} claimed is_error ${call.is_error}, the audit says ${audited.result.isError}`);
+        else if (reserved.has(audited)) res.problems.push(`${label}: call_no ${call.call_no} is the evidence of a fixed check (F9/F10), not an exploratory call`);
+        else if (owner.has(call.call_no)) res.problems.push(`${label}: call_no ${call.call_no} already claimed by ${owner.get(call.call_no)}`);
+        else {
+          owner.set(call.call_no, `${id} call ${n + 1}`);
+          const input = canonical(audited.name === "Bash" ? { command: audited.input?.command } : (audited.input ?? {}));
+          res.calls.push({
+            scenario: id,
+            call_no: call.call_no,
+            tool: audited.tool ?? audited.name,
+            input: input.length > MAX_INPUT_SHOWN ? `${input.slice(0, MAX_INPUT_SHOWN - 1)}…` : input,
+          });
+        }
         continue;
       }
       if (numbered) {
@@ -692,13 +726,14 @@ async function main() {
   for (const s of scenarios.values()) if (s.status === "failed" && !required.includes(s.id)) fail(`scenario ${s.id} failed${s.notes ? `: ${s.notes}` : ""}`);
 
   if (calls && calls.length) {
-    const edge = edgeCaseProblems(calls);
-    edge.forEach(fail);
-    if (!edge.length) ok("F9/F10: edge cases verified on the audit");
-    const x = exploratoryFindings(claims.exploratory, calls);
+    const edge = edgeCaseEvidence(calls);
+    edge.problems.forEach(fail);
+    if (!edge.problems.length) ok("F9/F10: edge cases verified on the audit");
+    const x = exploratoryFindings(claims.exploratory, calls, edge.evidence);
     x.problems.forEach(fail);
     warnings.push(...x.warnings);
     checks.push(...x.checks);
+    exploratoryCalls.push(...x.calls);
   }
 
   // Created objects: they exist (unless claimed deleted), carry the run markers and match the claimed state
@@ -870,7 +905,7 @@ async function main() {
 }
 
 function finish(context) {
-  const verdict = { run_id: context.run_id, verified: problems.length === 0, problems, warnings, checks: checks.length };
+  const verdict = { run_id: context.run_id, verified: problems.length === 0, problems, warnings, checks: checks.length, exploratory_calls: exploratoryCalls };
   writeFileSync(join(DIR, "verdict.json"), scrub(JSON.stringify(verdict, null, 2)) + "\n");
   const lines = [
     `### Agent smoke: ${verdict.verified ? "claims verified" : "claims NOT verified"}`,

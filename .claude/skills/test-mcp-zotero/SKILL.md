@@ -144,7 +144,8 @@ or run none and say so in the report.
   Bash command the harness adds `audit call_no N (<tool>)` to the result. Write
   `{"tool": "<tool>", "call_no": N, "is_error": true|false}` (`is_error`: whether that call returned an
   error); for inject.js the tool is `"Bash"`. The verifier looks the number up in the audit log and checks
-  the tool and the outcome.
+  the tool and the outcome; each call belongs to one scenario only, and the calls of the fixed path (F9,
+  F10) are not exploratory: make new ones. The report shows each call's input as the audit recorded it.
 
 The verifier also scans **every** Zotero tool result of the run, fixed path included, for the
 failures listed above, so a crash anywhere fails the check whatever you claim.

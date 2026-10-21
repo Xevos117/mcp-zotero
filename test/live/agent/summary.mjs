@@ -28,7 +28,7 @@ const SECRET_ENV = [
 const PLACEHOLDER_PATHS = new Set(["users/100000000000001", "groups/200000000000002"]);
 
 /** Agent-written text as inert markdown: one line, no HTML, no @mentions, no table breaks, bounded. */
-export function inline(value, max = MAX_CELL) {
+export function escapedInline(value, max = MAX_CELL) {
   const text = String(value ?? "")
     .replace(/\s+/g, " ")
     .trim()
@@ -40,6 +40,8 @@ export function inline(value, max = MAX_CELL) {
     .replace(/`/g, "'");
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+export const inline = escapedInline;
 
 /** num_turns, duration_ms and total_cost_usd of the SDK result message, if the transcript has one. */
 export function runStats(messages) {
@@ -54,8 +56,15 @@ function table(head, rows) {
   return [`| ${head.join(" | ")} |`, `|${head.map(() => "---").join("|")}|`, ...rows.map((r) => `| ${r.join(" | ")} |`)];
 }
 
-/** The report as markdown (starts with MARKER, used to find the sticky comment). */
-export function buildSummary({ verdict, report, claims, stats, headSha }) {
+/** Same text without markdown escaping or truncation: what leakProblems also checks (an escaped secret would hide). */
+const rawText = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+
+/**
+ * The report as markdown (starts with MARKER, used to find the sticky comment). With `raw`, the agent-written
+ * values are not escaped nor truncated: only for the leak check.
+ */
+export function buildSummary({ verdict, report, claims, stats, headSha }, { raw = false } = {}) {
+  const inline = raw ? rawText : escapedInline;
   const lines = [MARKER];
   const title = !verdict ? "no verdict (verify-claims did not run or failed early)" : verdict.verified ? "claims verified" : "claims NOT verified";
   lines.push(`### Agent smoke: ${title}`, "");
@@ -79,13 +88,21 @@ export function buildSummary({ verdict, report, claims, stats, headSha }) {
   ]);
   if (scenarios.length) lines.push("#### Scenarios", "", ...table(["ID", "Status", "Notes"], scenarios), "");
 
+  // the calls as the audit recorded them (verify-claims), not as the agent describes them
+  const audited = Array.isArray(verdict?.exploratory_calls) ? verdict.exploratory_calls : [];
+  const callsOf = (id) =>
+    audited
+      .filter((c) => c?.scenario === id)
+      .map((c) => `#${inline(c.call_no, 10)} ${inline(c.tool, 60)} ${inline(c.input, 200)}`)
+      .join("<br>");
   const exploratory = (Array.isArray(claims?.exploratory) ? claims.exploratory : []).slice(0, 5).map((x) => [
     inline(x?.id, 10),
     inline(x?.verdict, 20),
     inline(x?.rationale),
+    callsOf(x?.id),
     inline(x?.observed),
   ]);
-  if (exploratory.length) lines.push("#### Exploratory", "", ...table(["ID", "Verdict", "Rationale", "Observed"], exploratory), "");
+  if (exploratory.length) lines.push("#### Exploratory", "", ...table(["ID", "Verdict", "Rationale", "Audited calls", "Observed"], exploratory), "");
 
   const friction = Array.isArray(report?.friction) && report.friction.length ? report.friction : Array.isArray(claims?.friction) ? claims.friction : [];
   if (friction.length) lines.push("#### Friction", "", ...friction.map((f) => `- **${inline(f?.tool, 60)}**: ${inline(f?.note, 500)}`), "");
@@ -141,14 +158,16 @@ function main() {
     console.error("usage: summary.mjs <scrubbed agent-out dir> --out <file.md>");
     return 2;
   }
-  const text = buildSummary({
+  const input = {
     verdict: readJson(dir, "verdict.json"),
     report: readJson(dir, "agent-report.json"),
     claims: readJson(dir, "claims.json"),
     stats: runStats(readTranscript(dir)),
     headSha: process.env.HEAD_SHA,
-  });
-  const leaks = leakProblems(text);
+  };
+  const text = buildSummary(input);
+  // the published text, and the same content before escaping and truncation
+  const leaks = [...new Set([...leakProblems(text), ...leakProblems(buildSummary(input, { raw: true }))])];
   if (leaks.length) {
     console.error(`summary: not written, ${leaks.join("; ")}`);
     return 1;

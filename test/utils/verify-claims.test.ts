@@ -8,6 +8,7 @@ import {
   robustnessProblems,
   writeSafetyProblems,
   edgeCaseProblems,
+  edgeCaseEvidence,
   exploratoryFindings,
   sourceFeatures,
   docxFingerprint,
@@ -220,11 +221,11 @@ describe("verify-claims: scenari esplorativi X1..X5 (VC-06)", () => {
 
   it("VC-06a scenario ok con chiamata presente (ordine delle chiavi indifferente) e comando Bash senza description → nessun problema", () => {
     const r = exploratoryFindings([x(), x({ id: "X2", calls: [{ tool: "Bash", args: { command: "node test/live/agent/inject.mjs agent-out/a.docx agent-out/b.docx agent-out/m.json users/1" } }] })], messages);
-    expect(r).toEqual({ problems: [], warnings: [], checks: ["X1 ok", "X2 ok"] });
+    expect(r).toMatchObject({ problems: [], warnings: [], checks: ["X1 ok", "X2 ok"] });
   });
 
   it("VC-06b assente → nessun controllo; unclear → avviso, non problema", () => {
-    expect(exploratoryFindings(undefined, messages)).toEqual({ problems: [], warnings: [], checks: [] });
+    expect(exploratoryFindings(undefined, messages)).toEqual({ problems: [], warnings: [], checks: [], calls: [] });
     expect(exploratoryFindings([x({ verdict: "unclear" })], messages)).toMatchObject({ problems: [], warnings: [expect.stringMatching(/X1: unclear/)] });
   });
 
@@ -261,7 +262,7 @@ describe("verify-claims: chiamate esplorative per call_no dell'audit (VC-06d)", 
       ],
       calls
     );
-    expect(r).toEqual({ problems: [], warnings: [], checks: ["X1 ok", "X2 ok"] });
+    expect(r).toMatchObject({ problems: [], warnings: [], checks: ["X1 ok", "X2 ok"] });
   });
 
   it.each<[string, unknown, RegExp]>([
@@ -274,6 +275,33 @@ describe("verify-claims: chiamate esplorative per call_no dell'audit (VC-06d)", 
     ["argomenti invece di call_no con audit numerato", { tool: "search_library", args: { query: "Müller–Ødegård “x”" } }, /no call_no \(the audit numbers every call/],
   ])("VC-06e %s → problema", (_label, call, re) => {
     expect(exploratoryFindings([x([call])], calls).problems.join("\n")).toMatch(re);
+  });
+
+  it("VC-06g ogni call_no citato una volta sola; mai la prova di un controllo fisso (F9/F10); input registrato dall'audit nel verdetto", () => {
+    const twice = exploratoryFindings(
+      [x([{ tool: "search_library", call_no: 1, is_error: false }]), x([{ tool: "search_library", call_no: 1, is_error: false }], { id: "X2" })],
+      calls
+    );
+    expect(twice.problems).toEqual(["X2: call 1 (search_library): call_no 1 already claimed by X1 call 1"]);
+    expect(twice.calls).toEqual([{ scenario: "X1", call_no: 1, tool: "search_library", input: '{"query":"Müller–Ødegård “x”"}' }]);
+    const reserved = new Set([calls[1]]);
+    expect(exploratoryFindings([x([{ tool: "get_items_details", call_no: 2, is_error: true }])], calls, reserved).problems).toEqual([
+      "X1: call 1 (get_items_details): call_no 2 is the evidence of a fixed check (F9/F10), not an exploratory call",
+    ]);
+    // Bash: only the command, long inputs truncated
+    const long = auditCalls([entry(1, "mcp__zotero__search_library", { query: "q".repeat(500) }, "[]"), entry(2, "Bash", { command: "node x", description: "d" }, "{}")]);
+    const r = exploratoryFindings([x([{ tool: "search_library", call_no: 1, is_error: false }, { tool: "Bash", call_no: 2, is_error: false }])], long);
+    expect(r.calls[0].input).toHaveLength(300);
+    expect(r.calls[1]).toEqual({ scenario: "X1", call_no: 2, tool: "Bash", input: '{"command":"node x"}' });
+  });
+
+  it("VC-06h prova dei controlli fissi: le chiamate F9/F10 che li soddisfano", () => {
+    const edge = auditCalls([
+      entry(1, "mcp__zotero__search_library", { limit: 1 }, "[]"),
+      entry(2, "mcp__zotero__search_library", { limit: 1 }, "[]"),
+    ]);
+    const { evidence } = edgeCaseEvidence(edge);
+    expect([...evidence].map((c: { callNo: number }) => c.callNo)).toEqual([1]);
   });
 
   it("VC-06f audit senza numeri (hook del branch base precedenti): confronto per argomenti come prima", () => {

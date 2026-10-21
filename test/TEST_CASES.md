@@ -705,8 +705,9 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   resta uno (anche dentro i docx) o se c'è un gruppo senza il suo nome; conservazione 1 giorno. Ogni job che usa
   l'account comincia mascherando il nome del gruppo (`mask-group-name.mjs`).
 - **Riepilogo**: dopo lo scrub, `test/live/agent/summary.mjs` scrive il Job Summary (verdetto, problemi e avvisi,
-  tabella degli scenari, esplorativi X1–X5, friction, turni/durata/costo) dalla copia scrubbata; non scrive nulla se
-  nel testo resta un segreto dell'ambiente, il nome del gruppo o un `users|groups/<id>` diverso dai segnaposto. Il job
+  tabella degli scenari, esplorativi X1–X5 con le chiamate come le ha registrate l'audit, friction, turni/durata/costo)
+  dalla copia scrubbata; non scrive nulla se nel testo, pubblicato o prima dell'escape, resta un segreto dell'ambiente,
+  il nome del gruppo o un `users|groups/<id>` diverso dai segnaposto. Il job
   `agent-smoke-comment` (PR dello stesso repo, solo `pull-requests: write`, niente checkout, npm o segreti) ricontrolla
   marcatore e percorsi e crea o aggiorna un solo commento sulla PR (marcatore `<!-- mcp-zotero-agent-smoke -->`).
 - **Sulle PR** il job dell'agente ripristina `.claude/`, `CLAUDE.md` (e `.mcp.json`, `.claude.json`, `CLAUDE.local.md`) dal branch di base (configurazione dell'agente
@@ -789,6 +790,8 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-06d | esplorativi citati per `call_no` (tool con o senza prefisso, Bash, esito), argomento non ASCII mai ridigitato | nessun problema |
 | VC-06e | `call_no` inesistente o non intero, strumento diverso, Bash dichiarato come tool Zotero, `is_error` mancante o diverso, argomenti al posto di `call_no` con audit numerato | un problema per caso |
 | VC-06f | audit senza numeri | confronto per argomenti (uguali / diversi), `call_no` non trovato |
+| VC-06g | stesso `call_no` in due scenari; `call_no` di una chiamata che prova un controllo fisso (F9/F10); input lungo e comando Bash | problema per i due casi; nel verdetto (`exploratory_calls`) ogni chiamata citata con l'input registrato dall'audit (solo il comando per Bash), troncato a 300 caratteri |
+| VC-06h | prova dei controlli fissi (`edgeCaseEvidence`) | la prima chiamata che soddisfa ogni riga F9/F10 |
 
 ### Hook dell'agente smoke (`test/utils/agent-hooks.test.ts`), template MCP (`test/utils/render-mcp.test.ts`) e guardia sugli output committati (`test/utils/check-tracked-artifacts.test.ts`, step di `test.yml`)
 | ID | Scenario | Atteso |
@@ -812,12 +815,14 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | WL-03 | concurrency di live-tests e agente smoke | `cancel-in-progress: false` |
 | WL-04 | job prepare, agent-run, verify, cleanup e live-tests-run | primo step con segreti Zotero = "Mask the test group name" |
 | WL-05 | upload degli artifact e Job Summary; job `comment` | solo dopo uno scrub riuscito; solo `pull-requests: write`, PR dello stesso repo, niente checkout/npm/segreti/environment, ricontrollo dei percorsi |
-| WL-06 | `release.yml` npm-publish | dopo skill-zips, checkout del tag della release, controllo versione = tag prima di `npm publish` |
+| WL-06 | `release.yml` npm-publish, test, skill-zips | npm-publish dopo skill-zips, checkout del tag della release, controllo versione = tag prima di `npm publish`; test sul tag se esiste già; skill-zips crea la release, poi checkout del tag con lo stesso controllo, poi gli zip |
+| WL-06b | mascheramento del nome del gruppo nel job di pulizia dell'agente | `continue-on-error` (la pulizia non salta mai), solo lì |
 | WL-07 | workflow unico live + agente | `live-tests.yml` non esiste più; `changes` con `live-scope.mjs`; prepare dopo `live` riuscito; verdetti `live-tests` e `agent-smoke` (rosso se il live non è passato); `id-token`, `issues: write`, `pull-requests: write` ciascuno in un solo job; cron del venerdì; input `scope`; posto per `word-render`; timeout su ogni job e step, azioni fissate per SHA; deps-update avvia una sola run con `scope=live+agent` |
 | WL-08/08b | `scripts/live-scope.mjs`: PR solo docs, sul codice, sulla suite dal vivo, solo sulla skill dell'agente, sul workflow; push; schedule; manuale senza input, `live`, `live+agent`; scope sconosciuto; processo | live/agent attesi (la skill dell'agente fa girare anche il live); errore; `live=…`/`agent=…` per `$GITHUB_OUTPUT` |
 | CR-01a..d | `mask-group-name.mjs` (`test/utils/ci-report.test.ts`): lettura con header e timeout; 503 poi 200, 404, rete giù, nome assente; output `::add-mask::` e `$GITHUB_ENV`; processo senza gruppo, senza chiave, id non numerico | nome; ritenta solo 429/5xx/rete, errori senza il nome; delimitatore casuale, a capo rifiutato; no-op / exit 1 |
 | CR-02a..c | scrub-report e redact con il nome del gruppo; senza `ZOTERO_TEST_GROUP_NAME` ma con un gruppo | nome, id e username mascherati / token; exit 1 senza output |
-| CR-03a..e | `agent/summary.mjs`: riepilogo completo; senza verdetto; testo dell'agente con HTML, menzioni, `\|`, a capo, troppo lungo; `runStats`; controllo prima di pubblicare (segnaposto, user id, nome del gruppo, `users/<id>` senza variabili, gruppo senza nome); processo pulito / con un id | marcatore, tabelle, statistiche; titolo "no verdict"; testo inerte e troncato; ultimo `result`; problemi giusti; file scritto / exit 1 senza file né id nel messaggio |
+| CR-03f | segreto con `&` e `<` (nome del gruppo) nel testo dell'agente | non visibile dopo l'escape, trovato nel testo grezzo: il riepilogo non si scrive |
+| CR-03a..e | `agent/summary.mjs`: riepilogo completo (esplorativi con le chiamate registrate dall'audit); senza verdetto; testo dell'agente con HTML, menzioni, `\|`, a capo, troppo lungo; `runStats`; controllo prima di pubblicare (segnaposto, user id, nome del gruppo, `users/<id>` senza variabili, gruppo senza nome); processo pulito / con un id | marcatore, tabelle, statistiche; titolo "no verdict"; testo inerte e troncato; ultimo `result`; problemi giusti; file scritto / exit 1 senza file né id nel messaggio |
 | RM-01..03 | template MCP: variabili e default, node e server assoluti, opzionali vuote omesse; variabile obbligatoria mancante; nessun valore nel template | config concreta; errore che la nomina; solo segnaposto |
 | RA-01..02 | runner Agent SDK (`scripts/run-agent.mjs`, `test/utils/run-agent.test.ts`): config dello smoke con `${RUNNER_TEMP}`; variabile o campo obbligatorio mancante | percorsi espansi, output fuori dal workspace; errore |
 | RA-03 | federazione e ambiente dell'agente | attiva solo con rule id e organization id; `ACTIONS_ID_TOKEN_REQUEST_*` rimossi |

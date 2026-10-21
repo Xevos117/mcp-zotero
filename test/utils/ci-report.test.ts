@@ -119,7 +119,14 @@ describe("scrubber e redattore con il nome del gruppo (CR-02)", () => {
 });
 
 describe("riepilogo dell'agente smoke (test/live/agent/summary.mjs, CR-03)", () => {
-  const verdict = { run_id: "r1", verified: false, problems: ["X1: call 1 (search_library): call_no 9 not in the audit"], warnings: ["denied by the hooks: Bash (x)"], checks: 41 };
+  const verdict = {
+    run_id: "r1",
+    verified: false,
+    problems: ["X1: call 1 (search_library): call_no 9 not in the audit"],
+    warnings: ["denied by the hooks: Bash (x)"],
+    checks: 41,
+    exploratory_calls: [{ scenario: "X1", call_no: 7, tool: "search_library", input: '{"limit":-1}' }],
+  };
   const claims = {
     scenarios: [{ id: "F1", status: "skipped", notes: "doi.org | down\nretry" }, { id: "F2", status: "passed" }],
     exploratory: [{ id: "X1", verdict: "unclear", rationale: "limit <0> @someone", observed: "error `x`" }],
@@ -134,7 +141,8 @@ describe("riepilogo dell'agente smoke (test/live/agent/summary.mjs, CR-03)", () 
     expect(text).toContain("head abcdef1 · 41 checks passed · 1 problems · 1 warnings · 87 turns · 23 min · $1.84");
     expect(text).toContain("- X1: call 1 (search_library): call_no 9 not in the audit");
     expect(text).toContain("| F1 | skipped | doi.org \\| down retry |");
-    expect(text).toContain("| X1 | unclear | limit &lt;0&gt; @​someone | error 'x' |");
+    expect(text).toContain("| ID | Verdict | Rationale | Audited calls | Observed |");
+    expect(text).toContain(`| X1 | unclear | limit &lt;0&gt; @​someone | #7 search_library {"limit":-1} | error 'x' |`);
     expect(text).toContain("- **get_item_fulltext**: max_characters 0 is unclear");
     expect(text).not.toContain("claims-friction");
     expect(text).toContain("<details><summary>Agent report</summary>");
@@ -162,6 +170,13 @@ describe("riepilogo dell'agente smoke (test/live/agent/summary.mjs, CR-03)", () 
     const problems = leakProblems(text, env);
     if (re) expect(problems.join("\n")).toMatch(re);
     else expect(problems).toEqual([]);
+  });
+
+  it("CR-03f controllo anche sul testo prima dell'escape: un segreto con & o < non sfugge", () => {
+    const env = { ZOTERO_TEST_GROUP_NAME: "Lab <A&B>" };
+    const input = { verdict: { ...verdict, problems: ["group Lab <A&B> seen"] } };
+    expect(leakProblems(buildSummary(input), env)).toEqual([]); // escaped: &lt;A&amp;B&gt;
+    expect(leakProblems(buildSummary(input, { raw: true }), env)).toEqual(["ZOTERO_TEST_GROUP_NAME present in the text"]);
   });
 
   it("CR-03e come processo: scrive il file se pulito; con un identificativo → exit 1 e nessun file", async () => {

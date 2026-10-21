@@ -92,6 +92,17 @@ describe("workflow dal vivo e agente smoke (WL)", () => {
     expect(check).toBeGreaterThan(0);
     expect(check).toBeLessThan(publish.indexOf("npm publish"));
     expect(step(publish, "Check package.json version = release tag")).toContain('if [ "${TAG#v}" != "$VERSION" ]; then');
+    // test: the tag if it exists already; skill-zips: zips from the tag, after creating it if needed
+    expect(step(job(release, "test"), "Check out the release tag if it exists")).toContain('git checkout --detach "refs/tags/$TAG"');
+    const zips = job(release, "skill-zips");
+    expect(zips.indexOf("- name: Resolve or create release")).toBeLessThan(zips.indexOf("- name: Check out the release tag"));
+    expect(zips.indexOf("- name: Check out the release tag")).toBeLessThan(zips.indexOf("- name: Create skill zip archives"));
+    expect(step(zips, "Check out the release tag")).toContain('if [ "${TAG#v}" != "$VERSION" ]; then');
+  });
+
+  it("WL-06b il job di pulizia dell'agente pulisce anche se il mascheramento del nome del gruppo fallisce", () => {
+    expect(step(job(agent, "cleanup"), "Mask the test group name")).toContain("continue-on-error: true");
+    for (const k of ["prepare", "agent-run", "verify", "live"]) expect(step(job(agent, k), "Mask the test group name")).not.toContain("continue-on-error");
   });
 
   it("WL-07 un solo workflow: changes → live → agente solo dopo un live riuscito; verdetti con i nomi dei check obbligatori; permessi minimi", () => {

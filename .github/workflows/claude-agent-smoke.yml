@@ -1,5 +1,9 @@
 name: Live tests + agent smoke
 
+# File name kept from the former agent-only workflow on purpose: the Anthropic federation rule of the agent job
+# matches claims.job_workflow_ref against ".github/workflows/claude-agent-smoke.yml@"; renaming the file would
+# make the agent's token exchange fail until the rule is changed (owner action).
+#
 # One workflow for everything that uses the Zotero test account (environment `zotero-live`):
 #   changes → live-tests-run (test/live against the real Web API)
 #           → [slot: word-render, between the live suite and the agent; not implemented yet]
@@ -13,7 +17,7 @@ name: Live tests + agent smoke
 # Identity Federation of the agent job (no API key): ANTHROPIC_FEDERATION_RULE_ID, ANTHROPIC_ORGANIZATION_ID,
 # ANTHROPIC_SERVICE_ACCOUNT_ID, ANTHROPIC_WORKSPACE_ID. The federation rule is bound to
 # repo:<owner>/<repo>:environment:zotero-live and to this workflow file (job_workflow_ref), so the agent job
-# runs in that environment and the file keeps its name.
+# runs in that environment.
 #
 # A real Claude agent (Claude Agent SDK, scripts/run-agent.mjs) uses the MCP server like a user, following the
 # versioned skill .claude/skills/test-mcp-zotero; the verdict is NOT the agent's: test/live/verify-claims.mjs
@@ -781,6 +785,9 @@ jobs:
       # later log line of the job and exported as ZOTERO_TEST_GROUP_NAME for the fail-closed checks of redact.mjs,
       # scrub-report.mjs and agent/summary.mjs (test/live/mask-group-name.mjs).
       - name: Mask the test group name
+        # never blocks the cleanup: a failed mask must not leave the run's data on the test account (the cleanup
+        # logs only scrubbed messages and never the group name, test/live/global-setup.ts)
+        continue-on-error: true
         timeout-minutes: 2
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
