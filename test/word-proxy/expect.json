@@ -6,10 +6,10 @@
     "otherDialogs": 0,
     "noteIndex": 0,
     "oneIdPerUri": true,
-    "citations": 8,
-    "distinctUris": 12,
+    "citations": 9,
+    "distinctUris": 13,
     "bibliographyFields": 1,
-    "bibliographyEntries": 12,
+    "bibliographyEntries": 13,
     "placeholderLeft": false,
     "footnoteCitations": 0,
     "uriPrefix": "http://zotero.org/users/000000/items/"
@@ -119,12 +119,7 @@
     "uriPrefix": "http://zotero.org/groups/777/items/"
   },
   "ab": {
-    "why": "bibliography from the library (lib-apa) against the one from the product's embedded itemData (apa): zoteroItemToCsl does not map university, institution, repository/archiveID and accessDate",
-    "differences": [
-      "[University of Bologna]",
-      "(arXiv:2310.06825). arXiv.",
-      "Specification and guidelines. Research Data Alliance.",
-      "Retrieved October 21, 2026, from"
-    ]
+    "why": "bibliography from the library (lib-apa) against the one from the product's embedded itemData (apa): no difference expected since zoteroItemToCsl maps university, institution, repository/archiveID, the genre, accessDate, ISBN, ISSN, edition, language and the number of pages",
+    "differences": []
   }
 }

@@ -187,7 +187,7 @@ test normali. Non restano `it.fails` nella suite.
 ## add_items_by_doi (`add-items-by-doi.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| AID-01 | DOI valido | GET doi.org con Accept CSL; item convertito (tipo, creators, publicationTitle) |
+| AID-01 | DOI valido (arXiv) | GET doi.org con Accept CSL; item convertito: `preprint` con `repository` "arXiv" e `archiveID` "arXiv:<id>", creators, nessun `publicationTitle` |
 | AID-02 | senza UNPAYWALL_EMAIL | pdf_results con warning breve, `hint` unico (cosa dire all'utente, dove impostarla, riavvio), nessuna chiamata a Unpaywall |
 | AID-03 | auto_attach_pdf=false | niente pdf_results |
 | AID-04 | collection_key/tags | nel payload |
@@ -404,6 +404,7 @@ assenti dal client) le decide il job `word-proxy` (sezione sotto) con Zotero des
 | SK-10 | chiave `<zcite>` non valida per Zotero (`../tags`, `AB?C`, mista a una valida, con 0/1, minuscole) | exit 1 con lo stesso errore di inject_citations (solo le chiavi errate), nessun output |
 | SK-V01 | stili apa, harvard, chicago, ieee, vancouver; singola, multi-chiave con locator/prefix, ripetuta | output di inject.js valido (struttura, schema, URI, citeproc con 2 voci in bibliografia, parti chiave) |
 | SK-V02 | libreria `groups/777` | URI di gruppo validi |
+| SK-10 | tesi, report, preprint, pagina web, libro, articolo da get_items_details | stessi itemData di inject_citations: università, istituzione, repository come `publisher`, `number`, `genre`, `accessed`, ISBN/ISSN/edizione/lingua/pagine, data non numerica come `raw`, "&" letterale nel nome della rivista; docx validi |
 | SK-09 | `place` restituito da get_items_details | `publisher-place` nell'itemData come in inject_citations (bug trovato da LIVE-SK-01, corretto: prima inject.js leggeva solo `publisherPlace`) |
 
 Gli output di SK-01, SK-02 e SK-08 passano anche da `expectValidDocx`.
@@ -468,6 +469,27 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 | HE-05 | entità sconosciute, `&#0;`, surrogati, fuori range, `&` isolato, senza `;` | invariate |
 | HE-06 | testo senza `&` | stessa stringa |
 | HE-07 | CSL annidato | ogni stringa decodificata, chiavi e valori non stringa invariati |
+
+## Conversione CSL ⇄ Zotero (`src/utils/csl-to-zotero.test.ts`)
+
+Import da DOI (`cslToZoteroItem`) e itemData incorporati nei codici di campo (`zoteroItemToCsl`, stesse regole in
+`inject.js` della skill, parità in SK-10). Oltre ai casi senza ID già presenti (tipi, ruoli, campi per tipo):
+
+| ID | Caso | Atteso |
+|---|---|---|
+| CSL-01 | `container-title-short`, `subtitle` (stringa o array) | `journalAbbreviation`; titolo "Titolo: Sottotitolo"; campo tolto dove il tipo non l'ha |
+| CSL-02 | `event-title`, `event` | `conferenceName` (prima `event-title`), solo per `conferencePaper` |
+| CSL-03 | `number`, `article-number` | `reportNumber` del report; pagine di un articolo senza `page` (con `page` restano le pagine) |
+| CSL-04 | `publisher` di tesi, report, preprint | `university`, `institution`, `repository` (niente `publisher`, che il tipo non ha) |
+| CSL-05 | abstract JATS (`<jats:title>`, `<jats:p>`, `<jats:italic>`) / abstract semplice | tag tolti con una regex, una riga per paragrafo, spazi compattati / invariato |
+| CSL-06 | DOI `10.48550/arXiv.*` (anche maiuscolo) / altro DOI con "arXiv" | `preprint`, `repository` "arXiv", `archiveID` "arXiv:<id>", niente `publicationTitle` / tipo dalla CSL |
+| CSL-07 | ogni campo nuovo su report, tesi, articolo, atti, preprint, libro | sempre filtrato da `ITEM_TYPE_FIELDS` |
+| CSL-08 | itemData di tesi e report | `publisher` da `university`/`institution`, `genre` da `thesisType`/`reportType`, `number` da `reportNumber` |
+| CSL-09 | itemData di un preprint | `publisher` da `repository`, `number` da `archiveID` |
+| CSL-10 | `accessDate` ISO, nel formato SQL di Zotero, vuoto | `accessed` con il solo giorno / assente |
+| CSL-11 | `ISBN`, `ISSN`, `edition`, `language`, `numPages` | omonimi CSL, `number-of-pages` |
+| CSL-12 | data "October 2023" / "2023-10" | `issued.raw` (la interpreta citeproc) / `date-parts` |
+| CSL-13 | campi nuovi vuoti | fuori dal codice di campo |
 
 ## Helper pubblici (`test/utils/helpers.test.ts`)
 | ID | Scenario | Atteso |
@@ -538,16 +560,16 @@ dialoghi. Ogni passo è confrontato con `test/word-proxy/expect.json` da `verify
 bibliografia dalla libreria locale con quella dall'`itemData` incorporato. Nessun account, nessun segreto.
 | ID | Scenario | Atteso |
 |---|---|---|
-| WP-apa…chicago | sessione "embedded" (percorso B, libreria vuota): primo Refresh nei 5 stili | H-W1 corretto: nessun dialogo Document Preferences, stile dell'iniezione (da `ZOTERO_PREF_*`) applicato e salvato; nessun avviso, `noteIndex` 0, un id per URI, 8 citazioni, 12 voci, tutte da `itemData` incorporato; "p. 110" del locator, "In J. Edmond (Ed.), …", cirillico, particelle |
+| WP-apa…chicago | sessione "embedded" (percorso B, libreria vuota): primo Refresh nei 5 stili | H-W1 corretto: nessun dialogo Document Preferences, stile dell'iniezione (da `ZOTERO_PREF_*`) applicato e salvato; nessun avviso, `noteIndex` 0, un id per URI, 9 citazioni, 13 voci, tutte da `itemData` incorporato; "p. 110" del locator, "In J. Edmond (Ed.), …", cirillico, particelle |
 | WP-proposed | OK sullo stile proposto, se Zotero lo chiede | prima del fix: stile a note, citazioni come testo di nota nel corpo; ora nessun dialogo, apa applicato |
 | WP-again / WP-restyle | secondo Refresh; Document Preferences → chicago-author-date | nessun dialogo, stesso testo; stile cambiato senza errori |
 | WP-group | docx dalla libreria di gruppo 777, gruppo assente in Zotero | H-W5: `itemData` incorporato, nessuna richiesta, URI `groups/777` |
 | WP-lib-apa/lib-group | sessione "library" (percorso A): stesse voci con le stesse chiavi nella libreria locale e in un gruppo 777 (`load-items.js`) | voci dalla libreria, nessun fallback, nessun dialogo |
-| WP-ab | bibliografia lib-apa contro apa | uguali salvo le 4 differenze note: `zoteroItemToCsl` non porta università (tesi), istituzione (report), repository/archiveID (preprint), data di accesso (pagina web) |
+| WP-ab | bibliografia lib-apa contro apa | uguali: nessuna differenza attesa da quando `zoteroItemToCsl` porta università (tesi), istituzione (report), repository/archiveID (preprint), genere, data di accesso (pagina web), ISBN/ISSN, edizione, lingua e pagine (prima 4 differenze note; senza differenze l'indice delle pagine non ha il problema noto `itemData`) |
 | WL-09 | ambito del job (`scripts/word-proxy-scope.mjs`, `test/utils/workflow-logic.test.ts`) | PR: solo se cambiano un sorgente del server (`src/`), la skill, il corpus, word-proxy o il job; PR solo docs o solo test: saltato; push su main e manuale: sempre |
 | WL-10 | struttura del job | senza segreti né `environment`, `ubuntu-24.04`, timeout ≤ 10 min, azione composita `word-tools` (versioni e sha256 fissati, archivi in cache ricontrollati a ogni run), artifact solo dopo `check-artifacts.mjs`, conservato 1 giorno |
 | WP-CA | `check-artifacts.mjs` (`test/utils/word-proxy.test.ts`) | fallisce con URI di libreria diversi dai segnaposto, email, home diversa da quella del runner, valori di variabili segrete, file inattesi (anche dentro i docx) |
-| WP-R01 | `render.mjs`: differenze itemData di `expect.json` | ognuna associata alla sua voce del corpus (voce di bibliografia di libreria che la contiene) |
+| WP-R01 | `render.mjs`: differenze itemData (le 4 di prima di #50; quelle di `expect.json`, ora nessuna) | ognuna associata alla sua voce del corpus (voce di bibliografia di libreria che la contiene) / elenco vuoto: nessun problema noto `itemData` nell'indice |
 | WP-V | `verify.mjs` / `compare.mjs` su documenti costruiti nel test | aspettative rispettate → ok; una differenza → errore con atteso/ottenuto; differenza A/B nuova o sparita → errore |
 
 ### word-render e revisione visiva (job di `claude-agent-smoke.yml`, `test/live/agent/visual-review.mjs`)
@@ -571,7 +593,7 @@ Read su `agent-render/`) e scrive `agent-out/visual-review.md`; `word-render-cle
 ## Corpus reale (`test/fixtures/corpus/`, helper `test/helpers/corpus.ts`)
 Opere vere con licenza CC BY / CC0 (conferenza ACL, articolo in cirillico, libro curato, capitolo, monografia, tesi
 DataCite, report con autore istituzionale, preprint arXiv con 18 autori e particelle, pagina web, coppia stesso
-autore e anno con altri coautori, coppia stesso autore unico e anno), registrate a mano da `scripts/record-corpus.mjs` (API ufficiali, 1 richiesta/s, arXiv 1 ogni 3 s):
+autore e anno con altri coautori, coppia stesso autore unico e anno, rivista con "&" che Crossref manda come `&amp;`), registrate a mano da `scripts/record-corpus.mjs` (API ufficiali, 1 richiesta/s, arXiv 1 ogni 3 s):
 cassette ridotte di doi.org/Unpaywall/DataCite/Zenodo/arXiv/Thoth, 3 PDF, `library.json` curata. `corpusRoutes()`
 le serve come route della FakeNet, `serveCorpusLibrary()` serve la libreria curata come Web API.
 | ID | Scenario | Atteso |
@@ -582,9 +604,9 @@ le serve come route della FakeNet, `serveCorpusLibrary()` serve la libreria cura
 | CORPUS-04/05 | corpus guastato in una copia: email, `@` nell'URL, valore dell'ambiente, ORCID, licenza NC, campo vietato, PDF cambiato, anni diversi, chiave non valida | ciascun controllo scatta |
 | CORPUS-AID-01 | `add_items_by_doi` su tutti i DOI del corpus (`test/tools/corpus.test.ts`) | ogni DOI risolto dalle cassette, un item per opera, nessuna richiesta senza route |
 | CORPUS-AID-02 | item creato contro la voce curata, campo per campo | uguale salvo le differenze note (tabella `KNOWN`, causa per campo); una differenza nota sparita va tolta dalla tabella |
-| CORPUS-AID-03 (`it.fails`) | differenze del prodotto, una per causa e opera | publisher-location, event, container-title-short, sottotitolo, article-number, contributor, JATS negli abstract, tipo CSL `article` → journalArticle (curatori e nome `literal` corretti: ora in CORPUS-AID-02) |
-| CORPUS-IC-01 | `inject_citations` sulla libreria curata in apa/harvard/chicago/ieee/vancouver | docx valido (`expectValidDocx`), 7 citazioni, 12 voci in bibliografia |
-| CORPUS-IC-02 | apa | coppia Peroni 2023 (coautori diversi) disambiguata con i coautori come vuole APA 7; coppia Eve 2020 (stesso autore unico) con 2020a/2020b; "Иванов, Н.", "de las Casas, D.", autori collettivi, "p. 110" |
+| CORPUS-AID-03 (`it.fails`) | differenze del prodotto, una per causa e opera | publisher-location, contributor (event, container-title-short, sottotitolo, article-number, JATS negli abstract, DOI arXiv → preprint corretti con #50, come prima curatori e nome `literal`: ora in CORPUS-AID-02) |
+| CORPUS-IC-01 | `inject_citations` sulla libreria curata in apa/harvard/chicago/ieee/vancouver | docx valido (`expectValidDocx`), 8 citazioni, 13 voci in bibliografia |
+| CORPUS-IC-02 | apa | coppia Peroni 2023 (coautori diversi) disambiguata con i coautori come vuole APA 7; coppia Eve 2020 (stesso autore unico) con 2020a/2020b; "Иванов, Н.", "de las Casas, D.", autori collettivi, "p. 110", "Arthropod Systematics & Phylogeny" con la `&` letterale (mai `&amp;`) |
 | CORPUS-IC-03 | apa, capitolo | "In J. Edmond (Ed.), Digital Technology and the Practices of Humanities Research (pp. 105–122)" dai dati incorporati (titolo del libro e curatori del `bookSection` nell'`itemData`) |
 | CORPUS-PDF-01 | `find_and_attach_pdfs` sulle 3 opere con PDF (Unpaywall registrato) | PDF veri scaricati, caricati identici, testo estratto (anche cirillico) nel PUT fulltext |
 | CORPUS-PDF-02 | `add_items_by_doi` con `UNPAYWALL_EMAIL` | voce creata e PDF allegato dalla risposta Unpaywall registrata |

@@ -204,6 +204,46 @@ describe("skill inject.js (processo reale)", () => {
     }
   });
 
+  it("SK-10 tesi, report, preprint, pagina web, libro: università, istituzione, repository, numero, genere, data di accesso, ISBN/ISSN/edizione/lingua/pagine, data non numerica → stessi itemData di inject_citations", async () => {
+    const items = [
+      { key: "THESIS22", itemType: "thesis", title: "A thesis", date: "2022", university: "University of Bologna", thesisType: "PhD thesis", numPages: "210", language: "en", creators: [{ creatorType: "author", firstName: "Ada", lastName: "Gualandi" }] },
+      { key: "REPRT222", itemType: "report", title: "A report", date: "2020-06", institution: "Research Data Alliance", reportNumber: "RDA-50", reportType: "Specification", creators: [{ creatorType: "author", name: "Working Group" }] },
+      { key: "PRPRNT22", itemType: "preprint", title: "A preprint", date: "2023-10-10", repository: "arXiv", archiveID: "arXiv:2310.06825", creators: [{ creatorType: "author", firstName: "Albert", lastName: "Jiang" }] },
+      { key: "WEBPAGE2", itemType: "webpage", title: "A page", websiteTitle: "The Site", url: "https://example.org/p", accessDate: "2026-10-21T08:00:00Z", creators: [{ creatorType: "author", name: "Site Community" }] },
+      { key: "BKEDTN22", itemType: "book", title: "A book", date: "October 2023", publisher: "Press", ISBN: "978-1-78374-238-7", edition: "2", creators: [{ creatorType: "author", firstName: "Jo", lastName: "Kochan" }] },
+      article("JRNLSSN2", { title: "A journal article", date: "2021", ISSN: "1864-8312", publicationTitle: "Arthropod Systematics & Phylogeny" }),
+    ];
+    const h = await startHarness();
+    try {
+      h.net.on("GET", `${ZBASE}/items`, zLibraryQuery(items));
+      for (const it of items) h.net.on("GET", `${ZBASE}/items/${it.key}`, zSingle(it));
+      const details = await h.call("get_items_details", { item_keys: items.map((i) => i.key) });
+      const metaPath = await dir.file("meta-fields.json", JSON.stringify(details.json));
+      const body = items.map((i) => para(zcite({ keys: i.key }))).join("");
+      const forTool = await dir.file("fields-tool.docx", await makeDocx(body));
+      const forScript = await dir.file("fields-script.docx", await makeDocx(body));
+      const tool = await h.call("inject_citations", { file_path: forTool });
+      expect(tool.isError, tool.text).toBe(false);
+      const out = join(dir.path, "fields-script-out.docx");
+      const r = await run([forScript, out, metaPath, "424242"]);
+      expect(r.code, r.stderr).toBe(0);
+      const data = async (path: string) => citations(await readDocumentXml(await readFile(path))).map((c) => c.citationItems[0].itemData);
+      const fromTool = await data(tool.json.output_path);
+      const fromScript = await data(out);
+      expect(fromScript).toEqual(fromTool);
+      expect(fromTool[0]).toMatchObject({ type: "thesis", publisher: "University of Bologna", genre: "PhD thesis", "number-of-pages": "210", language: "en" });
+      expect(fromTool[1]).toMatchObject({ type: "report", publisher: "Research Data Alliance", number: "RDA-50", genre: "Specification" });
+      expect(fromTool[2]).toMatchObject({ type: "article", publisher: "arXiv", number: "arXiv:2310.06825" });
+      expect(fromTool[3]).toMatchObject({ type: "webpage", "container-title": "The Site", accessed: { "date-parts": [[2026, 10, 21]] } });
+      expect(fromTool[4]).toMatchObject({ issued: { raw: "October 2023" }, ISBN: "978-1-78374-238-7", edition: "2" });
+      expect(fromTool[5]).toMatchObject({ ISSN: "1864-8312", "container-title": "Arthropod Systematics & Phylogeny" });
+      await expectValidDocx(await readFile(out));
+      await expectValidDocx(await readFile(tool.json.output_path));
+    } finally {
+      await h.close();
+    }
+  });
+
   it('SK-07 copiato come inject.mjs in una cartella con package.json "type": "commonjs" funziona', async () => {
     const cjs = join(dir.path, "cjs");
     await mkdir(cjs);

@@ -109,7 +109,7 @@ if (process.argv[1] && process.argv[1].endsWith("render.mjs")) {
   const index = {
     description:
       "Pages of the documents Zotero 10 refreshed in word-proxy, rendered by WordCraft (not Word): judge the content of citations and bibliography, not the layout.",
-    documents: "Every document cites the same 12 corpus items: Single, Same first author and year, Locator and prefix (locator 110, prefix see), Repeated, Edited book and monograph, Cyrillic, Preprint/thesis/report/web page, Same single author and year; then References.",
+    documents: "Every document cites the same 13 corpus items: Single, Same first author and year, Locator and prefix (locator 110, prefix see), Repeated, Edited book and monograph, Cyrillic, Preprint/thesis/report/web page, Same single author and year, Ampersand in the journal name; then References.",
     corpus: manifest.works.map((w) => ({ id: w.id, key: w.key, itemType: w.itemType, cases: w.cases })),
     knownIssues: [
       // known bugs of expect.json (knownBug of a rendered step): they show as a Document Preferences dialog
@@ -120,7 +120,9 @@ if (process.argv[1] && process.argv[1].endsWith("render.mjs")) {
         requiresDialog: true,
       })),
       // reportsRequired: the reviewer must report each of these (evidence that the pages were really reviewed)
-      { id: "itemData", steps: ["apa", "ieee", "vancouver", "harvard", "chicago", "proposed", "group"], description: expect.ab.why, entries: itemDataEntries, items: itemDataEntries.map((e) => e.item), reportsRequired: true },
+      ...(itemDataEntries.length
+        ? [{ id: "itemData", steps: ["apa", "ieee", "vancouver", "harvard", "chicago", "proposed", "group"], description: expect.ab.why, entries: itemDataEntries, items: itemDataEntries.map((e) => e.item), reportsRequired: true }]
+        : []),
       ...RENDERING_NOTES,
     ],
     images,

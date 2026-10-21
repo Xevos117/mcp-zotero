@@ -35,6 +35,16 @@ export interface CslItemData {
   translator?: CslName[];
   "collection-title"?: string;
   "number-of-pages"?: string;
+  /** Crossref sends it as an array. */
+  subtitle?: string | string[];
+  "container-title-short"?: string;
+  event?: string;
+  "event-title"?: string;
+  number?: string;
+  "article-number"?: string;
+  /** Kind of thesis or report (Zotero thesisType, reportType). */
+  genre?: string;
+  accessed?: CslDate;
 }
 
 export interface ZoteroCitationItem {

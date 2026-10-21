@@ -43,6 +43,7 @@ function body(numbered) {
     cite("Cyrillic", { keys: K.ivanov2022, ...n("7") }) +
     cite("Preprint, thesis, report, web page", { keys: [K.jiang2023, K.gualandi2022, K.rda2020, K.turingway].join(","), ...n("8-11") }) +
     cite("Same single author and year", { keys: `${K.eve2020},${K.eve2020b}`, ...n("4,12") }) +
+    cite("Ampersand in the journal name", { keys: K.ament2025, ...n("13") }) +
     p("References")
   );
 }

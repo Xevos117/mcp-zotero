@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cslToZoteroItem, zoteroItemToCsl } from "./csl-to-zotero.js";
+import { cslDate, cslToZoteroItem, zoteroItemToCsl } from "./csl-to-zotero.js";
 import { CslItemData } from "../types/csl-types.js";
 import { ITEM_TYPE_FIELDS, ZoteroItemType } from "./zotero-item-types.js";
 
@@ -429,6 +429,62 @@ describe("cslToZoteroItem", () => {
   });
 });
 
+describe("cslToZoteroItem: fields of the DOI import (#50)", () => {
+  it("container-title-short → journalAbbreviation; subtitle joined to the title with \": \"", () => {
+    const r = cslToZoteroItem({ type: "journal-article", title: "Main", subtitle: ["Sub"], "container-title": "J", "container-title-short": "J. Abbr." });
+    expect(r).toMatchObject({ title: "Main: Sub", journalAbbreviation: "J. Abbr." });
+    expect(cslToZoteroItem({ type: "book", title: "Main", subtitle: "Sub" }).title).toBe("Main: Sub");
+    expect(cslToZoteroItem({ type: "book", title: "Main", subtitle: [] }).title).toBe("Main");
+    // a type without the field (book) drops it
+    expect(cslToZoteroItem({ type: "book", title: "B", "container-title-short": "X" })).not.toHaveProperty("journalAbbreviation");
+  });
+
+  it("event-title / event → conferenceName (event-title first)", () => {
+    expect(cslToZoteroItem({ type: "proceedings-article", title: "P", event: "Old" }).conferenceName).toBe("Old");
+    expect(cslToZoteroItem({ type: "proceedings-article", title: "P", event: "Old", "event-title": "ACL 2020" }).conferenceName).toBe("ACL 2020");
+    expect(cslToZoteroItem({ type: "journal-article", title: "J", event: "E" })).not.toHaveProperty("conferenceName");
+  });
+
+  it("number / article-number → reportNumber of a report; the pages of an article without pages", () => {
+    expect(cslToZoteroItem({ type: "report", title: "R", number: "TR-7" }).reportNumber).toBe("TR-7");
+    expect(cslToZoteroItem({ type: "report", title: "R", "article-number": "8" }).reportNumber).toBe("8");
+    expect(cslToZoteroItem({ type: "journal-article", title: "J", "article-number": "1266725" }).pages).toBe("1266725");
+    expect(cslToZoteroItem({ type: "journal-article", title: "J", page: "1-9", "article-number": "8" }).pages).toBe("1-9");
+    const report = cslToZoteroItem({ type: "report", title: "R", "article-number": "8" });
+    expect(report.pages).toBe("");
+  });
+
+  it("publisher → university / institution / repository for thesis / report / preprint", () => {
+    expect(cslToZoteroItem({ type: "thesis", title: "T", publisher: "Uni" })).toMatchObject({ university: "Uni" });
+    expect(cslToZoteroItem({ type: "report", title: "R", publisher: "Inst" })).toMatchObject({ institution: "Inst" });
+    expect(cslToZoteroItem({ type: "posted-content", title: "P", publisher: "bioRxiv" })).toMatchObject({ itemType: "preprint", repository: "bioRxiv" });
+    expect(cslToZoteroItem({ type: "thesis", title: "T", publisher: "Uni" })).not.toHaveProperty("publisher");
+  });
+
+  it("JATS tags of the abstract removed, one line per paragraph; plain abstracts unchanged", () => {
+    const abstract = "<jats:title>Abstract</jats:title><jats:p>First <jats:italic>in</jats:italic>  part.</jats:p>\n  <jats:p>Second &lt; 3.</jats:p>";
+    expect(cslToZoteroItem({ type: "journal-article", title: "J", abstract }).abstractNote).toBe("Abstract First in part.\nSecond &lt; 3.");
+    expect(cslToZoteroItem({ type: "journal-article", title: "J", abstract: "Plain <b>text</b>" }).abstractNote).toBe("Plain <b>text</b>");
+  });
+
+  it("arXiv DOI (10.48550/arXiv.*) → preprint, repository arXiv, archiveID arXiv:<id>", () => {
+    const r = cslToZoteroItem({ type: "article", title: "Mistral 7B", DOI: "10.48550/arXiv.2310.06825", publisher: "arXiv", "container-title": "x" });
+    expect(r).toMatchObject({ itemType: "preprint", repository: "arXiv", archiveID: "arXiv:2310.06825", DOI: "10.48550/arXiv.2310.06825" });
+    expect(r).not.toHaveProperty("publicationTitle");
+    expect(cslToZoteroItem({ type: "article", title: "A", DOI: "10.48550/ARXIV.2101.00001" }).archiveID).toBe("arXiv:2101.00001");
+    expect(cslToZoteroItem({ type: "article", title: "A", DOI: "10.1000/arXiv.2101" }).itemType).toBe("journalArticle");
+  });
+
+  it("every new field still passes the type filter (ITEM_TYPE_FIELDS)", () => {
+    const csl: CslItemData = { type: "report", title: "R", subtitle: ["S"], "container-title-short": "C", event: "E", number: "1", publisher: "I", abstract: "<jats:p>A</jats:p>" };
+    for (const type of ["report", "thesis", "journal-article", "proceedings-article", "posted-content", "book"]) {
+      const r = cslToZoteroItem({ ...csl, type });
+      const valid = ITEM_TYPE_FIELDS[r.itemType as ZoteroItemType];
+      for (const k of Object.keys(r)) if (!["itemType", "creators", "collections", "tags"].includes(k)) expect(valid.has(k), `${type}: ${k}`).toBe(true);
+    }
+  });
+});
+
 describe("zoteroItemToCsl", () => {
   it("converts journalArticle to article-journal", () => {
     const result = zoteroItemToCsl({
@@ -570,5 +626,56 @@ describe("zoteroItemToCsl", () => {
       const result = zoteroItemToCsl({ itemType: zoteroType });
       expect(result.type).toBe(expectedCslType);
     }
+  });
+});
+
+describe("zoteroItemToCsl: fields of the embedded itemData (#50)", () => {
+  it("thesis: university → publisher, thesisType → genre; report: institution, reportNumber, reportType", () => {
+    expect(zoteroItemToCsl({ itemType: "thesis", title: "T", university: "University of Bologna", thesisType: "PhD thesis" } as never)).toMatchObject({
+      type: "thesis",
+      publisher: "University of Bologna",
+      genre: "PhD thesis",
+    });
+    expect(zoteroItemToCsl({ itemType: "report", title: "R", institution: "RDA", reportNumber: "50", reportType: "Specification" } as never)).toMatchObject({
+      type: "report",
+      publisher: "RDA",
+      number: "50",
+      genre: "Specification",
+    });
+  });
+
+  it("preprint: repository → publisher, archiveID → number", () => {
+    expect(zoteroItemToCsl({ itemType: "preprint", title: "P", repository: "arXiv", archiveID: "arXiv:2310.06825" } as never)).toMatchObject({
+      type: "article",
+      publisher: "arXiv",
+      number: "arXiv:2310.06825",
+    });
+  });
+
+  it("accessDate → accessed (the day only, ISO or Zotero's SQL form)", () => {
+    expect(zoteroItemToCsl({ itemType: "webpage", accessDate: "2026-10-21T08:00:00Z" } as never).accessed).toEqual({ "date-parts": [[2026, 10, 21]] });
+    expect(zoteroItemToCsl({ itemType: "webpage", accessDate: "2026-10-21 08:00:00" } as never).accessed).toEqual({ "date-parts": [[2026, 10, 21]] });
+    expect(zoteroItemToCsl({ itemType: "webpage", accessDate: "" } as never)).not.toHaveProperty("accessed", expect.anything());
+  });
+
+  it("ISBN, ISSN, edition, language, numPages → number-of-pages", () => {
+    expect(zoteroItemToCsl({ itemType: "book", title: "B", ISBN: "978-1", ISSN: "1234-5678", edition: "2", language: "it", numPages: "300" } as never)).toMatchObject({
+      ISBN: "978-1",
+      ISSN: "1234-5678",
+      edition: "2",
+      language: "it",
+      "number-of-pages": "300",
+    });
+  });
+
+  it("a date that is not YYYY-MM-DD → issued.raw (citeproc parses it), never dropped", () => {
+    expect(zoteroItemToCsl({ date: "October 2023" }).issued).toEqual({ raw: "October 2023" });
+    expect(zoteroItemToCsl({ date: "2023-10" }).issued).toEqual({ "date-parts": [[2023, 10]] });
+    expect(cslDate("")).toBeUndefined();
+  });
+
+  it("empty or missing fields stay out of the field code", () => {
+    const r = zoteroItemToCsl({ itemType: "thesis", title: "T", university: "", thesisType: "", accessDate: "", ISBN: "" } as never);
+    expect(JSON.parse(JSON.stringify(r))).toEqual({ type: "thesis", title: "T" });
   });
 });

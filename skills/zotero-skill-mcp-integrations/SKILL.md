@@ -188,7 +188,7 @@ get_items_details({ item_keys: ["KEY1", "KEY2", "KEY3", ...] })
 
 Save the result as `metadata.json` in the sandbox. The response is a key → metadata map; keys that are not in the library are listed in `not_found` (fix those `<zcite>` keys before injecting: the script fails on a cited key missing from `metadata.json`, and ignores `not_found` itself).
 
-**No remapping required.** The inject script accepts the MCP response field names directly (`DOI`, `url`, `publicationTitle`, `pages`, ...). You can pass the MCP response as-is; the container title comes from the type-specific field (`bookTitle` for a book section, `proceedingsTitle`, `encyclopediaTitle`, `websiteTitle`, ...) or `publicationTitle`, and other extra fields (`ISSN`, `language`, `accessDate`, ...) are ignored.
+**No remapping required.** The inject script accepts the MCP response field names directly (`DOI`, `url`, `publicationTitle`, `pages`, ...). You can pass the MCP response as-is; the container title comes from the type-specific field (`bookTitle` for a book section, `proceedingsTitle`, `encyclopediaTitle`, `websiteTitle`, ...) or `publicationTitle`; `university`, `institution` and `repository` are the publisher of a thesis, report or preprint, `reportNumber`/`archiveID` the number, `thesisType`/`reportType` the genre, and `accessDate`, `ISBN`, `ISSN`, `edition`, `language`, `numPages` are kept too (the same item data `inject_citations` writes); other extra fields are ignored.
 
 The script also accepts the canonical inject.js field names and a lowercase `doi`, so either format works:
 
@@ -203,7 +203,7 @@ The script also accepts the canonical inject.js field names and a lowercase `doi
 | `volume` | `volume` |
 | `issue` | `issue` |
 | `page` | `pages` |
-| `publisher` | `publisher` |
+| `publisher` | `publisher`, `university`, `institution`, `repository` |
 | `URL` | `url` |
 | `author`, `editor`, ... (CSL names) | `creators` (preferred) or `authors` |
 

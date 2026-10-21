@@ -167,7 +167,7 @@ the checklist document of the real corpus (`test/fixtures/corpus`) injected by t
 the case `proposed` (if Zotero opened its Document Preferences dialog, the user pressed OK on the style it
 proposed), and `lib-apa` (path A: the same items from the local library, the reference).
 Read `agent-render/index.json` first (document, style, path, page of each image, the dialog recorded at that
-step, the 12 corpus items with their cases, the known issues), then every PNG with the Read tool.
+step, the corpus items with their cases, the known issues), then every PNG with the Read tool.
 
 The pages are **WordCraft's rendering, not Word's**. Judge the **content** of the citations and of the
 bibliography, per style: which elements are there (authors, year, title, container, editors as "In … (Ed.)",
