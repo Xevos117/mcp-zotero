@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 // @ts-expect-error plain .mjs script without type declarations
 import { artifactProblems } from "../../test/word-proxy/check-artifacts.mjs";
+// @ts-expect-error plain .mjs script without type declarations
+import { itemDataItems } from "../../test/word-proxy/render.mjs";
+import { readFileSync } from "node:fs";
 
 /** Scripts of the word-proxy job (test/word-proxy/), on documents built here: no Zotero, no WordCraft. */
 
@@ -168,5 +171,22 @@ describe("word-proxy: check-artifacts.mjs (WP-CA)", () => {
     expect(problems).toContain("a.trace: value of a secret-like environment variable");
     expect(problems).toContain("zotero.log: unexpected file type");
     expect(problems).not.toContain("1234567");
+  });
+});
+
+describe("word-proxy: render.mjs (WP-R)", () => {
+  it("WP-R01 ogni differenza itemData nota di expect.json ha la sua voce del corpus (dalla voce di bibliografia di libreria che la contiene)", () => {
+    const read = (rel: string) => JSON.parse(readFileSync(join(ROOT, rel), "utf8"));
+    const expectJson = read("test/word-proxy/expect.json");
+    // APA bibliography of path A as Zotero rendered it (word-proxy run)
+    const bibliography = [
+      "Gualandi, B. (2022). What do we mean by “data” in the arts and humanities? Final Dissertation in Open Science [University of Bologna]. https://doi.org/10.5281/zenodo.6385132",
+      "Jiang, A. Q., Sablayrolles, A., … El Sayed, W. (2023). Mistral 7B (arXiv:2310.06825). arXiv. https://doi.org/10.48550/arXiv.2310.06825",
+      "Research Data Alliance FAIR Data Maturity Model Working Group. (2020). FAIR Data Maturity Model: Specification and guidelines. Research Data Alliance. https://doi.org/10.15497/rda00050",
+      "The Turing Way Community. (n.d.). Guide for Reproducible Research. The Turing Way. Retrieved October 21, 2026, from https://book.the-turing-way.org/reproducible-research/reproducible-research",
+    ];
+    const entries = itemDataItems(expectJson.ab.differences, bibliography, read("test/fixtures/corpus/library.json"), read("test/fixtures/corpus/corpus.json"));
+    expect(entries.map((e: { item: string }) => e.item)).toEqual(["gualandi2022", "jiang2023", "rda2020", "turingway"]);
+    expect(() => itemDataItems(["nowhere"], bibliography, read("test/fixtures/corpus/library.json"), read("test/fixtures/corpus/corpus.json"))).toThrow(/no corpus item/);
   });
 });

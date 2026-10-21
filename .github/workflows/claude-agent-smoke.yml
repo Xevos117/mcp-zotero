@@ -6,8 +6,9 @@ name: Live tests + agent smoke
 #
 # One workflow for everything that uses the Zotero test account (environment `zotero-live`):
 #   changes → live-tests-run (test/live against the real Web API)
-#           → [slot: word-render, between the live suite and the agent; not implemented yet]
-#           → agent-smoke-prepare → agent-smoke-run → agent-smoke-verify (→ agent-smoke-comment on PRs)
+#           → word-render (Zotero desktop refreshes the corpus documents, WordCraft renders the pages; no secrets)
+#           → agent-smoke-prepare → agent-smoke-run (needs word-render too) → agent-smoke-verify (→ agent-smoke-comment
+#           on PRs); word-render-cleanup deletes the rendered pages at the end (always)
 #   verdicts: live-tests, agent-smoke (required checks, never skipped); agent-smoke-cleanup (always);
 #   live-tests-weekly-issue (scheduled failures only).
 # The agent runs only after the live suite passed: a red live run spends no API credits.
@@ -187,9 +188,65 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-  # ── Slot: word-render ───────────────────────────────────────────────────────────────────────────────────
-  # A future job between the live suite and the agent (needs: live, run only if it succeeded; the agent jobs then
-  # also need it). Not implemented here.
+  # Pages for the agent's visual review: the word-proxy run (test/word-proxy/ci.sh: corpus documents injected by the
+  # built server with a fake Zotero API, refreshed by the official Zotero desktop build through wordcraft-cli),
+  # then every refreshed page rendered to PNG (test/word-proxy/render.mjs). Same conditions as the agent (it only
+  # feeds it); no secrets, no environment, no account: only corpus data and the placeholder libraries. The images
+  # are a temporary artifact, uploaded only after the fail-closed check and deleted by word-render-cleanup.
+  word-render:
+    name: word-render
+    needs: [changes, live]
+    if: >-
+      needs.changes.outputs.agent == 'true' &&
+      needs.live.result == 'success' &&
+      github.actor != 'dependabot[bot]' &&
+      (github.actor == github.repository_owner || github.actor == 'github-actions[bot]') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    # pinned: ubuntu-latest moves to a new release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 3
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+        timeout-minutes: 5
+      - run: npm run build
+        timeout-minutes: 3
+      - name: Zotero and WordCraft (pinned, sha256, cached)
+        id: tools
+        uses: ./.github/actions/word-tools
+        timeout-minutes: 8
+      # The checks against expect.json are word-proxy's job (test.yml): here only a command that does not complete fails
+      - name: Inject and refresh through Zotero
+        timeout-minutes: 7
+        env:
+          XVFB: Xvfb
+          ZOTERO_DIR: ${{ steps.tools.outputs.zotero }}
+          WORDCRAFT_CLI: ${{ steps.tools.outputs.wordcraft }}
+        run: timeout 400 test/word-proxy/ci.sh "$ZOTERO_DIR" "$WORDCRAFT_CLI" "$RUNNER_TEMP/word-proxy"
+      - name: Render the refreshed pages
+        timeout-minutes: 4
+        env:
+          WORDCRAFT_CLI: ${{ steps.tools.outputs.wordcraft }}
+        run: |
+          timeout 200 node test/word-proxy/render.mjs "$RUNNER_TEMP/word-proxy" "$WORDCRAFT_CLI" "$RUNNER_TEMP/word-render"
+          node test/word-proxy/check-artifacts.mjs "$RUNNER_TEMP/word-render"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        timeout-minutes: 3
+        with:
+          name: word-render
+          path: ${{ runner.temp }}/word-render/
+          retention-days: 1
+          if-no-files-found: error
 
   prepare:
     name: agent-smoke-prepare
@@ -210,6 +267,7 @@ jobs:
       contents: read
     outputs:
       available: ${{ steps.skill.outputs.available }}
+      visual_review: ${{ steps.skill.outputs.visual_review }}
       run_id: ${{ steps.prepare.outputs.run_id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -245,12 +303,22 @@ jobs:
             if [ "$found" != "true" ]; then
               echo "::notice::$path is not on the base branch yet: agent smoke skipped (it runs from main after merge)"
             fi
+            # the skill, agent config and hooks that run are the base branch's: they may predate the visual review of
+            # the rendered pages (skill step, Read of agent-render/, audit of the page reads)
+            if [ "$found" = "true" ] && git show "origin/$BASE_REF:$path" | grep -q 'visual-review.md' &&
+              git show "origin/$BASE_REF:.github/agents/agent-smoke.json" 2>/dev/null | grep -q 'agent-render' &&
+              git show "origin/$BASE_REF:.claude/agent-smoke/hooks/audit.mjs" 2>/dev/null | grep -q 'image-reads'; then
+              echo "visual_review=required" >> "$GITHUB_OUTPUT"
+            else
+              echo "visual_review=optional" >> "$GITHUB_OUTPUT"
+            fi
           else
             if [ ! -f "$path" ]; then
               echo "::error::$path missing on $GITHUB_REF: the agent smoke test cannot run"
               exit 1
             fi
             echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "visual_review=required" >> "$GITHUB_OUTPUT"
           fi
 
       # First step that touches the account: the test group's name is read in-process (never printed), masked in every
@@ -350,8 +418,9 @@ jobs:
 
   agent-run:
     name: agent-smoke-run
-    needs: prepare
-    if: needs.prepare.outputs.available == 'true'
+    # after word-render: no rendered pages (failed or cancelled), no agent run
+    needs: [prepare, word-render]
+    if: needs.prepare.outputs.available == 'true' && needs.word-render.result == 'success'
     runs-on: ubuntu-latest
     environment: zotero-live
     timeout-minutes: 55
@@ -387,6 +456,13 @@ jobs:
       - name: Unpack the workspace
         timeout-minutes: 3
         run: tar -xzf "$RUNNER_TEMP/workspace.tgz"
+      # Rendered pages for the visual review: the agent may only Read them (Read(./agent-render/**) in
+      # .github/agents/agent-smoke.json); they hold only corpus data and placeholder libraries
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        timeout-minutes: 3
+        with:
+          name: word-render
+          path: agent-render
       - name: Restore agent-out
         timeout-minutes: 2
         env:
@@ -397,15 +473,15 @@ jobs:
           # run settings for the hooks of .claude/agent-smoke, where the agent cannot edit them
           mkdir -p agent-audit && cp agent-out/context.json agent-audit/context.json
 
-      # A pull request's own agent configuration is untrusted: the skill, hooks and instructions the agent follows
-      # come from the base branch. Paths missing on the base are removed.
+      # A pull request's own agent configuration is untrusted: the skill, hooks, instructions and agent config
+      # (tools, permissions, budget) the agent follows come from the base branch. Paths missing on the base are removed.
       - name: Agent configuration from the base branch
         if: github.event_name == 'pull_request'
         timeout-minutes: 2
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          for p in .claude CLAUDE.md CLAUDE.local.md .mcp.json .claude.json; do
+          for p in .claude CLAUDE.md CLAUDE.local.md .mcp.json .claude.json .github/agents/agent-smoke.json; do
             rm -rf "$p"
             if git cat-file -e "origin/$BASE_REF:$p" 2>/dev/null; then git checkout "origin/$BASE_REF" -- "$p"; fi
           done
@@ -460,7 +536,7 @@ jobs:
           rm -f agent-out/agent-report.json agent-out/execution.json
           if [ -s "$RUNNER_TEMP/agent/agent-report.json" ]; then cp "$RUNNER_TEMP/agent/agent-report.json" agent-out/agent-report.json; else echo '{}' > agent-out/agent-report.json; fi
           if [ -f "$RUNNER_TEMP/agent/execution.json" ]; then cp "$RUNNER_TEMP/agent/execution.json" agent-out/execution.json; fi
-          for f in audit.jsonl denials.jsonl; do if [ -f "agent-audit/$f" ]; then cp "agent-audit/$f" "agent-out/$f"; fi; done
+          for f in audit.jsonl denials.jsonl image-reads.jsonl stop-blocks.jsonl; do if [ -f "agent-audit/$f" ]; then cp "agent-audit/$f" "agent-out/$f"; fi; done
           # the context the hooks read (the agent cannot edit it): verify-claims compares agent-out/context.json with it
           if [ -f agent-audit/context.json ]; then cp agent-audit/context.json agent-out/audit-context.json; fi
       # Passed to the verifier with identifiers replaced by placeholders (restored there); the step fails,
@@ -490,7 +566,7 @@ jobs:
   # is the agent-smoke job below.
   verify:
     name: agent-smoke-verify
-    needs: [changes, prepare, agent-run]
+    needs: [changes, prepare, word-render, agent-run]
     if: ${{ !cancelled() && needs.prepare.result != 'skipped' }}
     runs-on: ubuntu-latest
     environment: zotero-live
@@ -551,6 +627,13 @@ jobs:
           ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
         run: node test/live/agent/redact.mjs restore agent-out
+      # index of the rendered pages: what agent-out/visual-review.md may reference
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: needs.prepare.outputs.run_id != '' && needs.word-render.result == 'success'
+        timeout-minutes: 3
+        with:
+          name: word-render
+          path: ${{ runner.temp }}/word-render
 
       # Deterministic verdict on the claims, audit and transcript of this workflow run (entries are checked
       # against its run id). Always after a successful agent step: a missing audit then fails verify-claims (no
@@ -568,7 +651,12 @@ jobs:
         timeout-minutes: 5
         env:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
-        run: node test/live/verify-claims.mjs agent-out --audit agent-out/audit.jsonl --transcript agent-out/execution.json
+          RENDERED: ${{ needs.word-render.result }}
+          VISUAL_REVIEW: ${{ needs.prepare.outputs.visual_review }}
+        run: |
+          render=()
+          if [ "$RENDERED" = "success" ]; then render=(--render "$RUNNER_TEMP/word-render" --visual-review "${VISUAL_REVIEW:-required}"); fi
+          node test/live/verify-claims.mjs agent-out --audit agent-out/audit.jsonl --transcript agent-out/execution.json "${render[@]}"
 
       - name: Scrub agent output
         id: scrub
@@ -712,7 +800,7 @@ jobs:
   # request whose base branch does not have the skill yet.
   agent-verdict:
     name: agent-smoke # required check name
-    needs: [changes, live, prepare, agent-run, verify]
+    needs: [changes, live, word-render, prepare, agent-run, verify]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -725,6 +813,7 @@ jobs:
           LIVE: ${{ needs.live.result }}
           PREPARE: ${{ needs.prepare.result }}
           AVAILABLE: ${{ needs.prepare.outputs.available }}
+          RENDER: ${{ needs.word-render.result }}
           AGENT: ${{ needs.agent-run.result }}
           VERIFY: ${{ needs.verify.result }}
           ACTOR: ${{ github.actor }}
@@ -756,6 +845,7 @@ jobs:
           fi
           if [ "$PREPARE" != "success" ]; then echo "::error::agent-smoke-prepare: $PREPARE"; exit 1; fi
           if [ "$AVAILABLE" != "true" ]; then echo "::notice::skill not on the base branch yet: nothing to verify"; exit 0; fi
+          if [ "$RENDER" != "success" ]; then echo "::error::word-render: $RENDER - the agent runs only with the rendered pages"; exit 1; fi
           if [ "$AGENT" != "success" ]; then echo "::error::agent-smoke-run: $AGENT"; exit 1; fi
           if [ "$VERIFY" != "success" ]; then echo "::error::agent-smoke-verify: $VERIFY"; exit 1; fi
           echo "agent smoke verified"
@@ -817,6 +907,30 @@ jobs:
           ZOTERO_TEST_API_KEY: ${{ secrets.ZOTERO_TEST_API_KEY }}
           RUN_ID: ${{ needs.prepare.outputs.run_id }}
         run: node test/live/lock.mjs release "$RUN_ID"
+
+  # The rendered pages are deleted at the end of the run, also after a failure or a cancellation (retention-days: 1 is
+  # only the net). A job of its own: the token can only manage this repository's Actions artifacts; no checkout, no
+  # npm, no secrets.
+  word-render-cleanup:
+    name: word-render-cleanup
+    needs: [word-render, agent-run, verify]
+    if: always() && needs.word-render.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Delete the rendered pages
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          ids=$(timeout 60 gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" --paginate --jq '.artifacts[] | select(.name == "word-render") | .id')
+          for id in $ids; do timeout 60 gh api -X DELETE "repos/$REPO/actions/artifacts/$id"; done
+          echo "deleted: ${ids:-none}"
 
   # Scheduled-run failures of the live suite open (or update) one issue; it carries links and test names, never data.
   weekly-issue:

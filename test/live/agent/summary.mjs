@@ -2,7 +2,8 @@
 // Markdown report of an agent smoke run, for the Job Summary and the sticky PR comment of claude-agent-smoke.yml
 // (live tests + agent smoke):
 // verdict, problems and warnings (verdict.json, from verify-claims), scenario table, exploratory X1..X5 and friction
-// (claims.json, agent-report.json), turns, duration and cost (the result message of execution.json).
+// (claims.json, agent-report.json), the "Problemi visivi" section (visual-review.md: the agent's review of the pages
+// rendered by word-render), turns, duration and cost (the result message of execution.json).
 // Input: the SCRUBBED copy of agent-out (test/live/scrub-report.mjs output). Fails closed (exit 1, nothing
 // written) if the text still contains a secret or identifier of the test account from the environment (same
 // variables as scrub-report.mjs, group name included) or any users/<id> or groups/<id> other than the redaction
@@ -11,6 +12,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { VISUAL_REVIEW, parseVisualReview, visualReviewMarkdown } from "./visual-review.mjs";
 
 export const MARKER = "<!-- mcp-zotero-agent-smoke -->";
 const MAX_CELL = 300;
@@ -63,7 +65,7 @@ const rawText = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
  * The report as markdown (starts with MARKER, used to find the sticky comment). With `raw`, the agent-written
  * values are not escaped nor truncated: only for the leak check.
  */
-export function buildSummary({ verdict, report, claims, stats, headSha }, { raw = false } = {}) {
+export function buildSummary({ verdict, report, claims, stats, headSha, visual }, { raw = false } = {}) {
   const inline = raw ? rawText : escapedInline;
   const lines = [MARKER];
   const title = !verdict ? "no verdict (verify-claims did not run or failed early)" : verdict.verified ? "claims verified" : "claims NOT verified";
@@ -106,6 +108,8 @@ export function buildSummary({ verdict, report, claims, stats, headSha }, { raw 
 
   const friction = Array.isArray(report?.friction) && report.friction.length ? report.friction : Array.isArray(claims?.friction) ? claims.friction : [];
   if (friction.length) lines.push("#### Friction", "", ...friction.map((f) => `- **${inline(f?.tool, 60)}**: ${inline(f?.note, 500)}`), "");
+
+  if (visual) lines.push(visualReviewMarkdown(visual, inline));
 
   if (report?.summary) lines.push("<details><summary>Agent report</summary>", "", inline(report.summary, 3000), "", "</details>", "");
   let text = lines.join("\n");
@@ -164,6 +168,7 @@ function main() {
     claims: readJson(dir, "claims.json"),
     stats: runStats(readTranscript(dir)),
     headSha: process.env.HEAD_SHA,
+    visual: existsSync(join(dir, VISUAL_REVIEW)) ? parseVisualReview(readFileSync(join(dir, VISUAL_REVIEW), "utf8")) : null,
   };
   const text = buildSummary(input);
   // the published text, and the same content before escaping and truncation

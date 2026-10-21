@@ -72,6 +72,7 @@ local/
 # Live/agent test outputs (scrubbed copies are uploaded as CI artifacts)
 agent-out/
 agent-audit/
+agent-render/
 live-artifacts/
 
 # Claude Desktop extension bundles (npm run bundle writes dist/mcp-zotero.mcpb)

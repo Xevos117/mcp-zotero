@@ -511,7 +511,26 @@ bibliografia dalla libreria locale con quella dall'`itemData` incorporato. Nessu
 | WL-09 | ambito del job (`scripts/word-proxy-scope.mjs`, `test/utils/workflow-logic.test.ts`) | PR: solo se cambiano un sorgente del server (`src/`), la skill, il corpus, word-proxy o il job; PR solo docs o solo test: saltato; push su main e manuale: sempre |
 | WL-10 | struttura del job | senza segreti né `environment`, `ubuntu-24.04`, timeout ≤ 10 min, azione composita `word-tools` (versioni e sha256 fissati, archivi in cache ricontrollati a ogni run), artifact solo dopo `check-artifacts.mjs`, conservato 1 giorno |
 | WP-CA | `check-artifacts.mjs` (`test/utils/word-proxy.test.ts`) | fallisce con URI di libreria diversi dai segnaposto, email, home diversa da quella del runner, valori di variabili segrete, file inattesi (anche dentro i docx) |
+| WP-R01 | `render.mjs`: differenze itemData di `expect.json` | ognuna associata alla sua voce del corpus (voce di bibliografia di libreria che la contiene) |
 | WP-V | `verify.mjs` / `compare.mjs` su documenti costruiti nel test | aspettative rispettate → ok; una differenza → errore con atteso/ottenuto; differenza A/B nuova o sparita → errore |
+
+### word-render e revisione visiva (job di `claude-agent-smoke.yml`, `test/live/agent/visual-review.mjs`)
+`word-render` riesegue word-proxy senza aspettative, rende ogni pagina dei documenti aggiornati (5 stili da
+`itemData`, `proposed` di H-W1, gruppo, `lib-fix-apa` dalla libreria) con `wordcraft-cli render --scale 1.5`
+(`test/word-proxy/render.mjs`, `index.json`), carica le immagini come artifact temporaneo; l'agente le legge (solo
+Read su `agent-render/`) e scrive `agent-out/visual-review.md`; `word-render-cleanup` cancella l'artifact.
+| ID | Scenario | Atteso |
+|---|---|---|
+| VR-01 | lettura della revisione (`test/utils/visual-review.test.ts`) | problemi con documento, pagina, posizione, voci del corpus, reso, atteso, noto; lista "Da verificare in Word" a parte |
+| VR-02 | problemi noti e non noti | noto (issue di `index.json` che riguarda quel documento) → avviso; senza `Noto` → problema (bug) |
+| VR-03 | riferimenti sbagliati | pagina non resa, pagina di un altro documento, voce non del corpus, issue nota inesistente o di un altro documento, campo mancante o sconosciuto, numero ripetuto, sezione sconosciuta, file senza problemi né riga "Nessun problema" → errori |
+| VR-06 | issue nota usata per altro | voce fuori dagli `items` dell'issue, H-W1 su un documento senza dialogo registrato → errori (un bug non si declassa ad avviso) |
+| VR-07 | prova della revisione | ogni voce di un'issue `reportsRequired` (differenze itemData) e ogni documento con dialogo registrato deve comparire tra i problemi, altrimenti errore |
+| AH-04a | hook audit (`test/utils/agent-hooks.test.ts`) | ogni Read di `agent-render/*.png` in `agent-audit/image-reads.jsonl` con `read_no` proprio; altre Read ignorate; la sequenza `call_no` non cambia |
+| AH-04b | hook Stop `visual-gate.mjs` | pagine non lette o `visual-review.md` mancante → `{"decision": "block", "reason": …}` con le pagine mancanti, al massimo 2 volte; senza pagine renderizzate o con tutto letto nessun output; letture di altre run non contano |
+| VR-04/05 | sezione "Problemi visivi" del riepilogo e del commento | un `<details>` per problema, testo dell'agente escapato (niente HTML, niente @menzioni), impaginazione separata; stesso controllo delle fughe del resto del riepilogo |
+| VC-09c | `verify-claims.mjs --render` | revisione o `image-reads.jsonl` mancanti → problema (con `--visual-review optional`, quando skill, configurazione dell'agente e hook del branch base non li prevedono ancora, tutti i controlli della revisione diventano avvisi); pagina mai letta secondo l'audit (anche se letta in un'altra run), errori della revisione e bug visivi → problemi; noti → avvisi |
+| WL-07 (esteso) | struttura del workflow | `word-render` dopo `live`, stesse condizioni dell'agente, senza segreti, artifact dopo il controllo; `agent-smoke-run` `needs: [prepare, word-render]`; verdetto rosso se word-render non riesce; `word-render-cleanup` sempre, solo `actions: write` |
 
 ## Corpus reale (`test/fixtures/corpus/`, helper `test/helpers/corpus.ts`)
 Opere vere con licenza CC BY / CC0 (conferenza ACL, articolo in cirillico, libro curato, capitolo, monografia, tesi

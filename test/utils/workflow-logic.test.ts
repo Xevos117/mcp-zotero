@@ -132,16 +132,33 @@ describe("workflow dal vivo e agente smoke (WL)", () => {
     expect(verdict).toContain("RELEVANT: ${{ needs.changes.outputs.agent }}");
     expect(verdict).toContain('elif [ "$LIVE" != "success" ]; then');
     // id-token only in the agent job, issues: write only in the weekly issue job, pull-requests: write only in comment
-    for (const [perm, only] of [["id-token: write", "agent-run"], ["issues: write", "weekly-issue"], ["pull-requests: write", "comment"]]) {
+    for (const [perm, only] of [["id-token: write", "agent-run"], ["issues: write", "weekly-issue"], ["pull-requests: write", "comment"], ["actions: write", "word-render-cleanup"]]) {
       const keys = jobKeys(agent).filter((k) => job(agent, k).includes(perm));
       expect(keys, perm).toEqual([only]);
     }
     expect(agent).toMatch(/schedule:\n {4}# [^\n]+\n {4}- cron: "23 3 \* \* 5"/);
     expect(agent).toContain('options: ["live+agent", "live"]');
-    expect(agent).toContain("# ── Slot: word-render");
+    // word-render: between the live suite and the agent, same conditions, no secrets; no pages → no agent
+    const render = job(agent, "word-render");
+    expect(render).toContain("needs: [changes, live]");
+    expect(render).toContain("needs.changes.outputs.agent == 'true' &&\n      needs.live.result == 'success' &&");
+    expect(render).not.toMatch(/secrets\.|environment:|id-token/);
+    expect(render).toContain("uses: ./.github/actions/word-tools");
+    expect(step(render, "Render the refreshed pages")).toContain("node test/word-proxy/check-artifacts.mjs");
+    expect(render).toContain("retention-days: 1");
+    expect(job(agent, "agent-run")).toContain("needs: [prepare, word-render]");
+    expect(job(agent, "agent-run")).toContain("needs.word-render.result == 'success'");
+    expect(verdict).toContain('if [ "$RENDER" != "success" ]; then');
+    // the agent config comes from the base branch like the skill and hooks; the audited page reads reach the verifier
+    expect(step(job(agent, "agent-run"), "Agent configuration from the base branch")).toContain(".github/agents/agent-smoke.json; do");
+    expect(step(job(agent, "agent-run"), "Collect the agent output")).toContain("image-reads.jsonl");
+    const cleanup = job(agent, "word-render-cleanup");
+    expect(cleanup).toContain("if: always() && needs.word-render.result != 'skipped'");
+    expect(cleanup).toContain('gh api -X DELETE "repos/$REPO/actions/artifacts/$id"');
+    expect(cleanup).not.toMatch(/secrets\.|checkout|npm /);
     // every job and step with a timeout; actions pinned by SHA
     for (const k of jobKeys(agent)) expect(job(agent, k), k).toMatch(/\n {4}timeout-minutes: \d+/);
-    for (const m of agent.matchAll(/uses: ([^\s]+)/g)) expect(m[1]).toMatch(/@[0-9a-f]{40}$/);
+    for (const m of agent.matchAll(/uses: ([^\s]+)/g)) expect(m[1]).toMatch(/@[0-9a-f]{40}$|^\.\/\.github\/actions\//);
     const steps = agent.split(/\n {6}- /).slice(1);
     for (const st of steps) expect(st, st.slice(0, 60)).toMatch(/\n {8}timeout-minutes: \d+|^\S[^\n]*\n(?: {8}[^\n]*\n)*? {8}timeout-minutes: \d+/);
     expect(workflow("deps-update.yml")).toContain('gh workflow run claude-agent-smoke.yml --repo "$REPO" --ref "$BRANCH" -f scope=live+agent');

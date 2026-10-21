@@ -39,7 +39,7 @@ describe("run-agent: runner Agent SDK degli agenti CI (RA)", () => {
     expect(o.mcpServers).toBeUndefined();
     expect(o.settings).toBe(".claude/agent-smoke/settings.json");
     expect(o.outputFormat).toEqual({ type: "json_schema", schema: c.jsonSchema });
-    expect(o.maxBudgetUsd).toBe(3);
+    expect(o.maxBudgetUsd).toBe(4);
     expect(o.env).toBe(env);
     const deps = sdkOptions(loadConfig(config("deps-update.json"), { RUNNER_TEMP: "/tmp/rt" }), env, new AbortController());
     expect(deps.extraArgs).toEqual({ "mcp-config": ".github/agents/deps-mcp.json", "strict-mcp-config": null });
