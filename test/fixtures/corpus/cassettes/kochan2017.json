@@ -1,0 +1,97 @@
+[
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://doi.org/10.11647/obp.0129",
+      "accept": "application/vnd.citationstyles.csl+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/vnd.citationstyles.csl+json",
+      "body": {
+        "type": "monograph",
+        "title": "Science as Social Existence",
+        "subtitle": [
+          "Heidegger and the Sociology of Scientific Knowledge"
+        ],
+        "publisher": "Open Book Publishers",
+        "publisher-location": "Cambridge, UK",
+        "issued": {
+          "date-parts": [
+            [
+              2017,
+              12,
+              18
+            ]
+          ]
+        },
+        "DOI": "10.11647/obp.0129",
+        "URL": "http://dx.doi.org/10.11647/obp.0129",
+        "ISBN": [
+          "9781783744107",
+          "9781783744114",
+          "9781783744121",
+          "9781800645486",
+          "9781783744602",
+          "9781783744138",
+          "9781783744145"
+        ],
+        "language": "en",
+        "author": [
+          {
+            "given": "Jeff",
+            "family": "Kochan"
+          }
+        ],
+        "license": [
+          {
+            "URL": "http://creativecommons.org/licenses/by/4.0/",
+            "content-version": "unspecified"
+          }
+        ],
+        "abstract": "<jats:p>In this bold and original study, Jeff Kochan constructively combines the sociology of scientific knowledge (SSK) with Martin Heidegger’s early existential conception of science. Kochan shows convincingly that these apparently quite different approaches to science are, in fact, largely compatible, even mutually reinforcing.</jats:p>"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "POST",
+      "url": "https://api.thoth.pub/graphql",
+      "body": {
+        "query": "query($doi: Doi!) { workByDoi(doi: $doi) { fullTitle workType license landingPage publicationDate place pageCount imprint { publisher { publisherName } } contributions { fullName contributionType contributionOrdinal } } }",
+        "variables": {
+          "doi": "https://doi.org/10.11647/OBP.0129"
+        }
+      }
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "data": {
+          "workByDoi": {
+            "fullTitle": "Science as Social Existence: Heidegger and the Sociology of Scientific Knowledge",
+            "workType": "MONOGRAPH",
+            "license": "http://creativecommons.org/licenses/by/4.0/",
+            "landingPage": "https://www.openbookpublishers.com/books/10.11647/obp.0129",
+            "publicationDate": "2017-12-18",
+            "place": "Cambridge, UK",
+            "pageCount": 444,
+            "imprint": {
+              "publisher": {
+                "publisherName": "Open Book Publishers"
+              }
+            },
+            "contributions": [
+              {
+                "fullName": "Jeff Kochan",
+                "contributionType": "AUTHOR",
+                "contributionOrdinal": 1
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

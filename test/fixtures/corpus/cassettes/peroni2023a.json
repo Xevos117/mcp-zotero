@@ -1,0 +1,126 @@
+[
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://doi.org/10.3389/fnut.2023.1266725",
+      "accept": "application/vnd.citationstyles.csl+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/vnd.citationstyles.csl+json",
+      "body": {
+        "type": "journal-article",
+        "title": "Editorial: Role of early life nutrition in immunomodulation and microbiota development",
+        "container-title": "Frontiers in Nutrition",
+        "container-title-short": "Front. Nutr.",
+        "volume": "10",
+        "article-number": "1266725",
+        "publisher": "Frontiers Media SA",
+        "issued": {
+          "date-parts": [
+            [
+              2023,
+              10,
+              16
+            ]
+          ]
+        },
+        "DOI": "10.3389/fnut.2023.1266725",
+        "URL": "http://dx.doi.org/10.3389/fnut.2023.1266725",
+        "ISSN": [
+          "2296-861X"
+        ],
+        "author": [
+          {
+            "given": "Diego G.",
+            "family": "Peroni"
+          },
+          {
+            "given": "Cristina",
+            "family": "Campoy"
+          },
+          {
+            "given": "Elvira",
+            "family": "Verduci"
+          }
+        ],
+        "license": [
+          {
+            "URL": "https://creativecommons.org/licenses/by/4.0/",
+            "content-version": "vor"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://api.unpaywall.org/v2/10.3389/fnut.2023.1266725?email=REDACTED"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "doi": "10.3389/fnut.2023.1266725",
+        "is_oa": true,
+        "oa_status": "gold",
+        "best_oa_location": {
+          "url_for_pdf": "https://www.frontiersin.org/articles/10.3389/fnut.2023.1266725/pdf?isPublishedV2=False",
+          "url": "https://www.frontiersin.org/articles/10.3389/fnut.2023.1266725/pdf?isPublishedV2=False",
+          "host_type": "publisher",
+          "license": "cc-by",
+          "version": "publishedVersion"
+        },
+        "oa_locations": [
+          {
+            "url_for_pdf": "https://www.frontiersin.org/articles/10.3389/fnut.2023.1266725/pdf?isPublishedV2=False",
+            "url": "https://www.frontiersin.org/articles/10.3389/fnut.2023.1266725/pdf?isPublishedV2=False",
+            "host_type": "publisher",
+            "license": "cc-by",
+            "version": "publishedVersion"
+          },
+          {
+            "url_for_pdf": "https://air.unimi.it/bitstream/2434/1025029/2/fnut-10-1266725.pdf",
+            "url": "https://air.unimi.it/bitstream/2434/1025029/2/fnut-10-1266725.pdf",
+            "host_type": "repository",
+            "license": "other-oa",
+            "version": "submittedVersion"
+          },
+          {
+            "url_for_pdf": "https://digibug.ugr.es/bitstream/10481/97239/1/fnut-10-1266725.pdf",
+            "url": "https://digibug.ugr.es/bitstream/10481/97239/1/fnut-10-1266725.pdf",
+            "host_type": "repository",
+            "license": "cc-by",
+            "version": "submittedVersion"
+          },
+          {
+            "url_for_pdf": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10614016/pdf/fnut-10-1266725.pdf",
+            "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10614016/pdf/fnut-10-1266725.pdf",
+            "host_type": "repository",
+            "license": "cc-by",
+            "version": "submittedVersion"
+          },
+          {
+            "url_for_pdf": null,
+            "url": "https://doaj.org/article/8b2668182d864b16b219ca8aee6c2d55",
+            "host_type": "repository",
+            "license": "cc-by-sa",
+            "version": "submittedVersion"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://www.frontiersin.org/articles/10.3389/fnut.2023.1266725/pdf?isPublishedV2=False"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/pdf",
+      "bodyFile": "pdfs/peroni2023a.pdf"
+    }
+  }
+]

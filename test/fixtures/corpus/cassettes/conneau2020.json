@@ -1,0 +1,136 @@
+[
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://doi.org/10.18653/v1/2020.acl-main.747",
+      "accept": "application/vnd.citationstyles.csl+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/vnd.citationstyles.csl+json",
+      "body": {
+        "type": "proceedings-article",
+        "title": "Unsupervised Cross-lingual Representation Learning at Scale",
+        "container-title": "Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics",
+        "event": "Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics",
+        "page": "8440-8451",
+        "publisher": "Association for Computational Linguistics",
+        "publisher-location": "Stroudsburg, PA, USA",
+        "issued": {
+          "date-parts": [
+            [
+              2020
+            ]
+          ]
+        },
+        "DOI": "10.18653/v1/2020.acl-main.747",
+        "URL": "http://dx.doi.org/10.18653/v1/2020.acl-main.747",
+        "author": [
+          {
+            "given": "Alexis",
+            "family": "Conneau"
+          },
+          {
+            "given": "Kartikay",
+            "family": "Khandelwal"
+          },
+          {
+            "given": "Naman",
+            "family": "Goyal"
+          },
+          {
+            "given": "Vishrav",
+            "family": "Chaudhary"
+          },
+          {
+            "given": "Guillaume",
+            "family": "Wenzek"
+          },
+          {
+            "given": "Francisco",
+            "family": "Guzmán"
+          },
+          {
+            "given": "Edouard",
+            "family": "Grave"
+          },
+          {
+            "given": "Myle",
+            "family": "Ott"
+          },
+          {
+            "given": "Luke",
+            "family": "Zettlemoyer"
+          },
+          {
+            "given": "Veselin",
+            "family": "Stoyanov"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://api.unpaywall.org/v2/10.18653/v1/2020.acl-main.747?email=REDACTED"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "doi": "10.18653/v1/2020.acl-main.747",
+        "is_oa": true,
+        "oa_status": "hybrid",
+        "best_oa_location": {
+          "url_for_pdf": "https://www.aclweb.org/anthology/2020.acl-main.747.pdf",
+          "url": "https://www.aclweb.org/anthology/2020.acl-main.747.pdf",
+          "host_type": "publisher",
+          "license": "cc-by",
+          "version": "publishedVersion"
+        },
+        "oa_locations": [
+          {
+            "url_for_pdf": "https://www.aclweb.org/anthology/2020.acl-main.747.pdf",
+            "url": "https://www.aclweb.org/anthology/2020.acl-main.747.pdf",
+            "host_type": "publisher",
+            "license": "cc-by",
+            "version": "publishedVersion"
+          },
+          {
+            "url_for_pdf": "https://arxiv.org/pdf/1911.02116",
+            "url": "https://arxiv.org/pdf/1911.02116",
+            "host_type": "repository",
+            "license": null,
+            "version": "submittedVersion"
+          },
+          {
+            "url_for_pdf": null,
+            "url": "https://arxiv.org/pdf/1911.02116v2",
+            "host_type": "repository",
+            "license": null,
+            "version": "submittedVersion"
+          },
+          {
+            "url_for_pdf": null,
+            "url": "https://doi.org/10.48550/arxiv.1911.02116",
+            "host_type": "repository",
+            "license": null,
+            "version": null
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://www.aclweb.org/anthology/2020.acl-main.747.pdf"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/pdf",
+      "bodyFile": "pdfs/conneau2020.pdf"
+    }
+  }
+]

@@ -1,0 +1,267 @@
+[
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://doi.org/10.48550/arXiv.2310.06825",
+      "accept": "application/vnd.citationstyles.csl+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/vnd.citationstyles.csl+json; charset=utf-8",
+      "body": {
+        "type": "article",
+        "title": "Mistral 7B",
+        "publisher": "arXiv",
+        "issued": {
+          "date-parts": [
+            [
+              2023
+            ]
+          ]
+        },
+        "DOI": "10.48550/ARXIV.2310.06825",
+        "URL": "https://arxiv.org/abs/2310.06825",
+        "copyright": "Creative Commons Attribution 4.0 International",
+        "version": "1",
+        "author": [
+          {
+            "given": "Albert Q.",
+            "family": "Jiang"
+          },
+          {
+            "given": "Alexandre",
+            "family": "Sablayrolles"
+          },
+          {
+            "given": "Arthur",
+            "family": "Mensch"
+          },
+          {
+            "given": "Chris",
+            "family": "Bamford"
+          },
+          {
+            "given": "Devendra Singh",
+            "family": "Chaplot"
+          },
+          {
+            "given": "Diego de las",
+            "family": "Casas"
+          },
+          {
+            "given": "Florian",
+            "family": "Bressand"
+          },
+          {
+            "given": "Gianna",
+            "family": "Lengyel"
+          },
+          {
+            "given": "Guillaume",
+            "family": "Lample"
+          },
+          {
+            "given": "Lucile",
+            "family": "Saulnier"
+          },
+          {
+            "given": "Lélio Renard",
+            "family": "Lavaud"
+          },
+          {
+            "given": "Marie-Anne",
+            "family": "Lachaux"
+          },
+          {
+            "given": "Pierre",
+            "family": "Stock"
+          },
+          {
+            "given": "Teven Le",
+            "family": "Scao"
+          },
+          {
+            "given": "Thibaut",
+            "family": "Lavril"
+          },
+          {
+            "given": "Thomas",
+            "family": "Wang"
+          },
+          {
+            "given": "Timothée",
+            "family": "Lacroix"
+          },
+          {
+            "given": "William El",
+            "family": "Sayed"
+          }
+        ],
+        "abstract": "We introduce Mistral 7B v0.1, a 7-billion-parameter language model engineered for superior performance and efficiency. Mistral 7B outperforms Llama 2 13B across all evaluated benchmarks, and Llama 1 34B in reasoning, mathematics, and code generation. Our model leverages grouped-query attention (GQA) for faster inference, coupled with sliding window attention (SWA) to effectively handle sequences of arbitrary length with a reduced inference cost. We also provide a model fine-tuned to follow instructions, Mistral 7B -- Instruct, that surpasses the Llama 2 13B -- Chat model both on human and automated benchmarks. Our models are released under the Apache 2.0 license."
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://api.datacite.org/dois/10.48550/arXiv.2310.06825",
+      "accept": "application/vnd.api+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "body": {
+        "data": {
+          "id": "10.48550/arxiv.2310.06825",
+          "type": "dois",
+          "attributes": {
+            "doi": "10.48550/arxiv.2310.06825",
+            "publicationYear": 2023,
+            "url": "https://arxiv.org/abs/2310.06825",
+            "language": null,
+            "titles": [
+              {
+                "title": "Mistral 7B"
+              }
+            ],
+            "creators": [
+              {
+                "name": "Jiang, Albert Q.",
+                "nameType": "Personal",
+                "givenName": "Albert Q.",
+                "familyName": "Jiang"
+              },
+              {
+                "name": "Sablayrolles, Alexandre",
+                "nameType": "Personal",
+                "givenName": "Alexandre",
+                "familyName": "Sablayrolles"
+              },
+              {
+                "name": "Mensch, Arthur",
+                "nameType": "Personal",
+                "givenName": "Arthur",
+                "familyName": "Mensch"
+              },
+              {
+                "name": "Bamford, Chris",
+                "nameType": "Personal",
+                "givenName": "Chris",
+                "familyName": "Bamford"
+              },
+              {
+                "name": "Chaplot, Devendra Singh",
+                "nameType": "Personal",
+                "givenName": "Devendra Singh",
+                "familyName": "Chaplot"
+              },
+              {
+                "name": "Casas, Diego de las",
+                "nameType": "Personal",
+                "givenName": "Diego de las",
+                "familyName": "Casas"
+              },
+              {
+                "name": "Bressand, Florian",
+                "nameType": "Personal",
+                "givenName": "Florian",
+                "familyName": "Bressand"
+              },
+              {
+                "name": "Lengyel, Gianna",
+                "nameType": "Personal",
+                "givenName": "Gianna",
+                "familyName": "Lengyel"
+              },
+              {
+                "name": "Lample, Guillaume",
+                "nameType": "Personal",
+                "givenName": "Guillaume",
+                "familyName": "Lample"
+              },
+              {
+                "name": "Saulnier, Lucile",
+                "nameType": "Personal",
+                "givenName": "Lucile",
+                "familyName": "Saulnier"
+              },
+              {
+                "name": "Lavaud, Lélio Renard",
+                "nameType": "Personal",
+                "givenName": "Lélio Renard",
+                "familyName": "Lavaud"
+              },
+              {
+                "name": "Lachaux, Marie-Anne",
+                "nameType": "Personal",
+                "givenName": "Marie-Anne",
+                "familyName": "Lachaux"
+              },
+              {
+                "name": "Stock, Pierre",
+                "nameType": "Personal",
+                "givenName": "Pierre",
+                "familyName": "Stock"
+              },
+              {
+                "name": "Scao, Teven Le",
+                "nameType": "Personal",
+                "givenName": "Teven Le",
+                "familyName": "Scao"
+              },
+              {
+                "name": "Lavril, Thibaut",
+                "nameType": "Personal",
+                "givenName": "Thibaut",
+                "familyName": "Lavril"
+              },
+              {
+                "name": "Wang, Thomas",
+                "nameType": "Personal",
+                "givenName": "Thomas",
+                "familyName": "Wang"
+              },
+              {
+                "name": "Lacroix, Timothée",
+                "nameType": "Personal",
+                "givenName": "Timothée",
+                "familyName": "Lacroix"
+              },
+              {
+                "name": "Sayed, William El",
+                "nameType": "Personal",
+                "givenName": "William El",
+                "familyName": "Sayed"
+              }
+            ],
+            "contributors": [],
+            "publisher": "arXiv",
+            "types": {
+              "resourceTypeGeneral": "Preprint",
+              "resourceType": "Article",
+              "citeproc": "article"
+            },
+            "rightsList": [
+              {
+                "rights": "Creative Commons Attribution 4.0 International",
+                "rightsUri": "https://creativecommons.org/licenses/by/4.0/legalcode",
+                "rightsIdentifier": "cc-by-4.0"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://export.arxiv.org/oai2?verb=GetRecord&identifier=oai:arXiv.org:2310.06825&metadataPrefix=arXiv"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "text/xml",
+      "body": "<metadata>\n                        <arXiv xmlns=\"http://arxiv.org/OAI/arXiv/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://arxiv.org/OAI/arXiv/ https://oaipmh.arxiv.org/OAI/arXiv.xsd\">\n        <id>2310.06825</id>\n        <created>2023-10-10</created>\n            <updated>2023-10-11</updated>\n        <authors>\n                <author>\n                    <keyname>Jiang</keyname>\n                        <forenames>Albert Q.</forenames>\n                </author>\n                <author>\n                    <keyname>Sablayrolles</keyname>\n                        <forenames>Alexandre</forenames>\n                </author>\n                <author>\n                    <keyname>Mensch</keyname>\n                        <forenames>Arthur</forenames>\n                </author>\n                <author>\n                    <keyname>Bamford</keyname>\n                        <forenames>Chris</forenames>\n                </author>\n                <author>\n                    <keyname>Chaplot</keyname>\n                        <forenames>Devendra Singh</forenames>\n                </author>\n                <author>\n                    <keyname>Casas</keyname>\n                        <forenames>Diego de las</forenames>\n                </author>\n                <author>\n                    <keyname>Bressand</keyname>\n                        <forenames>Florian</forenames>\n                </author>\n                <author>\n                    <keyname>Lengyel</keyname>\n                        <forenames>Gianna</forenames>\n                </author>\n                <author>\n                    <keyname>Lample</keyname>\n                        <forenames>Guillaume</forenames>\n                </author>\n                <author>\n                    <keyname>Saulnier</keyname>\n                        <forenames>Lucile</forenames>\n                </author>\n                <author>\n                    <keyname>Lavaud</keyname>\n                        <forenames>Lélio Renard</forenames>\n                </author>\n                <author>\n                    <keyname>Lachaux</keyname>\n                        <forenames>Marie-Anne</forenames>\n                </author>\n                <author>\n                    <keyname>Stock</keyname>\n                        <forenames>Pierre</forenames>\n                </author>\n                <author>\n                    <keyname>Scao</keyname>\n                        <forenames>Teven Le</forenames>\n                </author>\n                <author>\n                    <keyname>Lavril</keyname>\n                        <forenames>Thibaut</forenames>\n                </author>\n                <author>\n                    <keyname>Wang</keyname>\n                        <forenames>Thomas</forenames>\n                </author>\n                <author>\n                    <keyname>Lacroix</keyname>\n                        <forenames>Timothée</forenames>\n                </author>\n                <author>\n                    <keyname>Sayed</keyname>\n                        <forenames>William El</forenames>\n                </author>\n        </authors>\n        <title>Mistral 7B</title>\n            <categories>cs.CL cs.AI cs.LG</categories>\n            <comments>Models and code are available at https://mistral.ai/news/announcing-mistral-7b/</comments>\n            <license>http://creativecommons.org/licenses/by/4.0/</license>\n            <abstract>We introduce Mistral 7B v0.1, a 7-billion-parameter language model engineered for superior performance and efficiency. Mistral 7B outperforms Llama 2 13B across all evaluated benchmarks, and Llama 1 34B in reasoning, mathematics, and code generation. Our model leverages grouped-query attention (GQA) for faster inference, coupled with sliding window attention (SWA) to effectively handle sequences of arbitrary length with a reduced inference cost. We also provide a model fine-tuned to follow instructions, Mistral 7B -- Instruct, that surpasses the Llama 2 13B -- Chat model both on human and automated benchmarks. Our models are released under the Apache 2.0 license.</abstract>\n    </arXiv>\n            </metadata>"
+    }
+  }
+]

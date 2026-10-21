@@ -1,0 +1,99 @@
+[
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://doi.org/10.11647/obp.0192.05",
+      "accept": "application/vnd.citationstyles.csl+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/vnd.citationstyles.csl+json",
+      "body": {
+        "type": "book-chapter",
+        "title": "5. Violins in the Subway",
+        "subtitle": [
+          "Scarcity Correlations, Evaluative Cultures, and Disciplinary Authority in the Digital Humanities"
+        ],
+        "container-title": "Digital Technology and the Practices of Humanities Research",
+        "page": "105-122",
+        "publisher": "Open Book Publishers",
+        "publisher-location": "Cambridge, UK",
+        "issued": {
+          "date-parts": [
+            [
+              2020,
+              1,
+              30
+            ]
+          ]
+        },
+        "DOI": "10.11647/obp.0192.05",
+        "URL": "http://dx.doi.org/10.11647/obp.0192.05",
+        "ISBN": [
+          "9781783748396",
+          "9781783748402",
+          "9781783748419",
+          "9781800646049",
+          "9781783748440",
+          "9781783748426",
+          "9781783748433"
+        ],
+        "language": "en",
+        "author": [
+          {
+            "given": "Martin Paul",
+            "family": "Eve"
+          }
+        ],
+        "license": [
+          {
+            "URL": "http://creativecommons.org/licenses/by/4.0",
+            "content-version": "unspecified"
+          }
+        ],
+        "abstract": "<jats:p>Eve begins this chapter with a question: how good are we at independently judging research work, devoid of its enframing apparatus? Using the analogy of hearing a world-famous violinist play in a subway, Eve draws our attention to the current circularity of incentives that exist in both authorship and peer-reviewing practices that not only skew our ability to determine quality but are also severely restricting advances in how scholarly literature are assessed. He argues that all systems of evaluation, from peer-review to aggregation, are economic in character and examines how digital humanities pose a set of challenges to the three elements of academic evaluative cultures: the desired scarcity correlation between the research artefact and the position, a frame for evaluation that denotes scarcity, and a set of disciplinary norms about which frames best denote comparable scarcity. Among the strategies for changing cultures suggested by Eve in this chapter are disciplinary segregation, print simulation, and direct economics.</jats:p>"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "POST",
+      "url": "https://api.thoth.pub/graphql",
+      "body": {
+        "query": "query($doi: Doi!) { workByDoi(doi: $doi) { fullTitle workType license landingPage publicationDate place pageCount imprint { publisher { publisherName } } contributions { fullName contributionType contributionOrdinal } } }",
+        "variables": {
+          "doi": "https://doi.org/10.11647/OBP.0192.05"
+        }
+      }
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "data": {
+          "workByDoi": {
+            "fullTitle": "5. Violins in the Subway: Scarcity Correlations, Evaluative Cultures, and Disciplinary Authority in the Digital Humanities",
+            "workType": "BOOK_CHAPTER",
+            "license": "http://creativecommons.org/licenses/by/4.0",
+            "landingPage": "https://www.openbookpublishers.com/books/10.11647/obp.0192/chapters/10.11647/obp.0192.05",
+            "publicationDate": "2020-01-30",
+            "place": "Cambridge, UK",
+            "pageCount": 17,
+            "imprint": {
+              "publisher": {
+                "publisherName": "Open Book Publishers"
+              }
+            },
+            "contributions": [
+              {
+                "fullName": "Martin Paul Eve",
+                "contributionType": "AUTHOR",
+                "contributionOrdinal": 1
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

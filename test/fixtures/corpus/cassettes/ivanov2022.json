@@ -1,0 +1,104 @@
+[
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://doi.org/10.3897/icf.2.e80540",
+      "accept": "application/vnd.citationstyles.csl+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/vnd.citationstyles.csl+json",
+      "body": {
+        "type": "journal-article",
+        "title": "Анатомия, дизонтогенеза, патофизиология и патогенеза на болестите на вертебробазиларните артерии",
+        "container-title": "Interventional Cardiology Forum",
+        "container-title-short": "ICF",
+        "volume": "2",
+        "page": "5-11",
+        "publisher": "Pensoft Publishers",
+        "issued": {
+          "date-parts": [
+            [
+              2022,
+              2,
+              15
+            ]
+          ]
+        },
+        "DOI": "10.3897/icf.2.e80540",
+        "URL": "http://dx.doi.org/10.3897/icf.2.e80540",
+        "ISSN": [
+          "2738-8972"
+        ],
+        "author": [
+          {
+            "given": "Николай",
+            "family": "Иванов"
+          }
+        ],
+        "license": [
+          {
+            "URL": "http://creativecommons.org/licenses/by/4.0/",
+            "content-version": "vor"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://api.unpaywall.org/v2/10.3897/icf.2.e80540?email=REDACTED"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "doi": "10.3897/icf.2.e80540",
+        "is_oa": true,
+        "oa_status": "hybrid",
+        "best_oa_location": {
+          "url_for_pdf": "https://interventionalcardioforum.net/article/80540/download/pdf/",
+          "url": "https://interventionalcardioforum.net/article/80540/download/pdf/",
+          "host_type": "publisher",
+          "license": "cc-by",
+          "version": "publishedVersion"
+        },
+        "oa_locations": [
+          {
+            "url_for_pdf": "https://interventionalcardioforum.net/article/80540/download/pdf/",
+            "url": "https://interventionalcardioforum.net/article/80540/download/pdf/",
+            "host_type": "publisher",
+            "license": "cc-by",
+            "version": "publishedVersion"
+          },
+          {
+            "url_for_pdf": "https://zenodo.org/record/6237619",
+            "url": "https://zenodo.org/record/6237619",
+            "host_type": "repository",
+            "license": "cc-by",
+            "version": "submittedVersion"
+          },
+          {
+            "url_for_pdf": null,
+            "url": "https://doi.org/10.3897/icf.2.e80540",
+            "host_type": "repository",
+            "license": "other-oa",
+            "version": "submittedVersion"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://interventionalcardioforum.net/article/80540/download/pdf/"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/pdf",
+      "bodyFile": "pdfs/ivanov2022.pdf"
+    }
+  }
+]

@@ -1,0 +1,106 @@
+[
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://doi.org/10.3389/fnut.2022.1032481",
+      "accept": "application/vnd.citationstyles.csl+json"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/vnd.citationstyles.csl+json",
+      "body": {
+        "type": "journal-article",
+        "title": "Lack of iron, zinc, and vitamins as a contributor to the etiology of atopic diseases",
+        "container-title": "Frontiers in Nutrition",
+        "container-title-short": "Front. Nutr.",
+        "volume": "9",
+        "article-number": "1032481",
+        "publisher": "Frontiers Media SA",
+        "issued": {
+          "date-parts": [
+            [
+              2023,
+              1,
+              9
+            ]
+          ]
+        },
+        "DOI": "10.3389/fnut.2022.1032481",
+        "URL": "http://dx.doi.org/10.3389/fnut.2022.1032481",
+        "ISSN": [
+          "2296-861X"
+        ],
+        "author": [
+          {
+            "given": "Diego G.",
+            "family": "Peroni"
+          },
+          {
+            "given": "Karin",
+            "family": "Hufnagl"
+          },
+          {
+            "given": "Pasquale",
+            "family": "Comberiati"
+          },
+          {
+            "given": "Franziska",
+            "family": "Roth-Walter"
+          }
+        ],
+        "license": [
+          {
+            "URL": "https://creativecommons.org/licenses/by/4.0/",
+            "content-version": "vor"
+          }
+        ],
+        "abstract": "<jats:p>\n                    Micronutritional deficiencies are common in atopic children suffering from atopic dermatitis, food allergy, rhinitis, and asthma. A lack of iron, in particular, may impact immune activation with prolonged deficiencies of iron, zinc, vitamin A, and vitamin D associated with a Th2 signature, maturation of macrophages and dendritic cells (DCs), and the generation of IgE antibodies. In contrast, the sufficiency of these micronutrients establishes immune resilience, promotion of regulatory cells, and tolerance induction. As micronutritional deficiencies mimic an infection, the body’s innate response is to limit access to these nutrients and also impede their dietary uptake. Here, we summarize our current understanding of the physiological function of iron, zinc, and vitamins A and D in relation to immune cells and the clinical consequences of deficiencies in these important nutrients, especially in the perinatal period. Improved dietary uptake of iron is achieved by vitamin C, vitamin A, and whey compounds, whereas zinc bioavailability improves through citrates and proteins. The addition of oil is essential for the dietary uptake of beta-carotene and vitamin D. As for vitamin D, the major source comes\n                    <jats:italic>via</jats:italic>\n                    sun exposure and only a small amount is consumed\n                    <jats:italic>via</jats:italic>\n                    diet, which should be factored into clinical nutritional studies. We summarize the prevalence of micronutritional deficiencies of iron, zinc, and vitamins in the pediatric population as well as nutritional intervention studies on atopic diseases with whole food, food components, and micronutrients. Dietary uptake\n                    <jats:italic>via</jats:italic>\n                    the lymphatic route seems promising and is associated with a lower atopy risk and symptom amelioration. This review provides useful information for clinical studies and concludes/emphasizes that a healthy, varied diet containing dairy products, fish, nuts, fruits, and vegetables as well as supplementing foods or supplementation with micronutrients as needed is essential to combat the atopic march.\n                  </jats:p>"
+      }
+    }
+  },
+  {
+    "request": {
+      "method": "GET",
+      "url": "https://api.unpaywall.org/v2/10.3389/fnut.2022.1032481?email=REDACTED"
+    },
+    "response": {
+      "status": 200,
+      "contentType": "application/json",
+      "body": {
+        "doi": "10.3389/fnut.2022.1032481",
+        "is_oa": true,
+        "oa_status": "gold",
+        "best_oa_location": {
+          "url_for_pdf": "https://www.frontiersin.org/articles/10.3389/fnut.2022.1032481/pdf",
+          "url": "https://www.frontiersin.org/articles/10.3389/fnut.2022.1032481/pdf",
+          "host_type": "publisher",
+          "license": "cc-by",
+          "version": "publishedVersion"
+        },
+        "oa_locations": [
+          {
+            "url_for_pdf": "https://www.frontiersin.org/articles/10.3389/fnut.2022.1032481/pdf",
+            "url": "https://www.frontiersin.org/articles/10.3389/fnut.2022.1032481/pdf",
+            "host_type": "publisher",
+            "license": "cc-by",
+            "version": "publishedVersion"
+          },
+          {
+            "url_for_pdf": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9869175/pdf/fnut-09-1032481.pdf",
+            "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC9869175/pdf/fnut-09-1032481.pdf",
+            "host_type": "repository",
+            "license": "cc-by",
+            "version": "submittedVersion"
+          },
+          {
+            "url_for_pdf": null,
+            "url": "https://doaj.org/article/3f1a6e2624ea401085b1ca33e32d2b7a",
+            "host_type": "repository",
+            "license": "cc-by-sa",
+            "version": "submittedVersion"
+          }
+        ]
+      }
+    }
+  }
+]

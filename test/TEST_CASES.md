@@ -495,6 +495,29 @@ Server avviato con `ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID=777` (e `ZOTE
 | E2E-G13 | group senza `ZOTERO_LIBRARY_ID` | exit code 1 entro 5 s, "requires ZOTERO_LIBRARY_ID", nessuna chiamata HTTP |
 | E2E-G14 | `ZOTERO_LIBRARY_ID` non numerico / `ZOTERO_LIBRARY_TYPE` sconosciuto | exit code 1 con messaggio dedicato |
 
+## Corpus reale (`test/fixtures/corpus/`, helper `test/helpers/corpus.ts`)
+Opere vere con licenza CC BY / CC0 (conferenza ACL, articolo in cirillico, libro curato, capitolo, monografia, tesi
+DataCite, report con autore istituzionale, preprint arXiv con 18 autori e particelle, pagina web, coppia stesso
+autore e anno con altri coautori, coppia stesso autore unico e anno), registrate a mano da `scripts/record-corpus.mjs` (API ufficiali, 1 richiesta/s, arXiv 1 ogni 3 s):
+cassette ridotte di doi.org/Unpaywall/DataCite/Zenodo/arXiv/Thoth, 3 PDF, `library.json` curata. `corpusRoutes()`
+le serve come route della FakeNet, `serveCorpusLibrary()` serve la libreria curata come Web API.
+| ID | Scenario | Atteso |
+|---|---|---|
+| CORPUS-01 | controlli dello script sul corpus committato (`test/utils/corpus-fixtures.test.ts`) | nessun problema: licenze CC BY/CC0 da ogni fonte registrata, nessun segreto/email/ORCID/`@` negli URL, corpi ≤ 5 KB, PDF ≤ 2,5 MB con sha256, chiavi Zotero valide, stesso anno per la coppia |
+| CORPUS-02 | `library.json` e `LICENSES.md` | identici a quelli che lo script ricostruisce dalle cassette e da `overrides.json` |
+| CORPUS-03 | voci curate | campi e ruoli validi per il tipo secondo lo schema Zotero (`zotero-item-types.ts`) |
+| CORPUS-04/05 | corpus guastato in una copia: email, `@` nell'URL, valore dell'ambiente, ORCID, licenza NC, campo vietato, PDF cambiato, anni diversi, chiave non valida | ciascun controllo scatta |
+| CORPUS-AID-01 | `add_items_by_doi` su tutti i DOI del corpus (`test/tools/corpus.test.ts`) | ogni DOI risolto dalle cassette, un item per opera, nessuna richiesta senza route |
+| CORPUS-AID-02 | item creato contro la voce curata, campo per campo | uguale salvo le differenze note (tabella `KNOWN`, causa per campo); una differenza nota sparita va tolta dalla tabella |
+| CORPUS-AID-03 (`it.fails`) | differenze del prodotto, una per causa e opera | publisher-location, event, container-title-short, sottotitolo, article-number, editor, contributor, nome `literal`, JATS negli abstract, tipo CSL `article` → journalArticle |
+| CORPUS-IC-01 | `inject_citations` sulla libreria curata in apa/harvard/chicago/ieee/vancouver | docx valido (`expectValidDocx`), 7 citazioni, 12 voci in bibliografia |
+| CORPUS-IC-02 | apa | coppia Peroni 2023 (coautori diversi) disambiguata con i coautori come vuole APA 7; coppia Eve 2020 (stesso autore unico) con 2020a/2020b; "Иванов, Н.", "de las Casas, D.", autori collettivi, "p. 110" |
+| CORPUS-IC-03 (`it.fails`) | apa, capitolo | "In J. Edmond (Ed.), *Digital Technology…*" assente: l'`itemData` incorporato perde libro e curatori del `bookSection` |
+| CORPUS-PDF-01 | `find_and_attach_pdfs` sulle 3 opere con PDF (Unpaywall registrato) | PDF veri scaricati, caricati identici, testo estratto (anche cirillico) nel PUT fulltext |
+| CORPUS-PDF-02 | `add_items_by_doi` con `UNPAYWALL_EMAIL` | voce creata e PDF allegato dalla risposta Unpaywall registrata |
+| E2E-C01 | server compilato: `add_items_by_doi` su un DOI Crossref (cirillico) e uno DataCite (arXiv) (`test/e2e/corpus.e2e.test.ts`) | titoli e numero di autori come nella voce curata |
+| E2E-C02 | server compilato: `inject_citations` apa sulla libreria curata | docx valido, 4 voci |
+
 ## Timeout di rete (`test/tools/timeouts.test.ts`, `src/utils/timeouts.test.ts`)
 Bound in `src/utils/timeouts.ts` (`TIMEOUTS`: Web API Zotero 30 s, doi.org/Unpaywall 30 s per tentativo, download e
 upload PDF 180 s), abbassati a 50-100 ms nei test. Il server della FakeNet resta fermo (`hang()`, `stalledBody()`)
