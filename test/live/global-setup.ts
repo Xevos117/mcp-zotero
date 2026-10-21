@@ -85,6 +85,11 @@ async function counts(z: ZoteroWeb): Promise<Counts> {
 }
 
 const log = (msg: string) => console.log(scrub(`[live] ${msg}`));
+/** On stderr and, in GitHub Actions, as an error annotation. */
+const logError = (msg: string) => {
+  console.error(scrub(`[live] ERRORE: ${msg}`));
+  if (process.env.GITHUB_ACTIONS) process.stdout.write(scrub(`::error title=Live tests::${msg}`) + "\n");
+};
 
 /** Primo DOI candidato con un PDF OA raggiungibile e non più grande di OA_MAX_BYTES. */
 async function pickOaDoi(): Promise<{ doi: string | null; reason: string }> {
@@ -394,7 +399,17 @@ export default async function setup(project: TestProject) {
   writeFileSync(runMarker(runId), JSON.stringify({ runId, started: new Date(started).toISOString() }));
   log(`run ${runId}: ${safeMode ? "SAFE MODE" : "modalità completa"}, account dedicato: ${disposable ? "sì" : "no"}`);
   await withBound("lock", acquireLock({ key: apiKey, lib: z.libraryPath, runId, waitMs: LOCK_WAIT_MS, log }), LOCK_WAIT_MS + 120_000);
-  const unlock = () => releaseLock({ key: apiKey, lib: z.libraryPath, runId }).catch((e: unknown) => log(`lock non rimosso: ${scrub(String(e))}`));
+  // a failed release is an error, not a note: the run marker stays, so "Clean up interrupted runs" repeats it
+  const unlock = () =>
+    releaseLock({ key: apiKey, lib: z.libraryPath, runId }).then(
+      () => true,
+      (e: unknown) => {
+        logError(`lock non rimosso (resta il marcatore della run, la pulizia delle run interrotte lo rilascia): ${scrub(String(e))}`);
+        return false;
+      }
+    );
+  /** Set by the teardown once nothing of the run is left; the marker goes only after that and a released lock. */
+  let cleaned = false;
   try {
     if (disposable) await sweepStaleAll(z, await verifiedGroup(z));
   } catch (e) {
@@ -456,7 +471,7 @@ export default async function setup(project: TestProject) {
     try {
       await teardown();
     } finally {
-      await unlock();
+      if ((await unlock()) && cleaned) rmSync(runMarker(runId), { force: true });
     }
   };
 
@@ -487,7 +502,7 @@ export default async function setup(project: TestProject) {
     log(`conteggi prima ${JSON.stringify(before)} dopo ${JSON.stringify(after)}`);
     if (leftoverItems || leftoverColls) throw new Error(`teardown: restano ${leftoverItems} voci e ${leftoverColls} collezioni della run ${runId}`);
     rmSync(registryPath(runId), { force: true });
-    rmSync(runMarker(runId), { force: true });
+    cleaned = true;
     const grew = (Object.keys(before) as Array<keyof Counts>).filter((k) => after[k] > before[k]);
     if (grew.length) log(`ATTENZIONE: conteggi cresciuti (${grew.join(", ")}): qualcosa creato dalla run non porta i marcatori, oppure un'altra attività sulla libreria`);
     const skips = softSkips(runId);

@@ -3,7 +3,7 @@ import { REQUEST_TIMEOUT_MS, scrub } from "./env.js";
 /**
  * Client minimale della Web API Zotero v3, indipendente dal codice del server: serve a preparare le
  * fixture, a verificare dall'esterno ciò che i tool dichiarano e a pulire. Ogni richiesta ha un timeout;
- * 429/502/503/504 vengono ritentati rispettando Retry-After, e Backoff viene onorato prima della
+ * 429/500/502/503/504 vengono ritentati rispettando Retry-After, e Backoff viene onorato prima della
  * richiesta dopo.
  */
 
@@ -56,8 +56,8 @@ export class ZoteroWeb {
       }
       const backoff = Number(res.headers.get("backoff") ?? 0);
       if (backoff > 0) this.backoffUntil = Date.now() + backoff * 1000;
-      // 429/503 con Retry-After; 502/504 sono errori transitori del gateway Zotero
-      if ([429, 502, 503, 504].includes(res.status) && attempt < MAX_ATTEMPTS) {
+      // 429/503 con Retry-After; 500/502/504 sono errori transitori dei server Zotero
+      if ([429, 500, 502, 503, 504].includes(res.status) && attempt < MAX_ATTEMPTS) {
         const retryAfter = Number(res.headers.get("retry-after") ?? 0);
         await res.arrayBuffer().catch(() => undefined);
         await sleep(Math.min(Math.max(retryAfter, attempt * 2), 60) * 1000);

@@ -34,7 +34,10 @@ function fakeZotero({ versionInWriteResponse = true } = {}) {
 }
 
 describe("lock dell'account di test (LK)", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   it("LK-01 acquire senza altre run e release → righe [lock] acquired / released con il runId", async () => {
     vi.stubGlobal("fetch", fakeZotero());
@@ -71,5 +74,37 @@ describe("lock dell'account di test (LK)", () => {
     const second = `${(now - 1000).toString(36)}-0004`;
     await acquireLock({ key: "k", lib: "users/1", runId: first, waitMs: 1000, log });
     await expect(acquireLock({ key: "k", lib: "users/1", runId: second, waitMs: 0, log })).rejects.toThrow("test account busy");
+  });
+  it("LK-04 HTTP 500 sulla creazione del lock seguito da 200 → ritentato, lock preso", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const zotero = fakeZotero();
+    let posts = 0;
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
+      if (init.method === "POST" && ++posts === 1) return new Response("Internal Server Error", { status: 500 });
+      return zotero(url, init);
+    });
+    const log = vi.fn();
+    const runId = `${Date.now().toString(36)}-ab14`;
+    const lock = acquireLock({ key: "k", lib: "users/1", runId, waitMs: 1000, log });
+    await vi.advanceTimersByTimeAsync(5_000); // backoff of the retry (2 s without Retry-After)
+    await expect(lock).resolves.toMatch(/^LOCK/);
+    expect(posts).toBe(2);
+    expect(log).toHaveBeenCalledWith(`[lock] acquired ${runId}`);
+  });
+
+  it("LK-04b 500 dopo che la scrittura è avvenuta (due lock della stessa run) → la run non aspetta se stessa; release li rimuove entrambi", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const zotero = fakeZotero();
+    let posts = 0;
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
+      const res = await zotero(url, init);
+      return init.method === "POST" && ++posts === 1 ? new Response("Internal Server Error", { status: 500 }) : res;
+    });
+    const log = vi.fn();
+    const runId = `${Date.now().toString(36)}-ab15`;
+    const lock = acquireLock({ key: "k", lib: "users/1", runId, waitMs: 0, log });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await expect(lock).resolves.toMatch(/^LOCK/);
+    expect(await releaseLock({ key: "k", lib: "users/1", runId, log })).toBe(2);
   });
 });

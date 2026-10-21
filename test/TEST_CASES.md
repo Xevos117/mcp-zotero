@@ -621,7 +621,7 @@ Gira contro la Web API Zotero vera con il server compilato su stdio. Si attiva *
 | `ZOTERO_LIVE_SAFE_MODE=1` | libreria personale: `UNSAFE_OPERATIONS` al massimo `items`, LIVE-DC-02/03 e gruppi saltati, nessuna pulizia degli avanzi |
 
 Configurazione: un file alla volta, 120 s per test, 300 s per gli hook, ogni chiamata MCP 90 s, ogni
-richiesta diretta alla Web API 30 s con retry su 429/502/503/504 (Retry-After/Backoff). Report JSON in
+richiesta diretta alla Web API 30 s con retry su 429/500/502/503/504 (Retry-After/Backoff; anche in `lock.mjs` e `verify-claims.mjs`, con lo stesso numero di tentativi). Report JSON in
 `.vitest/live-report.json`, riepilogo della run (conteggi prima/dopo, voci rimosse) in `.vitest/live-summary.json`.
 
 **Fixture e pulizia** (`test/live/global-setup.ts`): ogni run ha un `runId` (`<timestamp base36>-<hex>`); crea la
@@ -633,7 +633,8 @@ marcatore della run (titolo con il runId, tag della run, collezione della run, o
 fallisce se resta qualcosa; in safe mode avvisa se i conteggi della libreria crescono (qualcosa creato senza
 marcatori). I casi che dipendono da doi.org/Crossref/Unpaywall/editori sono `soft`, ma si salta **solo** per un guasto
 esterno riconosciuto (`ExternalServiceError`: verifica diretta del servizio prima della chiamata, oppure testo del tool
-con timeout, errori di rete, 429/5xx di doi.org, "Download failed for all…"): un secondo tentativo, poi skip con il
+con timeout, errori di rete, 429/5xx di doi.org, "HTTP 429" o "HTTP 5xx", "Download failed for all…"; pattern in
+`test/live/helpers/external.mjs`, modulo senza effetti collaterali provato da EXT-01/02 in `test/utils/external-failure.test.ts`): un secondo tentativo, poi skip con il
 motivo. Qualsiasi altro errore, asserzioni comprese, fa fallire il test. Gli skip soft sono contati: oltre
 `ZOTERO_LIVE_MAX_SOFT_SKIPS` il teardown fallisce. Le asserzioni sono relative a ciò che la run crea, mai a conteggi
 assoluti della libreria; le chiavi inesistenti dei casi negativi (`ZZZZZZZZ`, `YYYYYYYY`) hanno la forma valida e il setup verifica che non
@@ -644,8 +645,8 @@ la libreria intera.
 collezione `mzt-lock <runId>`; se ne trova una più vecchia e non scaduta di un'altra run (di un'altra PR, dell'agente,
 di un altro worktree), aspetta con backoff (15 s, 30 s, poi ogni 60 s) fino a 25 min (`ZOTERO_LIVE_LOCK_WAIT_MIN`; 70 min in CI) e poi
 si ferma con "test account busy". I lock con runId più vecchio di 180 min (attesa in CI più la run più lunga, l'agente smoke) sono di run morte e vengono rimossi.
-I log riportano `[lock] acquired <runId>` e `[lock] released <runId>` (LK-01, `test/utils/lock.test.ts`). Vince il lock creato per primo, ordinato per `version` Zotero della collezione (versione della libreria alla scrittura, sempre crescente). L'ordine per runId lasciava vincere entrambe le run quando quella con il runId più vecchio creava il lock un attimo dopo (live-tests e agente smoke della PR #26, 2026-10-12: l'agente ha lavorato durante la suite e i conteggi finali sono cresciuti di 6 voci e 2 collezioni). LK-02: la run con il runId più vecchio che crea il lock dopo aspetta; LK-03: versione letta dall'elenco se manca nella risposta di creazione. Le collezioni di lock sono escluse dai conteggi prima/dopo (una run in attesa
-crea la sua mentre un'altra è fra i due conteggi). Rilascio a fine teardown (sempre) e nella modalità solo pulizia. I DELETE
+I log riportano `[lock] acquired <runId>` e `[lock] released <runId>` (LK-01, `test/utils/lock.test.ts`). Vince il lock creato per primo, ordinato per `version` Zotero della collezione (versione della libreria alla scrittura, sempre crescente). L'ordine per runId lasciava vincere entrambe le run quando quella con il runId più vecchio creava il lock un attimo dopo (live-tests e agente smoke della PR #26, 2026-10-12: l'agente ha lavorato durante la suite e i conteggi finali sono cresciuti di 6 voci e 2 collezioni). LK-02: la run con il runId più vecchio che crea il lock dopo aspetta; LK-03: versione letta dall'elenco se manca nella risposta di creazione; LK-04: HTTP 500 sulla creazione poi 200 → ritentato (attesa con timer finti), lock preso; LK-04b: 500 arrivato dopo una scrittura riuscita (due lock della stessa run) → la run non aspetta il proprio lock, il rilascio li toglie entrambi. Le collezioni di lock sono escluse dai conteggi prima/dopo (una run in attesa
+crea la sua mentre un'altra è fra i due conteggi). Rilascio a fine teardown (sempre) e nella modalità solo pulizia; un rilascio fallito è un errore nel log (`::error` in CI) e lascia il marcatore `live-run-<runId>.json`, tolto solo dopo un teardown pulito e un rilascio riuscito, così lo step "Clean up interrupted runs" ripete il rilascio. I DELETE
 ritentano fino a 8 volte con jitter sui 412 (versione della libreria cambiata nel frattempo).
 
 **Pulizia dopo una run interrotta** (processo ucciso, timeout; usa il reporter di default, così non sovrascrive
@@ -703,13 +704,16 @@ voci mentre la pulizia era già passata. Ora lo step di pulizia ferma prima i pr
 tag né collezioni con il prefisso della run (al massimo 4, a 5 s), e il lock viene liberato solo dopo la pulizia. Una run che trova l'account dedicato non pulito all'avvio (voci, o collezioni oltre la sentinella) lo scrive nel log e come avviso GitHub (`::warning`): una pulizia fallita dopo un annullamento altrimenti si vedrebbe solo come "cancelled" nella sua run; le run di PR diverse e dell'agente si serializzano sul lato Zotero con
 `test/live/lock.mjs` (attesa fino a 70 min, poi "test account busy": l'agente smoke tiene l'account fino a circa 80 min), così le PR in stack non si annullano a vicenda i
 check obbligatori. Job di 100 min, step dei test di 85 (attesa del lock compresa). Il filtro sui file è un job
-(`changes`), non `on.paths`; con file non rilevanti il job `live-tests` passa senza la suite.
+(`changes`), non `on.paths`; con file non rilevanti il job `live-tests` passa senza la suite. Sulle PR in stack un
+force-push della base manda un secondo `synchronize` sullo stesso head SHA: se una run precedente su quel commit è
+riuscita con tutti i job in ambito (`scripts/duplicate-run.mjs`, WL-11), live e agente vengono saltati e i verdetti
+passano con il link a quella run nel Job Summary; una run precedente fallita, annullata o in corso non conta.
 Senza i secret lo step "Require the test account" fallisce invece di far passare una suite tutta saltata;
 con più di 2 casi soft saltati (`ZOTERO_LIVE_MAX_SOFT_SKIPS`) la run fallisce.
 Lo step dei test (18 min) è più corto del job (30 min); poi, sempre:
 - **solo pulizia** (`npm run test:live:cleanup`, cioè `ZOTERO_LIVE_CLEANUP_ONLY=1`): nessuna fixture, tutti i test saltati; pulisce le run indicate in
   `ZOTERO_LIVE_CLEANUP_RUN_IDS` e quelle interrotte (file `.vitest/live-run-<runId>.json` scritto all'avvio e tolto a
-  fine teardown), con le stesse regole sui marcatori; sull'account dedicato anche gli avanzi > 6 h;
+  fine teardown, solo dopo il rilascio del lock), con le stesse regole sui marcatori; sull'account dedicato anche gli avanzi > 6 h;
 - `test/live/scrub-report.mjs`: copia report e riepilogo mascherando chiave, user id, username, id e nome del gruppo ed
   email, e fallisce (togliendo l'output) se un segreto sopravvive o se c'è un gruppo senza `ZOTERO_TEST_GROUP_NAME`;
   l'artifact (7 giorni) si carica solo dopo uno scrub riuscito. Il nome del gruppo lo legge, all'inizio del job,
@@ -890,6 +894,11 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | WL-06b | mascheramento del nome del gruppo nel job di pulizia dell'agente | `continue-on-error` (la pulizia non salta mai), solo lì |
 | WL-06c | job della issue settimanale; `skill-zips` che crea una release | download del report non bloccante, `gh` con `timeout 60` / versione di package.json = tag prima di creare la release, tag sul commit provato (`--target "$GITHUB_SHA"`) |
 | WL-07 | workflow unico live + agente | `live-tests.yml` non esiste più; `changes` con `live-scope.mjs`; prepare dopo `live` riuscito; verdetti `live-tests` e `agent-smoke` (rosso se il live non è passato); `id-token`, `issues: write`, `pull-requests: write` ciascuno in un solo job; cron del venerdì; input `scope`; posto per `word-render`; timeout su ogni job e step, azioni fissate per SHA; deps-update avvia una sola run con `scope=live+agent` |
+| WL-11/11b/11c | run doppie (`scripts/duplicate-run.mjs`): run precedente sullo stesso head SHA riuscita con tutti i job in ambito (live-tests-run; agent-smoke-run e agent-smoke-verify con l'agente) / fallita, annullata, in corso, riuscita senza agente, doppia a sua volta / run corrente, solo live, nulla in ambito | duplicate con il link alla più recente / si procede / come atteso |
+| WL-11d | `duplicate-run.mjs` come processo senza token (errore di lookup) | `duplicate=false`: la run procede |
+| WL-11e | job `changes` e verdetti | `actions: read` solo per leggere le run; `live-tests-run` saltato con `duplicate`; `live-tests` e `agent-smoke` verdi con il link alla run precedente nel Job Summary, controllo prima di quelli che leggerebbero i job saltati come fallimento |
+| WL-12 | lock dell'agente | `run_id` scritto prima di "Lock the test account"; prepare rilascia se fallisce o è annullato; `agent-smoke-cleanup` rilascia con `always()` |
+| WL-12b | id della federazione Anthropic | primo step di agent-smoke-prepare, agent-smoke-run e del job agente di deps-update: `::add-mask::` dei quattro `ANTHROPIC_*_ID` (variabili, non segreti) |
 | WL-08/08b | `scripts/live-scope.mjs`: PR solo docs, sul codice, sulla suite dal vivo, solo sulla skill dell'agente, sul workflow; push; schedule; manuale senza input, `live`, `live+agent`; scope sconosciuto; processo | live/agent attesi (la skill dell'agente fa girare anche il live); errore; `live=…`/`agent=…` per `$GITHUB_OUTPUT` |
 | CR-01a..d | `mask-group-name.mjs` (`test/utils/ci-report.test.ts`): lettura con header e timeout; 503 poi 200, 404, rete giù, nome assente; output `::add-mask::` e `$GITHUB_ENV`; processo senza gruppo, senza chiave, id non numerico | nome; ritenta solo 429/5xx/rete, errori senza il nome; delimitatore casuale, a capo rifiutato; no-op / exit 1 |
 | CR-02a..c | scrub-report e redact con il nome del gruppo; senza `ZOTERO_TEST_GROUP_NAME` ma con un gruppo | nome, id e username mascherati / token; exit 1 senza output |

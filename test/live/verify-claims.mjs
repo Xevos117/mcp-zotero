@@ -84,7 +84,7 @@ async function api(path) {
       await new Promise((r) => setTimeout(r, 1000 * attempt));
       continue;
     }
-    if ([429, 502, 503, 504].includes(res.status) && attempt < 4) {
+    if ([429, 500, 502, 503, 504].includes(res.status) && attempt < 4) {
       const wait = Number(res.headers.get("retry-after") ?? attempt * 2);
       await new Promise((r) => setTimeout(r, Math.min(wait, 30) * 1000));
       continue;

@@ -63,9 +63,15 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      # reads the earlier runs of this workflow on the same head commit (scripts/duplicate-run.mjs)
+      actions: read
     outputs:
       live: ${{ steps.scope.outputs.live }}
       agent: ${{ steps.scope.outputs.agent }}
+      duplicate: ${{ steps.duplicate.outputs.duplicate }}
+      previous_url: ${{ steps.duplicate.outputs.previous_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 3
@@ -87,6 +93,21 @@ jobs:
             : > "$RUNNER_TEMP/changed.txt"
           fi
           node scripts/live-scope.mjs < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
+      # Stacked PRs: a force-push of the base branch sends another `synchronize` for the same head commit. If an
+      # earlier run on this commit already passed every part this run would run, the live suite and the agent are
+      # skipped and the verdicts pass with a link to it; a failed, cancelled or running earlier run does not count.
+      - name: Earlier successful run on the same commit
+        id: duplicate
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+          LIVE: ${{ steps.scope.outputs.live }}
+          AGENT: ${{ steps.scope.outputs.agent }}
+        run: node scripts/duplicate-run.mjs | tee -a "$GITHUB_OUTPUT"
 
   # The live suite. Secrets only at step level, in the steps that talk to Zotero (never during npm ci or the build).
   live:
@@ -94,6 +115,7 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.live == 'true' &&
+      needs.changes.outputs.duplicate != 'true' &&
       github.actor != 'dependabot[bot]' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
@@ -270,6 +292,18 @@ jobs:
       visual_review: ${{ steps.skill.outputs.visual_review }}
       run_id: ${{ steps.prepare.outputs.run_id }}
     steps:
+      # The federation ids are variables, not secrets: masked before anything can print them
+      - name: Mask the Anthropic federation ids
+        timeout-minutes: 1
+        env:
+          FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+        run: |
+          for v in "$FEDERATION_RULE_ID" "$ORGANIZATION_ID" "$SERVICE_ACCOUNT_ID" "$WORKSPACE_ID"; do
+            if [ -n "$v" ]; then echo "::add-mask::$v"; fi
+          done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 3
         with:
@@ -430,6 +464,18 @@ jobs:
       # removes ACTIONS_ID_TOKEN_REQUEST_* from the agent's environment; no npm runs here.
       id-token: write
     steps:
+      # The federation ids are variables, not secrets: masked before anything can print them
+      - name: Mask the Anthropic federation ids
+        timeout-minutes: 1
+        env:
+          FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+        run: |
+          for v in "$FEDERATION_RULE_ID" "$ORGANIZATION_ID" "$SERVICE_ACCOUNT_ID" "$WORKSPACE_ID"; do
+            if [ -n "$v" ]; then echo "::add-mask::$v"; fi
+          done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 3
         with:
@@ -777,6 +823,8 @@ jobs:
         env:
           CHANGES: ${{ needs.changes.result }}
           RELEVANT: ${{ needs.changes.outputs.live }}
+          DUPLICATE: ${{ needs.changes.outputs.duplicate }}
+          PREVIOUS_URL: ${{ needs.changes.outputs.previous_url }}
           LIVE: ${{ needs.live.result }}
         run: |
           if [ "$CHANGES" != "success" ]; then
@@ -785,6 +833,11 @@ jobs:
           fi
           if [ "$RELEVANT" != "true" ]; then
             echo "::notice::no change relevant to the live suite"
+            exit 0
+          fi
+          if [ "$DUPLICATE" = "true" ]; then
+            echo "::notice::live suite already passed on this commit: $PREVIOUS_URL"
+            echo "Live suite not run again: it already passed on this head commit in $PREVIOUS_URL" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           case "$LIVE" in
@@ -810,6 +863,8 @@ jobs:
         env:
           CHANGES: ${{ needs.changes.result }}
           RELEVANT: ${{ needs.changes.outputs.agent }}
+          DUPLICATE: ${{ needs.changes.outputs.duplicate }}
+          PREVIOUS_URL: ${{ needs.changes.outputs.previous_url }}
           LIVE: ${{ needs.live.result }}
           PREPARE: ${{ needs.prepare.result }}
           AVAILABLE: ${{ needs.prepare.outputs.available }}
@@ -829,6 +884,11 @@ jobs:
           if [ "$RELEVANT" != "true" ]; then
             # push, schedule, a live-only manual run, or a PR without relevant changes
             echo "::notice::agent smoke not applicable to this run ($EVENT): live suite only or no relevant change"
+            exit 0
+          fi
+          if [ "$DUPLICATE" = "true" ]; then
+            echo "::notice::agent smoke already verified on this commit: $PREVIOUS_URL"
+            echo "Agent smoke test not run again: it already passed on this head commit in $PREVIOUS_URL" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if [ "$PREPARE" = "skipped" ]; then

@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { liveScope } from "../../scripts/live-scope.mjs";
 // @ts-expect-error plain .mjs script without type declarations
 import { wordProxyScope } from "../../scripts/word-proxy-scope.mjs";
+// @ts-expect-error plain .mjs script without type declarations
+import { previousRun, requiredJobs } from "../../scripts/duplicate-run.mjs";
 
 /**
  * Logica dei workflow dal vivo che nessun test esegue (gira solo su GitHub): controlli testuali sulle condizioni
@@ -163,6 +165,109 @@ describe("workflow dal vivo e agente smoke (WL)", () => {
     for (const st of steps) expect(st, st.slice(0, 60)).toMatch(/\n {8}timeout-minutes: \d+|^\S[^\n]*\n(?: {8}[^\n]*\n)*? {8}timeout-minutes: \d+/);
     expect(workflow("deps-update.yml")).toContain('gh workflow run claude-agent-smoke.yml --repo "$REPO" --ref "$BRANCH" -f scope=live+agent');
     expect(workflow("deps-update.yml")).not.toContain("live-tests.yml");
+  });
+});
+
+describe("run doppie sullo stesso commit delle PR in stack (scripts/duplicate-run.mjs, WL-11)", () => {
+  const run = (id: number, conclusion: string | null, created: string, status = "completed") => ({
+    id,
+    status,
+    conclusion,
+    created_at: created,
+    html_url: `https://github.com/o/r/actions/runs/${id}`,
+  });
+  const ok = (...names: string[]) => names.map((name) => ({ name, conclusion: "success" }));
+  const BOTH = { live: true, agent: true };
+
+  it("WL-11 run precedente riuscita con live e agente → duplicate, link alla più recente", async () => {
+    const jobs: Record<number, unknown[]> = {
+      1: ok("changes", "live-tests-run", "agent-smoke-run", "agent-smoke-verify"),
+      2: ok("changes", "live-tests-run", "agent-smoke-run", "agent-smoke-verify"),
+    };
+    const prev = await previousRun([run(1, "success", "2026-10-20T10:00:00Z"), run(2, "success", "2026-10-20T11:00:00Z")], async (id: number) => jobs[id], BOTH, 3);
+    expect(prev).toEqual({ id: 2, url: "https://github.com/o/r/actions/runs/2" });
+  });
+
+  it.each<[string, ReturnType<typeof run>, unknown[]]>([
+    ["fallita", run(1, "failure", "2026-10-20T10:00:00Z"), ok("live-tests-run", "agent-smoke-run", "agent-smoke-verify")],
+    ["annullata", run(1, "cancelled", "2026-10-20T10:00:00Z"), ok("live-tests-run")],
+    ["ancora in corso", run(1, null, "2026-10-20T10:00:00Z", "in_progress"), ok("live-tests-run")],
+    ["riuscita ma senza agente (fuori ambito allora, o attore diverso)", run(1, "success", "2026-10-20T10:00:00Z"), [...ok("live-tests-run"), { name: "agent-smoke-run", conclusion: "skipped" }]],
+    ["riuscita ma doppia a sua volta (live saltato)", run(1, "success", "2026-10-20T10:00:00Z"), [{ name: "live-tests-run", conclusion: "skipped" }]],
+  ])("WL-11b run precedente %s → si procede normalmente", async (_label, r, jobs) => {
+    expect(await previousRun([r], async () => jobs, BOTH, 3)).toBeNull();
+  });
+
+  it("WL-11c la run corrente non conta; solo live → basta live-tests-run; nulla in ambito → mai duplicate", async () => {
+    const jobs = async () => ok("live-tests-run");
+    expect(await previousRun([run(3, "success", "2026-10-20T10:00:00Z")], jobs, { live: true, agent: false }, 3)).toBeNull();
+    expect(await previousRun([run(1, "success", "2026-10-20T10:00:00Z")], jobs, { live: true, agent: false }, 3)).toEqual(expect.objectContaining({ id: 1 }));
+    expect(requiredJobs({ live: false, agent: false })).toEqual([]);
+    expect(await previousRun([run(1, "success", "2026-10-20T10:00:00Z")], jobs, { live: false, agent: false }, 3)).toBeNull();
+  });
+
+  it("WL-11d come processo, senza token o con un errore → duplicate=false (la run procede)", () => {
+    const out = execFileSync(process.execPath, [join(ROOT, "scripts", "duplicate-run.mjs")], {
+      env: { PATH: process.env.PATH ?? "", REPO: "o/r", HEAD_SHA: "0".repeat(40), LIVE: "true", AGENT: "true" },
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 10_000,
+    }).toString();
+    expect(out).toBe("duplicate=false\n");
+  });
+
+  it("WL-11e workflow: changes con actions: read; live saltato se duplicate; verdetti verdi con il link nel Job Summary", () => {
+    const text = readFileSync(join(ROOT, ".github", "workflows", "claude-agent-smoke.yml"), "utf8");
+    const jobs = text.slice(text.indexOf("\njobs:\n"));
+    const changes = jobs.slice(jobs.indexOf("\n  changes:\n"), jobs.indexOf("\n  live:\n"));
+    expect(changes).toMatch(/permissions:\n {6}contents: read\n(?: {6}#[^\n]*\n)? {6}actions: read\n/);
+    expect(changes).toContain("duplicate: ${{ steps.duplicate.outputs.duplicate }}");
+    expect(step(changes, "Earlier successful run on the same commit")).toContain("if: github.event_name == 'pull_request'");
+    expect(step(changes, "Earlier successful run on the same commit")).toContain("HEAD_SHA: ${{ github.event.pull_request.head.sha }}");
+    expect(jobs).toContain("needs.changes.outputs.live == 'true' &&\n      needs.changes.outputs.duplicate != 'true' &&");
+    for (const name of ["live-tests", "agent-smoke"]) {
+      const verdict = jobs.slice(jobs.indexOf(`name: ${name} # required check name`));
+      const dup = verdict.indexOf('if [ "$DUPLICATE" = "true" ]; then');
+      expect(dup, name).toBeGreaterThan(verdict.indexOf('if [ "$RELEVANT" != "true" ]; then'));
+      expect(verdict.slice(dup, dup + 400)).toContain('$PREVIOUS_URL" >> "$GITHUB_STEP_SUMMARY"');
+      // the duplicate check comes before anything that would read the skipped jobs as a failure
+      expect(dup).toBeLessThan(verdict.indexOf("case \"$LIVE\" in") > 0 ? verdict.indexOf("case \"$LIVE\" in") : verdict.indexOf('if [ "$PREPARE" = "skipped" ]'));
+    }
+  });
+});
+
+describe("lock e identificativi nei job dell'agente (WL-12)", () => {
+  const text = readFileSync(join(ROOT, ".github", "workflows", "claude-agent-smoke.yml"), "utf8");
+  const jobText = (t: string, key: string) => {
+    const jobs = t.slice(t.indexOf("\njobs:\n"));
+    const start = jobs.indexOf(`\n  ${key}:\n`);
+    const rest = jobs.slice(start + 1);
+    const end = rest.slice(1).search(/\n {2}[a-z][\w-]*:\n/);
+    return end < 0 ? rest : rest.slice(0, end + 1);
+  };
+
+  it("WL-12 run_id scritto prima del lock; prepare rilascia se fallisce o è annullato; cleanup rilascia sempre", () => {
+    const prepare = jobText(text, "prepare");
+    expect(prepare.indexOf('echo "run_id=')).toBeGreaterThan(0);
+    expect(prepare.indexOf('echo "run_id=')).toBeLessThan(prepare.indexOf("- name: Lock the test account"));
+    expect(step(prepare, "Release the lock if prepare failed")).toContain("if: (failure() || cancelled()) && steps.prepare.outputs.run_id != ''");
+    const cleanup = jobText(text, "cleanup");
+    expect(cleanup).toContain("if: always() && needs.prepare.outputs.run_id != ''");
+    const release = step(cleanup, "Release the test-account lock");
+    expect(release).toContain("if: always()");
+    expect(release).toContain('node test/live/lock.mjs release "$RUN_ID"');
+  });
+
+  it("WL-12b gli id della federazione Anthropic mascherati come primo step dei job dell'agente", () => {
+    const deps = readFileSync(join(ROOT, ".github", "workflows", "deps-update.yml"), "utf8");
+    for (const [t, key] of [[text, "prepare"], [text, "agent-run"], [deps, "agent"]] as const) {
+      const j = jobText(t, key);
+      const steps = j.split(/\n {6}- /).slice(1);
+      expect(steps[0], key).toMatch(/^name: Mask the Anthropic federation ids\n/);
+      for (const v of ["FEDERATION_RULE_ID", "ORGANIZATION_ID", "SERVICE_ACCOUNT_ID", "WORKSPACE_ID"]) {
+        expect(steps[0]).toContain(`${v}: \${{ vars.ANTHROPIC_${v} }}`);
+      }
+      expect(steps[0]).toContain('if [ -n "$v" ]; then echo "::add-mask::$v"; fi');
+    }
   });
 });
 
