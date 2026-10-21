@@ -41,13 +41,22 @@ timeout 500 "$Z/zotero-bin" -app "$Z/app/application.ini" -profile "$P" -ZoteroD
 ZPID=$!
 # Ready = plugin logged WCAUTO ready (after Zotero init, LibreOffice socket open, optional setup done)
 timeout 180 bash -c "until grep -q 'WCAUTO {\"ready\"' '$OUT/zotero.log'; do kill -0 $ZPID 2>/dev/null || exit 1; sleep 0.5; done" \
-  || { echo "Zotero not ready"; tail -5 "$OUT/zotero.log"; exit 2; }
+  || { echo "Zotero not ready (see zotero.log)"; exit 2; }
 echo "Zotero ready after $(( $(date +%s) - T0 ))s"
 for step in "$@"; do
   IFS=, read -r label cmd style f <<< "$step"
   echo "$style" > "$OUT/next-style"
   echo "WCAUTO {\"step\":\"$label\"}" >> "$OUT/zotero.log"
+  if [[ "$cmd" == lo-* ]]; then
+    # LibreOffice + Zotero's LibreOffice plugin (lo-refresh.py), profile prepared by the caller
+    LO_PROFILE="$LO_PROFILE" ZOTERO_LOG="$OUT/zotero.log" timeout 150 python3 "$HERE/lo-refresh.py" "$f" "$OUT/$label" "${cmd#lo-}" \
+      > "$OUT/$label.lo.out" 2>&1
+    echo "$label $cmd exit=$? $(tail -1 "$OUT/$label.lo.out" | cut -c1-600)"
+    continue
+  fi
   timeout 120 "$WC" zotero "$cmd" "$f" --save "$OUT/$label.refreshed.docx" --trace > "$OUT/$label.trace" 2>&1
-  echo "$label $cmd exit=$? calls=$(grep -c '^←' "$OUT/$label.trace") $(tail -2 "$OUT/$label.trace" | head -1 | cut -c1-120)"
+  echo "$label $cmd exit=$? calls=$(grep -c '^←' "$OUT/$label.trace") $(grep -Eo '[0-9]+ calls, [a-z ()?]+' "$OUT/$label.trace" | tail -1)"
 done
-grep -h "WCAUTO\|Using embedded data" "$OUT/zotero.log" | cut -c1-300
+# Zotero's debug output stays in zotero.log (it can hold account data): only the plugin's own events
+# (dialogs, answers, item counts) are printed
+grep -h '^WCAUTO {"\(step\|dialog\|answer\|loaded\|setupError\)"' "$OUT/zotero.log" | cut -c1-200

@@ -31,6 +31,8 @@ async function pick(prefix) {
 const libraries = [{ type: "user", id: userId, items: await pick(`/users/${userId}`) }];
 if (groupId) {
   const group = await get(`/groups/${groupId}`);
+  // The group name identifies the test account too: masked in the job log from here on
+  if (process.env.GITHUB_ACTIONS && group.data?.name) console.log(`::add-mask::${group.data.name}`);
   libraries.push({ type: "group", id: groupId, name: group.data?.name, items: await pick(`/groups/${groupId}`) });
 }
 await writeFile(join(out, "items.json"), JSON.stringify({ libraries }));

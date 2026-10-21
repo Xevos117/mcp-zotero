@@ -117,6 +117,85 @@ jobs:
             ${{ runner.temp }}/word-proxy/library/zotero.log
             ${{ runner.temp }}/word-proxy/library/report.json
 
+  libreoffice:
+    name: libreoffice (Zotero LibreOffice plugin)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 3
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: timeout 300 npm ci --ignore-scripts
+        timeout-minutes: 6
+
+      - run: timeout 180 npm run build
+        timeout-minutes: 4
+
+      - name: System packages (Xvfb, GTK for Zotero, LibreOffice Writer + Java + UNO)
+        timeout-minutes: 9
+        run: |
+          set -euo pipefail
+          T0=$(date +%s)
+          sudo timeout 180 apt-get update -qq
+          sudo timeout 420 apt-get install -y -qq --no-install-recommends xvfb libgtk-3-0t64 libdbus-glib-1-2 libasound2t64 libxtst6 \
+            libreoffice-writer libreoffice-java-common python3-uno default-jre-headless > /dev/null
+          soffice --version
+          echo "apt: $(( $(date +%s) - T0 ))s"
+
+      - name: Cache Zotero and WordCraft
+        id: tools-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 4
+        with:
+          path: ~/word-tools
+          key: word-tools-zotero${{ env.ZOTERO_VERSION }}-wordcraft${{ env.WORDCRAFT_VERSION }}-${{ runner.arch }}
+
+      - name: Download Zotero and WordCraft (pinned sha256)
+        if: steps.tools-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          mkdir -p ~/word-tools && cd ~/word-tools
+          z="Zotero-${ZOTERO_VERSION}_linux-x86_64.tar.xz"
+          w="wordcraft-${WORDCRAFT_VERSION}-linux-x86_64.tar.gz"
+          timeout 300 curl -sSfL --retry 2 --max-time 280 -o "$z" "https://download.zotero.org/client/release/${ZOTERO_VERSION}/$z"
+          timeout 300 curl -sSfL --retry 2 --max-time 280 -o "$w" "https://github.com/storytold/wordcraft/releases/download/v${WORDCRAFT_VERSION}/$w"
+          printf '%s  %s\n%s  %s\n' "246c2574a9ac526abeaf3027ffd22fc45536a5ab25f227bb1df932fca9cedd63" "$z" "0ece07cf3d91b923dfd80f90310e04983bde66f0279c6b60ddce89596dde0ddf" "$w" | sha256sum -c -
+          timeout 120 tar xJf "$z" && timeout 120 tar xzf "$w"
+          rm "$z" "$w"
+          mv Zotero_linux-* zotero && mv "wordcraft-${WORDCRAFT_VERSION}-linux-x86_64" wordcraft
+          du -sh zotero wordcraft
+
+      - name: Open, refresh through the Zotero LibreOffice plugin, save
+        timeout-minutes: 12
+        env:
+          XVFB: Xvfb
+        run: timeout 660 test/word-proxy/ci-libreoffice.sh ~/word-tools/zotero "$RUNNER_TEMP/word-lo"
+
+      - name: Upload LibreOffice results (stub data only)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        timeout-minutes: 3
+        with:
+          name: word-libreoffice
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/word-lo/*.lo.json
+            ${{ runner.temp }}/word-lo/*.lo.out
+            ${{ runner.temp }}/word-lo/libreoffice.json
+            ${{ runner.temp }}/word-lo/*.docx
+            ${{ runner.temp }}/word-lo/*.odt
+            ${{ runner.temp }}/word-lo/zotero.log
+
   library:
     name: library (test account, read-only)
     runs-on: ubuntu-24.04
@@ -127,6 +206,19 @@ jobs:
       group: zotero-live
       cancel-in-progress: false
     steps:
+      # Before anything prints: the account's identifiers are masked like the key
+      - name: Mask test-account identifiers
+        timeout-minutes: 1
+        env:
+          ZOTERO_TEST_USER_ID: ${{ secrets.ZOTERO_TEST_USER_ID }}
+          ZOTERO_TEST_USERNAME: ${{ secrets.ZOTERO_TEST_USERNAME }}
+          ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
+        run: |
+          for v in "$ZOTERO_TEST_USER_ID" "$ZOTERO_TEST_USERNAME" "$ZOTERO_TEST_GROUP_ID"; do
+            [ -n "$v" ] && echo "::add-mask::$v"
+          done
+          echo "masked"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 3
         with:
@@ -186,8 +278,10 @@ jobs:
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
         run: timeout 660 test/word-proxy/ci-library.sh ~/word-tools/zotero ~/word-tools/wordcraft/bin/wordcraft-cli "$RUNNER_TEMP/word-library"
 
-      # Artifacts are public: key, user id, username and group id replaced in every uploaded file
-      - name: Scrub outputs
+      # Public artifact = report.json only (no docx, traces or Zotero debug log: Zotero's output can
+      # carry account data). Fail-closed check on the literal values and the group name, then the
+      # repo's scrub-report.mjs (which fails too if a secret survives).
+      - name: Check and publish the summary
         if: always()
         timeout-minutes: 2
         env:
@@ -197,37 +291,19 @@ jobs:
           ZOTERO_TEST_GROUP_ID: ${{ secrets.ZOTERO_TEST_GROUP_ID }}
         run: |
           set -euo pipefail
-          o="$RUNNER_TEMP/word-library"
-          rm -rf "$o/profile" "$o/data" "$o/items.json"
-          shopt -s nullglob
-          files=("$o"/*.docx "$o"/docs/*.docx "$o"/*.trace "$o"/*.log "$o"/*.json "$o"/keys.env "$o"/skipped)
-          existing=(); for f in "${files[@]}"; do [ -f "$f" ] && existing+=("$f"); done
-          [ ${#existing[@]} -eq 0 ] || timeout 120 node test/word-proxy/scrub.mjs "${existing[@]}"
-          # Upload nothing if a value (or a numeric id other than the placeholders, e.g. in a clipped
-          # trace line) survived
-          leak=0
-          for f in "${existing[@]}"; do
-            if [[ "$f" == *.docx ]]; then text=$(unzip -p "$f"); else text=$(cat "$f"); fi
-            for v in "$ZOTERO_TEST_API_KEY" "$ZOTERO_TEST_USERNAME" "$ZOTERO_TEST_USER_ID" "$ZOTERO_TEST_GROUP_ID"; do
-              [ -n "$v" ] && [[ "$text" == *"$v"* ]] && leak=1
-            done
-            grep -Eo '(users|groups)/[0-9]+' <<< "$text" | grep -Evq '^(users/000000|groups/777)$' && leak=1
-          done
-          if [ "$leak" = 1 ]; then echo "::error::scrub incomplete, outputs removed"; rm -rf "$o"; exit 1; fi
-          echo "scrubbed ${#existing[@]} files"
+          o="$RUNNER_TEMP/word-library"; pub="$RUNNER_TEMP/word-library-public"
+          ok=1
+          timeout 60 node test/word-proxy/check-public.mjs "$o/items.json" "$o/report.json" "$o/skipped" || ok=0
+          rm -rf "$o/profile" "$o/data" "$o/docs" "$o/items.json" "$o"/*.docx "$o"/*.trace "$o"/*.log
+          if [ "$ok" = 0 ]; then rm -rf "$o"; echo "::error::account data in the summary, nothing published"; exit 1; fi
+          timeout 60 node test/live/scrub-report.mjs "$pub" "$o/report.json" "$o/skipped"
 
-      - name: Upload scrubbed outputs
+      - name: Upload the summary
         if: success()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         timeout-minutes: 3
         with:
-          name: word-library
+          name: word-library-summary
           retention-days: 3
           if-no-files-found: warn
-          path: |
-            ${{ runner.temp }}/word-library/*.docx
-            ${{ runner.temp }}/word-library/docs/*.docx
-            ${{ runner.temp }}/word-library/*.trace
-            ${{ runner.temp }}/word-library/zotero.log
-            ${{ runner.temp }}/word-library/report.json
-            ${{ runner.temp }}/word-library/skipped
+          path: ${{ runner.temp }}/word-library-public/
