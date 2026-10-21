@@ -161,6 +161,6 @@ describe("resolveLibrary", () => {
   });
 
   it("throws when id is empty (no arg, no default, no env)", () => {
-    expect(() => resolveLibrary({}, "")).toThrow(/library ID is not set: .*Pass library_id.*tell the user to set ZOTERO_USER_ID .*settings\/keys.*restart the client/);
+    expect(() => resolveLibrary({}, "")).toThrow(/library ID is not set: .*Pass library_id.*tell the user to set their userID .*settings\/keys.*"Zotero user ID" in Settings → Extensions → MCP Zotero; in other clients, ZOTERO_USER_ID .*restart the client/);
   });
 });

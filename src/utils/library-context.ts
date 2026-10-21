@@ -18,6 +18,7 @@
  * the personal library (ZOTERO_USER_ID); a group needs an explicit id.
  */
 import { z } from "zod";
+import { SETTINGS, whereToSet } from "./error-hints.js";
 
 export type LibraryType = "user" | "group";
 
@@ -114,8 +115,8 @@ export function resolveLibrary(
   if (!id) {
     throw new Error(
       "Zotero library ID is not set: the server has no ZOTERO_USER_ID for the personal library. Pass library_id " +
-      "(the numeric user ID), or tell the user to set ZOTERO_USER_ID (the userID shown at " +
-      "https://www.zotero.org/settings/keys) in the server's settings and restart the client."
+      "(the numeric user ID), or tell the user to set their userID (shown at https://www.zotero.org/settings/keys) in " +
+      `${whereToSet(SETTINGS.userId)}.`
     );
   }
   assertLibraryId(id, "library_id");

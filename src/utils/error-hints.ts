@@ -7,9 +7,30 @@ import { RequestTimeoutError } from "./timeouts.js";
  * when the fix is on the user's side, what to tell the user. No secrets: status codes and hosts only.
  */
 
-/** Where the user changes the server's environment, for every "tell the user" hint. */
-export const SERVER_SETTINGS =
-  "the server's settings (the env block of this server in the MCP client config, e.g. claude_desktop_config.json or .mcp.json), then restart the client";
+/**
+ * Server settings as the user sees them: the variable name, and the title of the same setting in the Claude Desktop
+ * extension (user_config of manifest.json), which has no env block.
+ */
+export const SETTINGS = {
+  apiKey: { env: "ZOTERO_API_KEY", title: "Zotero API key" },
+  userId: { env: "ZOTERO_USER_ID", title: "Zotero user ID" },
+  libraryId: { env: "ZOTERO_LIBRARY_ID", title: "Group library ID" },
+  unpaywallEmail: { env: "UNPAYWALL_EMAIL", title: "Email for Unpaywall" },
+  unsafeOperations: { env: "UNSAFE_OPERATIONS", title: "Deletions allowed" },
+} as const;
+
+type Setting = (typeof SETTINGS)[keyof typeof SETTINGS];
+
+/** Where the user changes these settings, for every "tell the user" hint: extension or MCP config, then a restart. */
+export function whereToSet(...settings: Setting[]): string {
+  const titles = settings.map((s) => `"${s.title}"`).join(" / ");
+  const envs = settings.map((s) => s.env).join(" / ");
+  return (
+    `the server's settings: with the Claude Desktop extension, ${titles} in Settings → Extensions → MCP Zotero; ` +
+    `in other clients, ${envs} in the env block of this server in the MCP config (e.g. claude_desktop_config.json or .mcp.json). ` +
+    "Then restart the client"
+  );
+}
 
 export const API_KEYS_PAGE = "https://www.zotero.org/settings/keys";
 
@@ -24,13 +45,13 @@ export const COLLECTION_KEY_HINT =
 export const MISSING_API_KEY = "ZOTERO_API_KEY is not set in the server's environment";
 
 export const MISSING_API_KEY_HINT =
-  `Tell the user to create a Zotero API key at ${API_KEYS_PAGE} and set it as ZOTERO_API_KEY in ${SERVER_SETTINGS}.`;
+  `Tell the user to create a Zotero API key at ${API_KEYS_PAGE} and set it in ${whereToSet(SETTINGS.apiKey)}.`;
 
 const ACCESS_HINT =
   "Retrying or using other tools will not help. Tell the user to check the API key at " +
   `${API_KEYS_PAGE}: it needs "Allow library access", "Allow write access" for tools that add or delete, ` +
   "and access to the group for a group library; ZOTERO_USER_ID must be the userID shown on that page. " +
-  `They fix it by updating ZOTERO_API_KEY / ZOTERO_USER_ID in ${SERVER_SETTINGS}.`;
+  `They fix it by updating the key / user ID in ${whereToSet(SETTINGS.apiKey, SETTINGS.userId)}.`;
 
 const STATUS_NAMES: Record<number, string> = {
   400: "Bad Request",
@@ -67,7 +88,7 @@ export function zoteroStatusHint(status: number, retryAfterS?: number): { error:
   if (status === 404) {
     return {
       error: `Zotero returned ${label}: the library, item or collection does not exist or this API key cannot see it.`,
-      hint: `Do not retry with the same key. ${ITEM_KEY_HINT} Collection keys come from get_collections. If every call fails like this, the configured library id is wrong: tell the user to check ZOTERO_USER_ID (the userID at ${API_KEYS_PAGE}) or ZOTERO_LIBRARY_ID in ${SERVER_SETTINGS}.`,
+      hint: `Do not retry with the same item or collection key. ${ITEM_KEY_HINT} Collection keys come from get_collections. If every call fails like this, the configured library id is wrong: tell the user to check the user ID (the userID at ${API_KEYS_PAGE}) or group library ID in ${whereToSet(SETTINGS.userId, SETTINGS.libraryId)}.`,
     };
   }
   if (status === 409 || status === 412) {
@@ -98,9 +119,12 @@ export function zoteroStatusHint(status: number, retryAfterS?: number): { error:
 }
 
 const NETWORK_ERROR =
-  /fetch failed|socket hang up|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|network/i;
+  /fetch failed|socket hang up|ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH/;
 
-/** A failed connection (DNS, refused, reset), as thrown by fetch: a TypeError, the cause carrying the code. */
+/**
+ * A failed connection (DNS, refused, reset), as thrown by fetch: a TypeError, the cause carrying the code. Only these
+ * markers count: a bug's TypeError that merely mentions a network is not reported as a retryable network error.
+ */
 function networkDetail(err: unknown): string | undefined {
   if (!(err instanceof TypeError)) return undefined;
   const cause = (err as { cause?: unknown }).cause;
@@ -181,7 +205,7 @@ export function unsafeOperationsHint(target: "items" | "collections"): string {
       : "'all' (allows delete_collection and delete_items; 'items' allows only delete_items)";
   return (
     "Do not try to get around this with other tools (moving to the trash, editing, removing from collections). " +
-    `Tell the user that deleting is disabled in the server configuration and that, if they want to allow it, they can set UNSAFE_OPERATIONS to ${values} ` +
-    `in ${SERVER_SETTINGS}, and then ask again.`
+    `Tell the user that deleting is disabled in the server configuration and that, if they want to allow it, they can set ${values} ` +
+    `in ${whereToSet(SETTINGS.unsafeOperations)}, and then ask again.`
   );
 }

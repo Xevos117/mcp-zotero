@@ -39,7 +39,7 @@ describe("delete_items (MCP)", () => {
       // il modello deve spiegarlo all'utente (valori, dove impostarli, riavvio) e non aggirare il blocco
       expect(json.hint).toMatch(/^Do not try to get around this with other tools/);
       expect(json.hint).toContain("'items' (allows delete_items) or 'all' (also delete_collection)");
-      expect(json.hint).toMatch(/server's settings .*claude_desktop_config\.json or \.mcp\.json.*restart the client/);
+      expect(json.hint).toMatch(/server's settings: with the Claude Desktop extension, "Deletions allowed" .*UNSAFE_OPERATIONS in the env block .*claude_desktop_config\.json or \.mcp\.json.*restart the client/);
       expect(h.net.calls).toHaveLength(0);
     });
 

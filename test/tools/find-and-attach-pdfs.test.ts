@@ -279,7 +279,7 @@ describe("find_and_attach_pdfs (MCP)", () => {
     const out = await h.call("find_and_attach_pdfs", { item_keys: ["AAAARRRR"] });
     expect(out.json.results[0]).toMatchObject({ status: "not_found", reason: expect.stringContaining("UNPAYWALL_EMAIL") });
     // una volta sola, a livello di risposta: cosa dire all'utente e dove impostarla
-    expect(out.json.hint).toMatch(/Tell the user .*UNPAYWALL_EMAIL.*claude_desktop_config\.json.*restart the client/);
+    expect(out.json.hint).toMatch(/Tell the user .*"Email for Unpaywall" in Settings → Extensions → MCP Zotero; in other clients, UNPAYWALL_EMAIL .*claude_desktop_config\.json.*restart the client/);
     expect(h.net.toHost(UNPAYWALL_HOST)).toHaveLength(0);
   });
 

@@ -2,7 +2,7 @@ import { InvalidJsonResponseError, readJsonObject } from "./json-response.js";
 import { fetchWithRetry } from "./fetch-retry.js";
 import { logger } from "./logger.js";
 import { errorMessage } from "./error-formatter.js";
-import { SERVER_SETTINGS } from "./error-hints.js";
+import { SETTINGS, whereToSet } from "./error-hints.js";
 
 export interface UnpaywallOaLocation {
   url_for_pdf: string | null;
@@ -38,7 +38,7 @@ export const UNPAYWALL_EMAIL_MISSING =
 
 export const UNPAYWALL_EMAIL_HINT =
   "No PDF lookup was done (the items themselves are fine). Tell the user that open-access PDF lookup needs UNPAYWALL_EMAIL " +
-  `(a valid email address of theirs, which Unpaywall requires with each request) in ${SERVER_SETTINGS}, and then run find_and_attach_pdfs.`;
+  `(a valid email address of theirs, which Unpaywall requires with each request) in ${whereToSet(SETTINGS.unpaywallEmail)}, and then run find_and_attach_pdfs.`;
 
 const SKIPPED_RESULT: OaPdfLookupResult = {
   found: false,

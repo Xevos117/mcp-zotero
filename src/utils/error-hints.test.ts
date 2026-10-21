@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeError, describeAnyError, unsafeOperationsHint, zoteroStatusHint } from "./error-hints.js";
+import { describeError, describeAnyError, unsafeOperationsHint, whereToSet, SETTINGS, zoteroStatusHint } from "./error-hints.js";
 import { RequestTimeoutError } from "./timeouts.js";
 
 function apiError(status: number, reason = "", headers: Record<string, string> = {}): Error {
@@ -16,7 +16,8 @@ describe("describeError", () => {
     expect(d.error).toMatch(/refused access \(HTTP 403 Forbidden\)/);
     expect(d.hint).toContain("https://www.zotero.org/settings/keys");
     expect(d.hint).toContain("Allow write access");
-    expect(d.hint).toContain("ZOTERO_API_KEY");
+    expect(d.hint).toContain('"Zotero API key" / "Zotero user ID" in Settings → Extensions → MCP Zotero');
+    expect(d.hint).toContain("ZOTERO_API_KEY / ZOTERO_USER_ID in the env block");
     expect(d.hint).toMatch(/restart the client/);
     expect(d.hint).toMatch(/will not help/);
   });
@@ -24,7 +25,8 @@ describe("describeError", () => {
   it("404 → do not retry the same key, where to get valid keys", () => {
     const d = describeError(apiError(404))!;
     expect(d.error).toMatch(/404 Not Found/);
-    expect(d.hint).toMatch(/Do not retry/);
+    expect(d.hint).toMatch(/^Do not retry with the same item or collection key\./);
+    expect(d.hint).toContain('"Zotero user ID" / "Group library ID"');
     expect(d.hint).toContain("search_library");
     expect(d.hint).toContain("get_collections");
   });
@@ -75,6 +77,9 @@ describe("describeError", () => {
 
   it("other errors (bugs) are not described; describeAnyError keeps the raw message", () => {
     expect(describeError(new TypeError("Cannot read properties of undefined"))).toBeUndefined();
+    // a bug that merely mentions a network is not a retryable network error
+    expect(describeError(new TypeError("networkTimeout is not a function"))).toBeUndefined();
+    expect(describeError(new TypeError("Invalid network config"))).toBeUndefined();
     expect(describeError(new Error("boom"))).toBeUndefined();
     expect(describeAnyError(new Error("boom"))).toEqual({ error: "boom" });
   });
@@ -86,12 +91,22 @@ describe("zoteroStatusHint", () => {
   });
 });
 
+describe("whereToSet", () => {
+  it("names the extension setting titles and the env variables, then the restart", () => {
+    expect(whereToSet(SETTINGS.unpaywallEmail)).toBe(
+      'the server\'s settings: with the Claude Desktop extension, "Email for Unpaywall" in Settings → Extensions → MCP Zotero; ' +
+        "in other clients, UNPAYWALL_EMAIL in the env block of this server in the MCP config (e.g. claude_desktop_config.json or .mcp.json). Then restart the client"
+    );
+  });
+});
+
 describe("unsafeOperationsHint", () => {
   it("items: names both accepted values and what they enable, forbids workarounds", () => {
     const h = unsafeOperationsHint("items");
     expect(h).toContain("'items' (allows delete_items) or 'all' (also delete_collection)");
     expect(h).toMatch(/Do not try to get around this with other tools/);
-    expect(h).toContain("claude_desktop_config.json");
+    expect(h).toContain('with the Claude Desktop extension, "Deletions allowed" in Settings → Extensions → MCP Zotero');
+    expect(h).toContain("UNSAFE_OPERATIONS in the env block of this server in the MCP config (e.g. claude_desktop_config.json or .mcp.json)");
     expect(h).toMatch(/restart the client/);
   });
 

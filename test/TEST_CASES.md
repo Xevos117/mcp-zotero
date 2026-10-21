@@ -246,7 +246,7 @@ test normali. Non restano `it.fails` nella suite.
 ## delete_items (`delete-items.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| DI-01 | **guard** none | errore strutturato "not allowed… UNSAFE_OPERATIONS is 'none'. Nothing was deleted."; `hint`: non aggirare il blocco, 'items' o 'all' e cosa abilitano, dove impostarli (claude_desktop_config.json / .mcp.json), riavvio; nessuna chiamata HTTP |
+| DI-01 | **guard** none | errore strutturato "not allowed… UNSAFE_OPERATIONS is 'none'. Nothing was deleted."; `hint`: non aggirare il blocco, 'items' o 'all' e cosa abilitano, dove impostarli ("Deletions allowed" nell'estensione di Claude Desktop, `UNSAFE_OPERATIONS` in claude_desktop_config.json / .mcp.json), riavvio; nessuna chiamata HTTP |
 | DI-02 | items / all | consentito |
 | DI-03 | 2 chiavi | GET itemKey → DELETE `?itemKey=A,B` con la versione della libreria |
 | DI-04 | cancellazione parziale | not_found; cancellate solo le chiavi trovate |
@@ -446,7 +446,7 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 | H-08/09/10 | contratto zotero-api-client | Total-Results e versione; `getData()` con tutti gli oggetti inviati, `getErrors()` con oggetti; DELETE `?itemKey` con If-Unmodified-Since-Version |
 | H-11..14 | fetchWithRetry | Retry-After come data passata, 500 senza retry, esaurimento dei retry, errore di rete |
 | H-15/16 | resolveDoi | codifica + Accept CSL / 404 con DOI, status e "(DOI not registered or mistyped)"; 5xx "retry later" (`src/utils/doi-resolver.test.ts`) |
-| H-20 | `describeError` (`src/utils/error-hints.test.ts`) | 403/401: chiave e pagina zotero.org/settings/keys, impostazioni del server; 404: chiavi valide; 409/412: riprova; 429: Retry-After; 5xx: attendi e riprova, poi dillo all'utente; 400: correggi gli argomenti; timeout: controlla prima di ripetere una scrittura; rete: causa inclusa; corpo HTML mai copiato; altri errori non tradotti; `unsafeOperationsHint` |
+| H-20 | `describeError` (`src/utils/error-hints.test.ts`) | 403/401: chiave e pagina zotero.org/settings/keys, impostazioni del server; 404: chiavi valide; 409/412: riprova; 429: Retry-After; 5xx: attendi e riprova, poi dillo all'utente; 400: correggi gli argomenti; timeout: controlla prima di ripetere una scrittura; rete: causa inclusa, un TypeError che nomina solo "network" non conta; corpo HTML mai copiato; altri errori non tradotti; `whereToSet` (titolo dell'impostazione nell'estensione di Claude Desktop e variabile env); `unsafeOperationsHint` |
 | H-21 | `runTool` (`src/tools/index.test.ts`) | errore API → errore strutturato con `http_status` e `hint`, senza URL; errore non API → rilanciato |
 | H-17/18 | putFulltext | body JSON + API key, 204 / 413 e 500 |
 | H-19 | putFulltext gruppo | PUT su `/groups/777/items/{key}/fulltext` |
