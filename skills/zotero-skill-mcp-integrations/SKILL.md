@@ -186,9 +186,9 @@ Call `get_items_details` with ALL item keys in a single call:
 get_items_details({ item_keys: ["KEY1", "KEY2", "KEY3", ...] })
 ```
 
-Save the result as `metadata.json` in the sandbox. The response is a key → metadata map.
+Save the result as `metadata.json` in the sandbox. The response is a key → metadata map; keys that are not in the library are listed in `not_found` (fix those `<zcite>` keys before injecting: the script fails on a cited key missing from `metadata.json`, and ignores `not_found` itself).
 
-**No remapping required.** The inject script accepts the MCP response field names directly (`DOI`, `url`, `publicationTitle`, `pages`, ...). You can pass the MCP response as-is; extra fields it may contain (`ISSN`, `language`, `accessDate`, type-specific fields) are ignored.
+**No remapping required.** The inject script accepts the MCP response field names directly (`DOI`, `url`, `publicationTitle`, `pages`, ...). You can pass the MCP response as-is; the container title comes from the type-specific field (`bookTitle` for a book section, `proceedingsTitle`, `encyclopediaTitle`, `websiteTitle`, ...) or `publicationTitle`, and other extra fields (`ISSN`, `language`, `accessDate`, ...) are ignored.
 
 The script also accepts the canonical inject.js field names and a lowercase `doi`, so either format works:
 
@@ -199,13 +199,13 @@ The script also accepts the canonical inject.js field names and a lowercase `doi
 | `authors` | `authors` |
 | `date` | `date` |
 | `DOI` | `DOI` (lowercase `doi` also accepted) |
-| `containerTitle` | `publicationTitle` |
+| `containerTitle` | `publicationTitle`, or the type-specific field (`bookTitle`, `proceedingsTitle`, ...) |
 | `volume` | `volume` |
 | `issue` | `issue` |
 | `page` | `pages` |
 | `publisher` | `publisher` |
 | `URL` | `url` |
-| `author` (CSL names) | `creators` (preferred) or `authors` |
+| `author`, `editor`, ... (CSL names) | `creators` (preferred) or `authors` |
 
 **Do NOT include `abstract`** — it bloats field codes.
 
@@ -216,7 +216,7 @@ The script also accepts the canonical inject.js field names and a lowercase `doi
 - `creators`: the structured names stored in Zotero, e.g. `[{ "creatorType": "author", "firstName": "Paulo", "lastName": "Caetano da Silva" }, { "creatorType": "author", "name": "WHO" }]`
 - `authors`: the same names as a display string, `"Paulo Caetano da Silva, WHO"`
 
-Keep `creators` in `metadata.json`: the script uses it when present (authors only, `lastName` or single-field `name` as family name, `firstName` as given name), exactly like the `inject_citations` MCP tool, so multi-word surnames such as `"de Kroon"` or `"Caetano da Silva"` stay intact.
+Keep `creators` in `metadata.json`: the script uses it when present (authors, editors, series editors, book authors and translators; `lastName`/`firstName` as family/given name, a single-field `name` such as an institution as one literal name), exactly like the `inject_citations` MCP tool, so multi-word surnames such as `"de Kroon"` or `"Caetano da Silva"` stay intact and a book chapter keeps its editors.
 
 If you write metadata by hand without `creators`, the `authors` string is used instead: each comma-separated token is split on whitespace and the **last word** becomes the family name (`"Paulo Caetano da Silva"` → `{ family: "Silva", given: "Paulo Caetano da" }`). Prefer `creators` whenever a surname has more than one word.
 
@@ -276,9 +276,11 @@ Supported attributes:
 |---|---|---|
 | `keys` | `"ABC12345"` or `"ABC,DEF"` | Required. Comma-separated for multiple (spaces after commas are ignored) |
 | `num` | `"1"` or `"1,2"` | **Required for IEEE/Vancouver.** Without it, citations render as `[?]` |
-| `locator` | `"pp. 12-15"` | Page locator |
-| `prefix` | `"see "` | Text before citation |
+| `locator` | `"12-15"` | Page locator (pages by default: shown as "pp. 12–15"; write another label explicitly, e.g. `"chap. 3"`) |
+| `prefix` | `"see"` | Text before citation |
 | `suffix` | `", emphasis added"` | Text after citation |
+
+The placeholder text already shows locator, prefix and suffix as the chosen style renders them (e.g. APA `(see Smith, 2023, pp. 12–15)`, IEEE `see [1, pp. 12–15]`); Vancouver prints no locators.
 
 > **Warning:** When using IEEE or Vancouver style, you MUST include the `num` attribute on every `<zcite>` tag with the correct sequential citation number. Omitting `num` produces `[?]` placeholders.
 
@@ -303,7 +305,7 @@ The script outputs JSON to stdout:
 { "output": "output.docx", "found": 3, "injected": 3 }
 ```
 
-Warnings go to stderr: numbered styles without `num`. Invalid arguments exit with code 1 and write nothing, and so do a `<zcite>` key that is not letters and digits only and a cited key missing from `metadata.json` (same rules as `inject_citations`): include every cited key in the `get_items_details` call.
+Warnings go to stderr: numbered styles without `num`. Invalid arguments exit with code 1 and write nothing, and so do a `<zcite>` key that is not a Zotero key (8 characters from `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`) and a cited key missing from `metadata.json` (same rules as `inject_citations`): include every cited key in the `get_items_details` call.
 
 ### Step 6 — Present result
 

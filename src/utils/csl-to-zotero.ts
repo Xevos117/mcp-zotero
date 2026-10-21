@@ -1,6 +1,6 @@
 import { CslItemData, CslName } from "../types/csl-types.js";
 import { ZoteroItemData } from "../types/zotero-types.js";
-import { ITEM_TYPE_FIELDS, ZoteroItemType } from "./zotero-item-types.js";
+import { ITEM_TYPE_CREATOR_TYPES, ITEM_TYPE_FIELDS, ZoteroItemType } from "./zotero-item-types.js";
 
 const CSL_TO_ZOTERO_TYPE: Record<string, string> = {
   // Standard CSL types
@@ -118,6 +118,20 @@ const CONTAINER_TITLE_FIELD: Partial<Record<ZoteroItemType, string>> = {
   podcast: "programTitle",
 };
 
+/**
+ * CSL name variables ⇄ Zotero creator types, as in Zotero's CSL mappings. Authors first: the
+ * order of the CSL arrays becomes the order of the Zotero creators.
+ */
+const CSL_NAME_CREATOR_TYPES = [
+  ["author", "author"],
+  ["editor", "editor"],
+  ["container-author", "bookAuthor"],
+  ["collection-editor", "seriesEditor"],
+  ["translator", "translator"],
+] as const;
+
+type ZoteroCreatorOut = { firstName: string; lastName: string; creatorType: string } | { name: string; creatorType: string };
+
 export interface CslToZoteroOptions {
   collectionKey?: string;
   tags?: string[];
@@ -125,7 +139,7 @@ export interface CslToZoteroOptions {
 
 export interface CslToZoteroResult {
   itemType: string;
-  creators: Array<{ firstName: string; lastName: string; creatorType: string }>;
+  creators: ZoteroCreatorOut[];
   collections: string[];
   tags: Array<{ tag: string }>;
   [field: string]: unknown;
@@ -137,11 +151,16 @@ export function cslToZoteroItem(
 ): CslToZoteroResult {
   const itemType = (CSL_TO_ZOTERO_TYPE[csl.type] ?? "journalArticle") as ZoteroItemType;
 
-  const creators = (csl.author ?? []).map((a) => ({
-    firstName: a.given ?? "",
-    lastName: a.family ?? a.literal ?? "",
-    creatorType: "author",
-  }));
+  // Authors always (as before); other roles only where the item type has them, or the API rejects the item.
+  // A CSL `literal` (institution, consortium) is Zotero's single-field name
+  const validCreatorTypes = ITEM_TYPE_CREATOR_TYPES[itemType];
+  const creators: ZoteroCreatorOut[] = CSL_NAME_CREATOR_TYPES.flatMap(([variable, creatorType]) =>
+    creatorType !== "author" && !validCreatorTypes?.has(creatorType)
+      ? []
+      : (csl[variable] ?? []).map((a): ZoteroCreatorOut =>
+          a.literal && !a.family ? { name: a.literal, creatorType } : { firstName: a.given ?? "", lastName: a.family ?? "", creatorType }
+        )
+  );
 
   const dateParts = csl.issued?.["date-parts"]?.[0];
   const date = dateParts ? dateParts.join("-") : csl.issued?.literal ?? csl.issued?.raw ?? "";
@@ -199,13 +218,26 @@ export function cslToZoteroItem(
   return result;
 }
 
+/** Zotero creator → CSL name: a single-field name (institution) is a CSL `literal`. */
+function cslName(c: { firstName?: string; lastName?: string; name?: string }): CslName {
+  if (c.name && !c.lastName) return { literal: c.name };
+  return { family: c.lastName ?? "", given: c.firstName ?? "" };
+}
+
+/** CSL title of the container, from the item type's own field (bookTitle, proceedingsTitle, ...) or publicationTitle. */
+function containerTitle(item: ZoteroItemData): string | undefined {
+  const field = CONTAINER_TITLE_FIELD[item.itemType as ZoteroItemType];
+  const fields = item as Record<string, unknown>;
+  const value = (field && fields[field]) || item.publicationTitle;
+  return typeof value === "string" && value ? value : undefined;
+}
+
 export function zoteroItemToCsl(item: ZoteroItemData): CslItemData {
-  const authors: CslName[] = (item.creators ?? [])
-    .filter((c) => c.creatorType === "author")
-    .map((c) => ({
-      family: c.lastName ?? c.name ?? "",
-      given: c.firstName ?? "",
-    }));
+  const names: Partial<Record<(typeof CSL_NAME_CREATOR_TYPES)[number][0], CslName[]>> = {};
+  for (const [variable, creatorType] of CSL_NAME_CREATOR_TYPES) {
+    const list = (item.creators ?? []).filter((c) => c.creatorType === creatorType).map(cslName);
+    if (list.length > 0) names[variable] = list;
+  }
 
   let issued: CslItemData["issued"] | undefined;
   if (item.date) {
@@ -220,10 +252,10 @@ export function zoteroItemToCsl(item: ZoteroItemData): CslItemData {
   return {
     type: ZOTERO_TO_CSL_TYPE[item.itemType ?? ""] ?? "article-journal",
     title: text(item.title),
-    author: authors.length > 0 ? authors : undefined,
+    ...names,
     issued,
     DOI: text(item.DOI),
-    "container-title": text(item.publicationTitle),
+    "container-title": containerTitle(item),
     volume: text(item.volume),
     issue: text(item.issue),
     page: text(item.pages),

@@ -338,12 +338,16 @@ function renderWithCiteproc(report: DocxReport, style: CitationStyle): void {
     if (entries.length !== items.size) {
       report.errors.push(`citeproc: bibliografia con ${entries.length} voci, attese ${items.size} (voci distinte citate)`);
     }
-    report.citations.forEach((c, i) => compareKeyParts(report, style, c, keyTexts[i], i));
+    report.citations.forEach((c, i) => compareKeyParts(report, style, c, NUMERIC_STYLES.has(style) ? rendered[i] : keyTexts[i], i));
   } catch (e) {
     report.errors.push(`citeproc: rendering fallito con lo stile ${style}: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
 
+/**
+ * Stili numerici: stessi numeri del rendering completo (citazione, locator, prefix/suffix); stili autore-data:
+ * cognome e anno di ogni voce, confrontati con il rendering delle sole voci.
+ */
 function compareKeyParts(report: DocxReport, style: CitationStyle, c: CitationField, rendered: string, i: number): void {
   const where = `citazione ${i + 1} ("${c.visible}" vs citeproc "${rendered}")`;
   if (NUMERIC_STYLES.has(style)) {

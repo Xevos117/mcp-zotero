@@ -130,6 +130,50 @@ describe("cslToZoteroItem", () => {
     }
   });
 
+  it("maps editors and other CSL name roles to Zotero creator types valid for the item type", () => {
+    const result = cslToZoteroItem({
+      type: "chapter",
+      title: "A Chapter",
+      author: [{ family: "Gamma", given: "Gina" }],
+      editor: [{ family: "Gialli", given: "Ugo" }],
+      "collection-editor": [{ family: "Serie", given: "Sara" }],
+      "container-author": [{ family: "Boss", given: "Bo" }],
+      translator: [{ family: "Trad", given: "T" }],
+    });
+    expect(result.creators).toEqual([
+      { firstName: "Gina", lastName: "Gamma", creatorType: "author" },
+      { firstName: "Ugo", lastName: "Gialli", creatorType: "editor" },
+      { firstName: "Bo", lastName: "Boss", creatorType: "bookAuthor" },
+      { firstName: "Sara", lastName: "Serie", creatorType: "seriesEditor" },
+      { firstName: "T", lastName: "Trad", creatorType: "translator" },
+    ]);
+  });
+
+  it("drops name roles the item type does not have (the API would reject the item)", () => {
+    const result = cslToZoteroItem({
+      type: "article-journal",
+      author: [{ family: "Smith", given: "J" }],
+      editor: [{ family: "Ed", given: "E" }],
+      "collection-editor": [{ family: "Series", given: "S" }],
+      "container-author": [{ family: "Boss", given: "B" }],
+    });
+    expect(result.creators).toEqual([
+      { firstName: "J", lastName: "Smith", creatorType: "author" },
+      { firstName: "E", lastName: "Ed", creatorType: "editor" },
+    ]);
+  });
+
+  it("maps a CSL literal name (institution) to Zotero's single-field name", () => {
+    const result = cslToZoteroItem({
+      type: "report",
+      author: [{ literal: "RDA FAIR Data Maturity Model Working Group" }, { family: "Doe", given: "Jane" }],
+    });
+    expect(result.creators).toEqual([
+      { name: "RDA FAIR Data Maturity Model Working Group", creatorType: "author" },
+      { firstName: "Jane", lastName: "Doe", creatorType: "author" },
+    ]);
+  });
+
   it("maps book-chapter container-title to bookTitle", () => {
     const result = cslToZoteroItem({
       type: "book-chapter",
@@ -458,14 +502,47 @@ describe("zoteroItemToCsl", () => {
     expect(result.author).toBeUndefined();
   });
 
-  it("filters only authors from creators", () => {
+  it("maps creators by role: authors, editors, series editors, book authors, translators; others dropped", () => {
     const result = zoteroItemToCsl({
       creators: [
         { firstName: "John", lastName: "Smith", creatorType: "author" },
         { firstName: "Jane", lastName: "Doe", creatorType: "editor" },
+        { firstName: "Sara", lastName: "Serie", creatorType: "seriesEditor" },
+        { firstName: "Bo", lastName: "Boss", creatorType: "bookAuthor" },
+        { firstName: "T", lastName: "Trad", creatorType: "translator" },
+        { firstName: "C", lastName: "Contrib", creatorType: "contributor" },
       ],
     });
     expect(result.author).toEqual([{ family: "Smith", given: "John" }]);
+    expect(result.editor).toEqual([{ family: "Doe", given: "Jane" }]);
+    expect(result["collection-editor"]).toEqual([{ family: "Serie", given: "Sara" }]);
+    expect(result["container-author"]).toEqual([{ family: "Boss", given: "Bo" }]);
+    expect(result.translator).toEqual([{ family: "Trad", given: "T" }]);
+    expect(JSON.stringify(result)).not.toContain("Contrib");
+  });
+
+  it("single-field name (institution) → CSL literal, not a family name", () => {
+    const result = zoteroItemToCsl({ itemType: "report", creators: [{ name: "Test Consortium", creatorType: "author" }] });
+    expect(result.author).toEqual([{ literal: "Test Consortium" }]);
+  });
+
+  it.each([
+    ["bookSection", "bookTitle"],
+    ["conferencePaper", "proceedingsTitle"],
+    ["encyclopediaArticle", "encyclopediaTitle"],
+    ["dictionaryEntry", "dictionaryTitle"],
+    ["blogPost", "blogTitle"],
+    ["forumPost", "forumTitle"],
+    ["webpage", "websiteTitle"],
+    ["tvBroadcast", "programTitle"],
+    ["journalArticle", "publicationTitle"],
+  ])("container-title from the %s field %s", (itemType, field) => {
+    expect(zoteroItemToCsl({ itemType, [field]: "The Container" } as never)["container-title"]).toBe("The Container");
+  });
+
+  it("container-title falls back to publicationTitle and stays out when empty", () => {
+    expect(zoteroItemToCsl({ itemType: "bookSection", bookTitle: "", publicationTitle: "P" } as never)["container-title"]).toBe("P");
+    expect(zoteroItemToCsl({ itemType: "bookSection", bookTitle: "" } as never)).not.toHaveProperty("container-title", expect.anything());
   });
 
   it("reverse-maps new Zotero types correctly", () => {

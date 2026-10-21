@@ -16,9 +16,11 @@ export const toolConfig = {
     item_key: zoteroKey().describe("Item key (the parent item or its PDF attachment), from search_library or get_collection_items"),
     max_characters: z
       .number()
+      .int()
+      .min(0)
       .optional()
       .default(50000)
-      .describe("Maximum characters to return (default: 50000, 0 = no limit); truncated: true in the result when cut"),
+      .describe("Maximum characters to return: a positive integer, or 0 for no limit (default: 50000); truncated: true in the result when cut"),
     ...libraryArgsSchema,
   },
 } as const;

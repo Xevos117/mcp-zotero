@@ -207,6 +207,8 @@ describe("get_item_fulltext (MCP)", () => {
       ["item_key", {}],
       ["item_key", { item_key: 5 }],
       ["max_characters", { item_key: "A", max_characters: "100" }],
+      ["max_characters", { item_key: "PARQQQQR", max_characters: -1 }],
+      ["max_characters", { item_key: "PARQQQQR", max_characters: 10.5 }],
     ])("GIF-19 rifiuta %s non valido (%j)", async (field, args) => {
       expectValidationError(await h.call("get_item_fulltext", args), field);
       expect(h.net.calls).toHaveLength(0);

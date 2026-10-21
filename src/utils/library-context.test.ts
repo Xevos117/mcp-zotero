@@ -58,13 +58,13 @@ describe("library-context", () => {
   describe("getLibraryId", () => {
     it("returns ZOTERO_LIBRARY_ID when set", () => {
       process.env.ZOTERO_LIBRARY_ID = "6178978";
-      process.env.ZOTERO_USER_ID = "13885496";
+      process.env.ZOTERO_USER_ID = "1234567";
       expect(getLibraryId()).toBe("6178978");
     });
 
     it("falls back to ZOTERO_USER_ID when ZOTERO_LIBRARY_ID is unset", () => {
-      process.env.ZOTERO_USER_ID = "13885496";
-      expect(getLibraryId()).toBe("13885496");
+      process.env.ZOTERO_USER_ID = "1234567";
+      expect(getLibraryId()).toBe("1234567");
     });
 
     it("returns empty string when neither is set", () => {
@@ -74,20 +74,20 @@ describe("library-context", () => {
 
   describe("getDefaultLibrary", () => {
     it("returns the user library from ZOTERO_USER_ID", () => {
-      process.env.ZOTERO_USER_ID = "13885496";
-      expect(getDefaultLibrary()).toEqual({ type: "user", id: "13885496" });
+      process.env.ZOTERO_USER_ID = "1234567";
+      expect(getDefaultLibrary()).toEqual({ type: "user", id: "1234567" });
     });
 
     it("returns the group library from ZOTERO_LIBRARY_ID", () => {
       process.env.ZOTERO_LIBRARY_TYPE = "group";
       process.env.ZOTERO_LIBRARY_ID = "6178978";
-      process.env.ZOTERO_USER_ID = "13885496";
+      process.env.ZOTERO_USER_ID = "1234567";
       expect(getDefaultLibrary()).toEqual({ type: "group", id: "6178978" });
     });
 
     it("refuses a group library without ZOTERO_LIBRARY_ID instead of using the user ID", () => {
       process.env.ZOTERO_LIBRARY_TYPE = "group";
-      process.env.ZOTERO_USER_ID = "13885496";
+      process.env.ZOTERO_USER_ID = "1234567";
       expect(() => getDefaultLibrary()).toThrow(/requires ZOTERO_LIBRARY_ID/);
     });
 
@@ -124,7 +124,7 @@ describe("resolveLibrary", () => {
 
   it("returns env defaults when no args provided", () => {
     process.env.ZOTERO_LIBRARY_TYPE = "group";
-    expect(resolveLibrary({}, "13885496")).toEqual({ type: "group", id: "13885496" });
+    expect(resolveLibrary({}, "1234567")).toEqual({ type: "group", id: "1234567" });
   });
 
   it("falls back to defaultLibraryId when library_id arg is absent", () => {
@@ -132,29 +132,29 @@ describe("resolveLibrary", () => {
   });
 
   it("requires library_id when overriding a user server to a group", () => {
-    expect(() => resolveLibrary({ library_type: "group" }, "13885496")).toThrow(/library_id is required.*numeric group ID \(the number in the group's zotero\.org\/groups\/<id> URL\)/);
+    expect(() => resolveLibrary({ library_type: "group" }, "1234567")).toThrow(/library_id is required.*numeric group ID \(the number in the group's zotero\.org\/groups\/<id> URL\)/);
   });
 
   it("falls back to ZOTERO_USER_ID when overriding a group server to the user library", () => {
     process.env.ZOTERO_LIBRARY_TYPE = "group";
-    process.env.ZOTERO_USER_ID = "13885496";
-    expect(resolveLibrary({ library_type: "user" }, "6178978")).toEqual({ type: "user", id: "13885496" });
+    process.env.ZOTERO_USER_ID = "1234567";
+    expect(resolveLibrary({ library_type: "user" }, "6178978")).toEqual({ type: "user", id: "1234567" });
   });
 
   it("rejects non-numeric library ids", () => {
-    expect(() => resolveLibrary({ library_id: "123/items" }, "13885496")).toThrow(/numeric/);
+    expect(() => resolveLibrary({ library_id: "123/items" }, "1234567")).toThrow(/numeric/);
   });
 
   it("per-call arg overrides env", () => {
     process.env.ZOTERO_LIBRARY_TYPE = "user";
-    expect(resolveLibrary({ library_type: "group", library_id: "6178978" }, "13885496")).toEqual({
+    expect(resolveLibrary({ library_type: "group", library_id: "6178978" }, "1234567")).toEqual({
       type: "group",
       id: "6178978",
     });
   });
 
   it("per-call library_id overrides defaultLibraryId without changing type", () => {
-    expect(resolveLibrary({ library_id: "5597114" }, "13885496")).toEqual({
+    expect(resolveLibrary({ library_id: "5597114" }, "1234567")).toEqual({
       type: "user",
       id: "5597114",
     });

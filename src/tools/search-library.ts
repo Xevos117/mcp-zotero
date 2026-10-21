@@ -34,9 +34,11 @@ Use the returned item keys with get_items_details, get_item_fulltext, or inject_
       .describe("Sort direction (default: desc)"),
     limit: z
       .number()
+      .int()
+      .min(1)
       .optional()
       .default(25)
-      .describe("Maximum number of items to return (default: 25, max: 100)"),
+      .describe("Maximum number of items to return, 1-100 (default: 25; above 100 returns 100)"),
     ...libraryArgsSchema,
   },
 } as const;

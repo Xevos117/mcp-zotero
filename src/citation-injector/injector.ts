@@ -9,6 +9,7 @@ import { regexEscape, unescapeXml } from "./xml-utils.js";
 import { normalizeZciteTags } from "./zcite-normalizer.js";
 import { zoteroItemToCsl } from "../utils/csl-to-zotero.js";
 import { LibraryType } from "../utils/library-context.js";
+import { ZOTERO_KEY } from "../utils/zotero-keys.js";
 
 export interface InjectionResult {
   outputPath: string;
@@ -209,13 +210,14 @@ export async function injectCitations(
 
   // Collect all unique item keys
   const uniqueKeys = new Set(matches.flatMap((m) => m.keys));
-  // Keys from the document go into API URL paths (one GET per key): only letters and digits, so a crafted
-  // <zcite> cannot point the request at another endpoint ("../", "?", "&"). The skill's inject.js applies the same check
-  const invalid = [...uniqueKeys].filter((k) => !/^[A-Za-z0-9]{1,32}$/.test(k));
+  // Keys from the document go into API URL paths (one GET per key) and Zotero URIs: only well-formed Zotero
+  // keys, so a crafted <zcite> cannot point the request at another endpoint ("../", "?", "&"), and a key Zotero
+  // would reject never reaches the document. The skill's inject.js applies the same check
+  const invalid = [...uniqueKeys].filter((k) => !ZOTERO_KEY.test(k));
   if (invalid.length > 0) {
     throw new Error(
-      `Invalid Zotero item key(s) in <zcite>: ${invalid.join(", ")} (letters and digits only). No file was written. ` +
-        "Use the 8-character keys returned by search_library, add_items_by_doi or add_items."
+      `Invalid Zotero item key(s) in <zcite>: ${invalid.join(", ")} (a key is 8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ). ` +
+        "No file was written. Use the keys returned by search_library, add_items_by_doi or add_items."
     );
   }
 
@@ -239,7 +241,7 @@ export async function injectCitations(
     const itemDataList = match.keys.map(
       (k) => cslData.get(k) ?? { type: "article-journal" }
     );
-    const formattedText = formatCitationText(itemDataList, style, match.num);
+    const formattedText = formatCitationText(itemDataList, style, match);
     const fieldCodeXml = generateZoteroFieldCode(citationItems, formattedText);
 
     const newXml = replaceZciteInXml(documentXml, match.fullMatch, fieldCodeXml);

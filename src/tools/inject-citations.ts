@@ -17,7 +17,7 @@ WORKFLOW — how to create a Word document with live Zotero citations:
 
 CITATION STYLES — ask the user which style they want before generating:
 - apa (default): author-year — (Smith, 2023)
-- harvard / chicago: author-date, same placeholder text as apa
+- harvard / chicago: author-date — (Smith, 2023) / (Smith 2023)
 - ieee / vancouver: numbered — [1], [2]
   WARNING: for numbered styles every <zcite> MUST include a num="N" attribute with the sequential citation number. Without num, citations render as [?].
 
@@ -26,12 +26,12 @@ ZCITE TAG FORMAT:
 Supported attributes (any order):
   - keys (required): item key or comma-separated keys — "ABC12345" or "ABC12345,DEF67890"
   - num: citation number for IEEE/Vancouver — "1" or "1,2" (required for numbered styles)
-  - locator: page reference — "pp. 12-15"
-  - prefix: text before citation — "see "
+  - locator: page reference — "12-15" (shown as "pp. 12–15"; other labels explicit, e.g. "chap. 3")
+  - prefix: text before citation — "see"
   - suffix: text after citation — ", emphasis added"
 
 OUTPUT:
-A new .docx file (original filename with _cited suffix) with Zotero field codes and a ZOTERO_BIBL bibliography at the end. A cited key that is not in the library, or that is not letters and digits only, is an error and no file is written.
+A new .docx file (original filename with _cited suffix) with Zotero field codes and a ZOTERO_BIBL bibliography at the end. A cited key that is not in the library, or that is not a Zotero key (8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ), is an error and no file is written.
 
 WHERE THE FILE LIVES: this tool reads and writes files on the machine where this MCP server runs. If you create the .docx in a sandbox or cloud workspace that the server cannot see (for example code execution in Claude.ai or Claude Desktop, paths like /mnt/user-data/...), do not call this tool: use the zotero-mcp-integrations skill, which injects the citations inside the sandbox with metadata from get_items_details. If that skill is not installed, recommend it to the user: zotero-skill-mcp-integrations.zip from https://github.com/Xevos117/mcp-zotero/releases/latest.`,
   inputSchema: {

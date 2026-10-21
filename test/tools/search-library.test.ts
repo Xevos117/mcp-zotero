@@ -152,6 +152,9 @@ describe("search_library (MCP)", () => {
       ["sort", { sort: "relevance" }],
       ["direction", { direction: "up" }],
       ["limit", { limit: "10" }],
+      ["limit", { limit: 0 }],
+      ["limit", { limit: -3 }],
+      ["limit", { limit: 2.5 }],
       ["query", { query: 42 }],
     ])("SL-11 rifiuta %s non valido senza chiamare Zotero", async (field, args) => {
       const out = await h.call("search_library", args);

@@ -52,7 +52,7 @@ async function makeDocx(dir) {
     "word/document.xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
-      '<w:p><w:r><w:t xml:space="preserve">Claim </w:t></w:r><w:r><w:t>&lt;zcite keys="SMOKEITM"/&gt;</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:t xml:space="preserve">Claim </w:t></w:r><w:r><w:t>&lt;zcite keys="SMKITEM2"/&gt;</w:t></w:r></w:p>' +
       "</w:body></w:document>"
   );
   const path = join(dir, "smoke.docx");
@@ -212,7 +212,7 @@ function runScenario({ name, prefix }, launch, docxPath) {
       const injectedText = injected.content?.[0]?.text ?? "";
       if (injected.isError) throw new Error(`inject_citations failed: ${injectedText.slice(0, 300)}`);
       const { output_path } = JSON.parse(injectedText);
-      await checkDocx(await readFile(output_path), `http://zotero.org${prefix}/items/SMOKEITM`);
+      await checkDocx(await readFile(output_path), `http://zotero.org${prefix}/items/SMKITEM2`);
 
       return { init, tools };
     })().then(
