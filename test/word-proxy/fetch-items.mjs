@@ -27,10 +27,11 @@ async function pick(prefix) {
   return items.slice(0, 3).map((i) => ({ key: i.key, data: i.data }));
 }
 
-const libraries = [{ type: "user", id: Number(userId), items: await pick(`/users/${userId}`) }];
+// ids as strings: scrub.mjs --ids rewrites them to 000000 / 777 in place
+const libraries = [{ type: "user", id: userId, items: await pick(`/users/${userId}`) }];
 if (groupId) {
   const group = await get(`/groups/${groupId}`);
-  libraries.push({ type: "group", id: Number(groupId), name: group.data?.name, items: await pick(`/groups/${groupId}`) });
+  libraries.push({ type: "group", id: groupId, name: group.data?.name, items: await pick(`/groups/${groupId}`) });
 }
 await writeFile(join(out, "items.json"), JSON.stringify({ libraries }));
 const keys = libraries.map((l) => `${l.type}=${l.items.map((i) => i.key).join(",")}`).join("\n");

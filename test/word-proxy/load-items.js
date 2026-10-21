@@ -9,9 +9,10 @@ if (path) {
   for (const lib of input.libraries) {
     let libraryID = Zotero.Libraries.userLibraryID;
     if (lib.type === "group") {
-      let group = Zotero.Groups.get(lib.id);
+      const groupID = Number(lib.id);
+      let group = Zotero.Groups.get(groupID);
       if (!group) {
-        group = new Zotero.Group({ groupID: lib.id, name: lib.name || `group ${lib.id}`, description: "", version: 0, editable: true, filesEditable: false });
+        group = new Zotero.Group({ groupID, name: lib.name || `group ${groupID}`, description: "", version: 0, editable: true, filesEditable: false });
         await group.saveTx();
       }
       libraryID = group.libraryID;
