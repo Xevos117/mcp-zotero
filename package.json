@@ -2,6 +2,7 @@
   "name": "@xevos117/mcp-zotero",
   "type": "module",
   "version": "2.0.2",
+  "mcpName": "io.github.Xevos117/mcp-zotero",
   "description": "Unofficial MCP server for Zotero integration with citation management",
   "repository": {
     "type": "git",
@@ -58,6 +59,7 @@
     "@anthropic-ai/claude-agent-sdk": "^0.3.296",
     "@types/node": "^26.6.4",
     "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "citeproc": "^2.4.63",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"

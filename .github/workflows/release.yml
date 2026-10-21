@@ -74,7 +74,55 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} # fallback until Trusted Publishing is configured
 
-  # ── 3. Generate skill zips and attach to the release ────────
+  # ── 3. Publish server.json to the MCP Registry ──────────────
+  # registry.modelcontextprotocol.io keeps metadata only and checks that the npm package version named in
+  # server.json carries the same mcpName, so this runs after the npm publish. GitHub OIDC login grants the
+  # io.github.<repository owner>/* namespace: no secret, and id-token only on this job.
+  mcp-registry:
+    needs: npm-publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # mcp-publisher login github-oidc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+
+      # Exact release and checksum (registry_<version>_checksums.txt of that release), bumped deliberately.
+      # server.json is checked against package.json (version, mcpName) by npm test in the test job.
+      - name: Install mcp-publisher
+        timeout-minutes: 3
+        env:
+          MCP_PUBLISHER_VERSION: 1.8.1
+          MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc # linux_amd64
+        run: |
+          set -euo pipefail
+          curl -fsSL --max-time 120 -o mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          rm mcp-publisher.tar.gz
+
+      - run: ./mcp-publisher validate server.json
+        timeout-minutes: 2
+
+      - run: ./mcp-publisher login github-oidc
+        timeout-minutes: 2
+
+      # The registry reads the version from npm: a just-published version can take a moment to appear there
+      - name: Publish to the MCP Registry
+        timeout-minutes: 5
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 60 ./mcp-publisher publish server.json; then exit 0; fi
+            [ "$attempt" -lt 3 ] && sleep 30
+          done
+          exit 1
+
+  # ── 4. Generate skill zips and attach to the release ────────
   skill-zips:
     needs: test
     runs-on: ubuntu-latest

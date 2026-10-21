@@ -34,6 +34,10 @@ LLMs without filesystem access — including Claude Desktop, which connects to M
 
 Requires **Node.js 22 or newer**.
 
+The server is listed in the official [MCP Registry](https://registry.modelcontextprotocol.io) as
+`io.github.Xevos117/mcp-zotero` (starting with the first release after 2.0.2), so registry-aware clients can find and install it from
+there; the configuration below works with any MCP client.
+
 1. Get your Zotero credentials:
 
    ```bash
@@ -181,8 +185,12 @@ Add to your Claude Desktop configuration:
 ## Integration with Claude Code
 
 ```bash
-claude mcp add-json "zotero" '{"command":"npx","args":["tsx","src/server.ts"],"env":{"ZOTERO_API_KEY":"...","ZOTERO_USER_ID":"..."}}'
+claude mcp add zotero -e ZOTERO_API_KEY=YOUR_API_KEY -e ZOTERO_USER_ID=YOUR_USER_ID -- npx -y @xevos117/mcp-zotero
 ```
+
+Add `-e UNPAYWALL_EMAIL=...` or `-e UNSAFE_OPERATIONS=items` as needed, and `--scope user` to make the server
+available in every project (the default `local` scope covers only the current project). From a clone of this repository,
+`npx tsx src/server.ts` runs the server from source instead (see [Development](#development)).
 
 ## Available Tools
 
@@ -310,12 +318,14 @@ Other owner settings:
 
 ### Releasing
 
-1. Update `CHANGELOG.md` (move `Unreleased` to the new version) and `version` in `package.json`.
+1. Update `CHANGELOG.md` (move `Unreleased` to the new version) and the version in `package.json` and in
+   `server.json` (`version` and `packages[0].version`; `npm test` fails if they differ).
 2. Make sure CI, live tests and the agent smoke test are green on `main`.
 3. Run the manual [Word checklist](test/WORD_CHECKLIST.md) on a document injected by the release candidate
    and record the results in its log.
 4. Publish the GitHub release: the [release workflow](.github/workflows/release.yml) runs the tests, publishes
-   to npm and attaches the skill zips.
+   to npm, publishes `server.json` to the [MCP Registry](https://registry.modelcontextprotocol.io) and attaches
+   the skill zips.
 
 ### Debug with MCP Inspector
 
