@@ -8,9 +8,9 @@ const COLLECTIONS = [
   { key: "SMOKE001", version: 1, data: { key: "SMOKE001", name: "Smoke collection", parentCollection: false } },
 ];
 const ITEM = {
-  key: "SMOKEITM",
+  key: "SMKITEM2",
   version: 1,
-  data: { key: "SMOKEITM", itemType: "journalArticle", title: "Smoke paper", date: "2026", creators: [{ creatorType: "author", lastName: "Tester", firstName: "S" }] },
+  data: { key: "SMKITEM2", itemType: "journalArticle", title: "Smoke paper", date: "2026", creators: [{ creatorType: "author", lastName: "Tester", firstName: "S" }] },
 };
 
 function json(body, total) {
@@ -25,7 +25,7 @@ globalThis.fetch = async (input, init) => {
   const method = (init?.method ?? "GET").toUpperCase();
   if (url.hostname === "api.zotero.org" && method === "GET") {
     if (url.pathname === `${PREFIX}/collections`) return json(COLLECTIONS, 1);
-    if (url.pathname === `${PREFIX}/items/SMOKEITM`) return json(ITEM, 1);
+    if (url.pathname === `${PREFIX}/items/SMKITEM2`) return json(ITEM, 1);
   }
   throw new Error(`smoke: unexpected network call ${method} ${url}`);
 };

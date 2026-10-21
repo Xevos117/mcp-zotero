@@ -27,12 +27,12 @@ function serveItems(h: Harness, items: Record<string, Record<string, unknown>>) 
   });
 }
 
-const SMITH = article("SMITH001", {
+const SMITH = article("SMITH222", {
   title: "On Testing",
   creators: [{ creatorType: "author", firstName: "John", lastName: "Smith" }],
   date: "2023",
 });
-const DOE_ROE = article("DOEROE01", {
+const DOE_ROE = article("PAIR2222", {
   title: "Pair Paper",
   creators: [
     { creatorType: "author", firstName: "Jane", lastName: "Doe" },
@@ -54,8 +54,8 @@ describe("inject_citations (MCP)", () => {
   });
 
   it("IC-01 sostituisce <zcite> con field code Zotero, aggiunge bibliografia, scrive *_cited.docx", async () => {
-    serveItems(h, { SMITH001: SMITH });
-    const input = await dir.file("paper.docx", await makeDocx(para("As shown ", zcite({ keys: "SMITH001" }), " before.")));
+    serveItems(h, { SMITH222: SMITH });
+    const input = await dir.file("paper.docx", await makeDocx(para("As shown ", zcite({ keys: "SMITH222" }), " before.")));
     const original = await readFile(input);
 
     const out = await h.call("inject_citations", { file_path: input });
@@ -70,22 +70,22 @@ describe("inject_citations (MCP)", () => {
     expect(xml).toContain("(Smith, 2023)");
     expect(xml).toContain("As shown ");
     const [c] = citations(xml);
-    expect(c.citationItems[0].uris).toEqual([`http://zotero.org/users/${USER_ID}/items/SMITH001`]);
+    expect(c.citationItems[0].uris).toEqual([`http://zotero.org/users/${USER_ID}/items/SMITH222`]);
     expect(c.citationItems[0].itemData).toMatchObject({ title: "On Testing" });
     await expectValidDocx(await readFile(out.json.output_path), { libraryPath: `users/${USER_ID}` });
     // l'originale non viene toccato
     expect((await readFile(input)).equals(original)).toBe(true);
-    expect(h.net.requests("GET", ITEM_ROUTE).map((r) => r.url.pathname)).toEqual([`/users/${USER_ID}/items/SMITH001`]);
+    expect(h.net.requests("GET", ITEM_ROUTE).map((r) => r.url.pathname)).toEqual([`/users/${USER_ID}/items/SMITH222`]);
   });
 
   it("IC-02 più tag, multi-chiave e chiavi ripetute: una sola GET per chiave", async () => {
-    serveItems(h, { SMITH001: SMITH, DOEROE01: DOE_ROE });
+    serveItems(h, { SMITH222: SMITH, PAIR2222: DOE_ROE });
     const input = await dir.file(
       "multi.docx",
       await makeDocx(
-        para("A ", zcite({ keys: "SMITH001" })) +
-          para("B ", zcite({ keys: "SMITH001,DOEROE01" })) +
-          para("C ", zcite({ keys: "DOEROE01" }))
+        para("A ", zcite({ keys: "SMITH222" })) +
+          para("B ", zcite({ keys: "SMITH222,PAIR2222" })) +
+          para("C ", zcite({ keys: "PAIR2222" }))
       )
     );
     const out = await h.call("inject_citations", { file_path: input });
@@ -98,22 +98,22 @@ describe("inject_citations (MCP)", () => {
   });
 
   it('IC-22 keys="A, B" con spazi: chiavi ripulite, nessuna GET con spazio nel path', async () => {
-    serveItems(h, { SMITH001: SMITH, DOEROE01: DOE_ROE });
-    const input = await dir.file("spaces.docx", await makeDocx(para("S ", zcite({ keys: " SMITH001, DOEROE01 ," }))));
+    serveItems(h, { SMITH222: SMITH, PAIR2222: DOE_ROE });
+    const input = await dir.file("spaces.docx", await makeDocx(para("S ", zcite({ keys: " SMITH222, PAIR2222 ," }))));
     const out = await h.call("inject_citations", { file_path: input });
     expect(out.isError).toBe(false);
     expect(out.json).toMatchObject({ citations_found: 1, citations_injected: 1 });
     const [c] = citations(await readDocumentXml(await readFile(out.json.output_path)));
     expect(c.citationItems.map((ci: { uris: string[] }) => ci.uris[0])).toEqual([
-      `http://zotero.org/users/${USER_ID}/items/SMITH001`,
-      `http://zotero.org/users/${USER_ID}/items/DOEROE01`,
+      `http://zotero.org/users/${USER_ID}/items/SMITH222`,
+      `http://zotero.org/users/${USER_ID}/items/PAIR2222`,
     ]);
     expect(h.net.unmatched).toEqual([]);
   });
 
   it("IC-23 itemData: volume/issue/page/publisher inclusi, abstract escluso (field code leggero)", async () => {
     serveItems(h, {
-      FULL0001: article("FULL0001", {
+      FULL2222: article("FULL2222", {
         title: "Full Record",
         creators: [{ creatorType: "author", firstName: "Hans", lastName: "de Kroon" }],
         date: "2017-10-18",
@@ -125,7 +125,7 @@ describe("inject_citations (MCP)", () => {
         abstractNote: "A long abstract that must not end up in the field code.",
       }),
     });
-    const input = await dir.file("full.docx", await makeDocx(para(zcite({ keys: "FULL0001" }))));
+    const input = await dir.file("full.docx", await makeDocx(para(zcite({ keys: "FULL2222" }))));
     const out = await h.call("inject_citations", { file_path: input });
     const [c] = citations(await readDocumentXml(await readFile(out.json.output_path)));
     expect(c.citationItems[0].itemData).toMatchObject({
@@ -140,11 +140,49 @@ describe("inject_citations (MCP)", () => {
     await expectValidDocx(await readFile(out.json.output_path));
   });
 
+  it("IC-23b capitolo di libro: itemData con titolo del libro, curatori e autore istituzionale (literal); bibliografia citeproc completa", async () => {
+    serveItems(h, {
+      CHAPTER2: {
+        itemType: "bookSection",
+        title: "Gamma chapter",
+        bookTitle: "Collected Gammas",
+        publisher: "G Press",
+        pages: "5-30",
+        date: "2020",
+        series: "",
+        creators: [
+          { creatorType: "author", firstName: "Gina", lastName: "Gamma" },
+          { creatorType: "author", name: "Gamma Consortium" },
+          { creatorType: "editor", firstName: "Ugo", lastName: "Gialli" },
+          { creatorType: "seriesEditor", firstName: "Sara", lastName: "Serie" },
+          { creatorType: "contributor", firstName: "Not", lastName: "Cited" },
+        ],
+      },
+    });
+    const input = await dir.file("chapter.docx", await makeDocx(para(zcite({ keys: "CHAPTER2" }))));
+    const out = await h.call("inject_citations", { file_path: input });
+    const [c] = citations(await readDocumentXml(await readFile(out.json.output_path)));
+    expect(c.citationItems[0].itemData).toEqual({
+      type: "chapter",
+      title: "Gamma chapter",
+      author: [{ family: "Gamma", given: "Gina" }, { literal: "Gamma Consortium" }],
+      editor: [{ family: "Gialli", given: "Ugo" }],
+      "collection-editor": [{ family: "Serie", given: "Sara" }],
+      issued: { "date-parts": [[2020]] },
+      "container-title": "Collected Gammas",
+      page: "5-30",
+      publisher: "G Press",
+    });
+    expect(c.properties.formattedCitation).toBe("(Gamma & Gamma Consortium, 2020)");
+    const r = await expectValidDocx(await readFile(out.json.output_path));
+    expect(r.rendered!.bibliography[0]).toContain("In U. Gialli (Ed.), Collected Gammas (pp. 5–30). G Press.");
+  });
+
   it("IC-03 attributi locator/prefix/suffix nel field code", async () => {
-    serveItems(h, { SMITH001: SMITH });
+    serveItems(h, { SMITH222: SMITH });
     const input = await dir.file(
       "attrs.docx",
-      await makeDocx(para(zcite({ keys: "SMITH001", locator: "pp. 12-15", prefix: "see ", suffix: ", emphasis added" })))
+      await makeDocx(para(zcite({ keys: "SMITH222", locator: "pp. 12-15", prefix: "see ", suffix: ", emphasis added" })))
     );
     const out = await h.call("inject_citations", { file_path: input });
     const [c] = citations(await readDocumentXml(await readFile(out.json.output_path)));
@@ -152,11 +190,34 @@ describe("inject_citations (MCP)", () => {
     await expectValidDocx(await readFile(out.json.output_path));
   });
 
+  // Testo provvisorio = rendering di citeproc con lo stile CSL vero (vancouver: stesse parti, tra [] invece di ())
+  it.each<CitationStyle>(["apa", "harvard", "chicago", "ieee", "vancouver"])(
+    "IC-03b stile %s: locator, prefix e suffix nel testo visibile come li rende Zotero",
+    async (style) => {
+      serveItems(h, { SMITH222: SMITH });
+      const input = await dir.file(`attrs-${style}.docx`, await makeDocx(para(zcite({ keys: "SMITH222", num: "1", locator: "12-15", prefix: "see", suffix: ", fig. 2" }))));
+      const out = await h.call("inject_citations", { file_path: input, style });
+      expect(out.isError).toBe(false);
+      const r = await expectValidDocx(await readFile(out.json.output_path), { style });
+      const visible = r.citations[0].visible;
+      expect(visible).toBe(
+        {
+          apa: "(see Smith, 2023, pp. 12–15, fig. 2)",
+          harvard: "(see Smith, 2023, pp. 12–15, fig. 2)",
+          chicago: "(see Smith 2023, 12–15, fig. 2)",
+          ieee: "see [1, pp. 12–15], fig. 2",
+          vancouver: "[see 1, fig. 2]",
+        }[style]
+      );
+      expect(style === "vancouver" ? visible.replace(/^\[(.*)\]$/, "($1)") : visible).toBe(r.rendered!.citations[0]);
+    }
+  );
+
   it("IC-04 stile ieee con num → [n]; senza num → [?] e warning", async () => {
-    serveItems(h, { SMITH001: SMITH, DOEROE01: DOE_ROE });
+    serveItems(h, { SMITH222: SMITH, PAIR2222: DOE_ROE });
     const input = await dir.file(
       "ieee.docx",
-      await makeDocx(para(zcite({ keys: "SMITH001", num: "1" })) + para(zcite({ keys: "DOEROE01" })))
+      await makeDocx(para(zcite({ keys: "SMITH222", num: "1" })) + para(zcite({ keys: "PAIR2222" })))
     );
     const out = await h.call("inject_citations", { file_path: input, style: "ieee" });
     expect(out.json.warnings).toEqual([expect.stringContaining("1/2")]);
@@ -170,8 +231,8 @@ describe("inject_citations (MCP)", () => {
   });
 
   it("IC-05 vancouver con tutti i num → nessun warning", async () => {
-    serveItems(h, { SMITH001: SMITH });
-    const input = await dir.file("v.docx", await makeDocx(para(zcite({ keys: "SMITH001", num: "1" }))));
+    serveItems(h, { SMITH222: SMITH });
+    const input = await dir.file("v.docx", await makeDocx(para(zcite({ keys: "SMITH222", num: "1" }))));
     const out = await h.call("inject_citations", { file_path: input, style: "vancouver" });
     expect(out.json).not.toHaveProperty("warnings");
   });
@@ -191,14 +252,14 @@ describe("inject_citations (MCP)", () => {
 
   it("IC-07 unicode in autori/titoli: testo visibile ed XML ben formato", async () => {
     serveItems(h, {
-      UNI00001: article("UNI00001", {
+      UNI22222: article("UNI22222", {
         title: "Über «Lernen» & 学习",
         creators: [{ creatorType: "author", firstName: "Jürgen", lastName: "Müller-Ødegård" }],
         date: "2021",
       }),
-      NOAUTH01: article("NOAUTH01", { title: "机器学习的一个非常非常长的标题，超过三十个字符的那种标题文本再加上十个字符的内容", creators: [], date: "" }),
+      NAUTH222: article("NAUTH222", { title: "机器学习的一个非常非常长的标题，超过三十个字符的那种标题文本再加上十个字符的内容", creators: [], date: "" }),
     });
-    const input = await dir.file("ünï.docx", await makeDocx(para("Testo ", zcite({ keys: "UNI00001" }), " e ", zcite({ keys: "NOAUTH01" }))));
+    const input = await dir.file("ünï.docx", await makeDocx(para("Testo ", zcite({ keys: "UNI22222" }), " e ", zcite({ keys: "NAUTH222" }))));
     const out = await h.call("inject_citations", { file_path: input });
     expect(out.json.output_path).toBe(join(dir.path, "ünï_cited.docx"));
     const xml = await readDocumentXml(await readFile(out.json.output_path));
@@ -245,17 +306,17 @@ describe("inject_citations (MCP)", () => {
     });
 
     it("IC-13 zip troncato → isError", async () => {
-      const full = await makeDocx(para(zcite({ keys: "SMITH001" })));
+      const full = await makeDocx(para(zcite({ keys: "SMITH222" })));
       const input = await dir.file("truncated.docx", full.subarray(0, Math.floor(full.length / 2)));
       expectToolError(await h.call("inject_citations", { file_path: input }));
     });
 
     it.skipIf(process.getuid?.() === 0)("IC-14b cartella non scrivibile → errore strutturato che dice di copiare il file altrove", async () => {
-      serveItems(h, { SMITH001: SMITH });
+      serveItems(h, { SMITH222: SMITH });
       const ro = join(dir.path, "readonly");
       await mkdir(ro);
       const input = join(ro, "paper.docx");
-      await writeFile(input, await makeDocx(para(zcite({ keys: "SMITH001" }))));
+      await writeFile(input, await makeDocx(para(zcite({ keys: "SMITH222" }))));
       await chmod(ro, 0o555);
       try {
         const json = expectErrorJson(await h.call("inject_citations", { file_path: input }), "Cannot read the file or write the _cited copy next to it (EACCES)");
@@ -280,22 +341,31 @@ describe("inject_citations (MCP)", () => {
 
   describe("errori Zotero", () => {
     it("IC-16 chiavi inesistenti (404) → isError che le elenca tutte, come inject.js; nessun output scritto", async () => {
-      serveItems(h, { SMITH001: SMITH });
-      const input = await dir.file("missingkey.docx", await makeDocx(para(zcite({ keys: "NOPE2222" })) + para(zcite({ keys: "SMITH001,NOPE3333" }))));
+      serveItems(h, { SMITH222: SMITH });
+      const input = await dir.file("missingkey.docx", await makeDocx(para(zcite({ keys: "MISS2222" })) + para(zcite({ keys: "SMITH222,MISS3333" }))));
       const out = await h.call("inject_citations", { file_path: input });
-      expectToolError(out, "2 cited key(s) not found in the library: NOPE2222, NOPE3333. No file was written.");
+      expectToolError(out, "2 cited key(s) not found in the library: MISS2222, MISS3333. No file was written.");
       expect(out.text).toMatch(/search_library.*add_items_by_doi/);
       expect(out.text).not.toMatch(/\b404\b/);
       await expect(stat(join(dir.path, "missingkey_cited.docx"))).rejects.toThrow();
     });
 
-    it.each(["../tags", "AB?C", "SMITH001,../items/X"])(
-      'IC-24 chiave <zcite> non alfanumerica "%s" → isError, nessuna richiesta, nessun output',
-      async (keys) => {
+    it.each([
+      ["../tags", "../tags"],
+      ["AB?C", "AB?C"],
+      ["SMITH222,../items/X", "../items/X"],
+      ["SMITH001", "SMITH001"],
+      ["SMITH222,abcd2345", "abcd2345"],
+      ["ABCDE2345", "ABCDE2345"],
+      ["SMITHOOO", "SMITHOOO"],
+    ])(
+      'IC-24 chiave <zcite> non valida per Zotero "%s" → isError che nomina "%s", nessuna richiesta, nessun output',
+      async (keys, bad) => {
         const input = await dir.file("badkey.docx", await makeDocx(para(zcite({ keys }))));
         const out = await h.call("inject_citations", { file_path: input });
-        expectToolError(out, "Invalid Zotero item key(s) in <zcite>");
-        expect(out.text).toMatch(/No file was written\. Use the 8-character keys/);
+        expectToolError(out, `Invalid Zotero item key(s) in <zcite>: ${bad} (a key is 8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ)`);
+        expect(out.text).not.toContain("SMITH222");
+        expect(out.text).toMatch(/No file was written\. Use the keys returned by search_library/);
         expect(h.net.calls).toHaveLength(0);
         await expect(stat(join(dir.path, "badkey_cited.docx"))).rejects.toThrow();
       }
@@ -303,20 +373,20 @@ describe("inject_citations (MCP)", () => {
 
     it.each([403, 429, 500, 503])("IC-17 HTTP %i → isError", async (status) => {
       h.net.on("GET", ITEM_ROUTE, zError(status));
-      const input = await dir.file(`e${status}.docx`, await makeDocx(para(zcite({ keys: "SMITH001" }))));
+      const input = await dir.file(`e${status}.docx`, await makeDocx(para(zcite({ keys: "SMITH222" }))));
       expectApiError(await h.call("inject_citations", { file_path: input }), status);
     });
 
     it("IC-18 errore di rete → isError", async () => {
       h.net.on("GET", ITEM_ROUTE, networkError());
-      const input = await dir.file("net.docx", await makeDocx(para(zcite({ keys: "SMITH001" }))));
+      const input = await dir.file("net.docx", await makeDocx(para(zcite({ keys: "SMITH222" }))));
       expectApiError(await h.call("inject_citations", { file_path: input }));
     });
   });
 
   it("IC-19 il .docx di output resta uno zip valido con le altre parti intatte", async () => {
-    serveItems(h, { SMITH001: SMITH });
-    const input = await dir.file("parts.docx", await makeDocx(para(zcite({ keys: "SMITH001" }))));
+    serveItems(h, { SMITH222: SMITH });
+    const input = await dir.file("parts.docx", await makeDocx(para(zcite({ keys: "SMITH222" }))));
     const out = await h.call("inject_citations", { file_path: input });
     const zip = await JSZip.loadAsync(await readFile(out.json.output_path));
     expect(zip.file("word/document.xml")).not.toBeNull();
@@ -329,11 +399,11 @@ describe("inject_citations (MCP)", () => {
   // sostituisce la PRIMA occorrenza: con una cartella che contiene ".docx" nel
   // nome l'output finisce in un percorso sbagliato (o la scrittura fallisce).
   it("IC-20 cartella con '.docx' nel nome: output accanto all'input", async () => {
-    serveItems(h, { SMITH001: SMITH });
+    serveItems(h, { SMITH222: SMITH });
     const sub = join(dir.path, "thesis.docx.d");
     await mkdir(sub);
     const input = join(sub, "paper.docx");
-    await (await import("node:fs/promises")).writeFile(input, await makeDocx(para(zcite({ keys: "SMITH001" }))));
+    await (await import("node:fs/promises")).writeFile(input, await makeDocx(para(zcite({ keys: "SMITH222" }))));
     const out = await h.call("inject_citations", { file_path: input });
     expect(out.isError).toBe(false);
     expect(out.json.output_path).toBe(join(sub, "paper_cited.docx"));
@@ -353,14 +423,14 @@ describe("inject_citations (MCP)", () => {
   // Validazione strutturale + rendering citeproc con gli stili CSL veri (test/helpers/docx-validate.ts)
   describe("validazione docx (IC-V)", () => {
     const LIBRARY: Record<string, Record<string, unknown>> = {
-      SMITH001: SMITH,
-      DOEROE01: DOE_ROE,
-      MANY0001: article("MANY0001", {
+      SMITH222: SMITH,
+      PAIR2222: DOE_ROE,
+      MANY2222: article("MANY2222", {
         title: "Many Authors",
         date: "2020-06-25",
         creators: ["Pessoa", "Sadykov", "Uchoa", "Vanderbeck"].map((lastName) => ({ creatorType: "author", firstName: "A.", lastName })),
       }),
-      KROON001: article("KROON001", {
+      HALLMANN: article("HALLMANN", {
         title: "Insects",
         date: "2017-10-18",
         creators: [
@@ -368,17 +438,17 @@ describe("inject_citations (MCP)", () => {
           { creatorType: "author", firstName: "Hans", lastName: "de Kroon" },
         ],
       }),
-      UNI00001: article("UNI00001", { title: "Über «Lernen» & 学习", date: "2021", creators: [{ creatorType: "author", firstName: "Jürgen", lastName: "Müller-Ødegård" }] }),
-      NOAUTH01: article("NOAUTH01", { title: "Anonymous memo", date: "2019", creators: [] }),
-      CONSORT1: { itemType: "report", title: "Consortium report", date: "2021", creators: [{ creatorType: "author", name: "Test Consortium" }] },
+      UNI22222: article("UNI22222", { title: "Über «Lernen» & 学习", date: "2021", creators: [{ creatorType: "author", firstName: "Jürgen", lastName: "Müller-Ødegård" }] }),
+      NAUTH222: article("NAUTH222", { title: "Anonymous memo", date: "2019", creators: [] }),
+      CNSRTIUM: { itemType: "report", title: "Consortium report", date: "2021", creators: [{ creatorType: "author", name: "Test Consortium" }] },
     };
     // num coerenti con l'ordine di prima citazione, come li numera citeproc
     const BODY = (numbered: boolean) =>
-      para("Single ", zcite({ keys: "SMITH001", ...(numbered && { num: "1" }) })) +
-      para("Pair and many ", zcite({ keys: "DOEROE01,MANY0001", ...(numbered && { num: "2,3" }) })) +
-      para("Locator ", zcite({ keys: "KROON001", locator: "pp. 12-15", prefix: "see ", suffix: ", fig. 2", ...(numbered && { num: "4" }) })) +
-      para("Unicode, no author, institution ", zcite({ keys: "UNI00001,NOAUTH01,CONSORT1", ...(numbered && { num: "5-7" }) })) +
-      para("Repeated ", zcite({ keys: "SMITH001", ...(numbered && { num: "1" }) }));
+      para("Single ", zcite({ keys: "SMITH222", ...(numbered && { num: "1" }) })) +
+      para("Pair and many ", zcite({ keys: "PAIR2222,MANY2222", ...(numbered && { num: "2,3" }) })) +
+      para("Locator ", zcite({ keys: "HALLMANN", locator: "pp. 12-15", prefix: "see ", suffix: ", fig. 2", ...(numbered && { num: "4" }) })) +
+      para("Unicode, no author, institution ", zcite({ keys: "UNI22222,NAUTH222,CNSRTIUM", ...(numbered && { num: "5-7" }) })) +
+      para("Repeated ", zcite({ keys: "SMITH222", ...(numbered && { num: "1" }) }));
 
     it.each<CitationStyle>(["apa", "harvard", "chicago", "ieee", "vancouver"])(
       "IC-V01 stile %s: struttura, schema CSL, URI, citeproc (citazioni + bibliografia) e parti chiave del testo visibile",
@@ -400,7 +470,7 @@ describe("inject_citations (MCP)", () => {
         const key = req.url.pathname.split("/").pop()!;
         return zSingle({ key, ...LIBRARY[key] });
       });
-      const input = await dir.file("group.docx", await makeDocx(para(zcite({ keys: "SMITH001,DOEROE01" }))));
+      const input = await dir.file("group.docx", await makeDocx(para(zcite({ keys: "SMITH222,PAIR2222" }))));
       const out = await h.call("inject_citations", { file_path: input, library_type: "group", library_id: "777" });
       expect(out.isError).toBe(false);
       await expectValidDocx(await readFile(out.json.output_path), { libraryPath: "groups/777" });

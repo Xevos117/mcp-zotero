@@ -110,6 +110,35 @@ const ZOTERO_TO_CSL_TYPE = {
   instantMessage: "personal_communication",
 };
 
+// Same table as CONTAINER_TITLE_FIELD in src/utils/csl-to-zotero.ts: Zotero field holding the CSL container-title
+const CONTAINER_TITLE_FIELD = {
+  journalArticle: "publicationTitle",
+  magazineArticle: "publicationTitle",
+  newspaperArticle: "publicationTitle",
+  bookSection: "bookTitle",
+  dictionaryEntry: "dictionaryTitle",
+  conferencePaper: "proceedingsTitle",
+  blogPost: "blogTitle",
+  encyclopediaArticle: "encyclopediaTitle",
+  forumPost: "forumTitle",
+  webpage: "websiteTitle",
+  radioBroadcast: "programTitle",
+  tvBroadcast: "programTitle",
+  podcast: "programTitle",
+};
+
+// Same table as CSL_NAME_CREATOR_TYPES in src/utils/csl-to-zotero.ts: CSL name variable ← Zotero creatorType
+const CSL_NAME_CREATOR_TYPES = [
+  ["author", "author"],
+  ["editor", "editor"],
+  ["container-author", "bookAuthor"],
+  ["collection-editor", "seriesEditor"],
+  ["translator", "translator"],
+];
+
+// Same rule as ZOTERO_KEY in src/utils/zotero-keys.ts: 8 characters, never 0, 1, O or lowercase
+const ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
+
 // ---------------------------------------------------------------------------
 // Metadata conversion: simplified JSON → CSL-JSON
 // ---------------------------------------------------------------------------
@@ -154,35 +183,42 @@ function parseDate(dateString) {
  * @returns {Record<string, unknown>}
  */
 /**
- * CSL authors from get_items_details' structured `creators` (same rule as the inject_citations
- * MCP tool: creatorType "author" only, family = lastName or single-field name).
+ * CSL names from get_items_details' structured `creators`, by role (same rule as the inject_citations
+ * MCP tool: a single-field name, e.g. an institution, is a CSL `literal`).
  * @param {Array<Record<string, string>>} creators
- * @returns {Array<{family: string, given: string}>}
+ * @returns {Record<string, Array<Record<string, string>>>}
  */
-function authorsFromCreators(creators) {
-  return creators
-    .filter((c) => c.creatorType === "author")
-    .map((c) => ({ family: c.lastName ?? c.name ?? "", given: c.firstName ?? "" }));
+function namesFromCreators(creators) {
+  const names = {};
+  for (const [variable, creatorType] of CSL_NAME_CREATOR_TYPES) {
+    const list = creators
+      .filter((c) => c.creatorType === creatorType)
+      .map((c) => (c.name && !c.lastName ? { literal: c.name } : { family: c.lastName ?? "", given: c.firstName ?? "" }));
+    if (list.length > 0) names[variable] = list;
+  }
+  return names;
 }
 
 function metadataToCsl(meta) {
   const cslType = ZOTERO_TO_CSL_TYPE[meta.itemType] ?? "article-journal";
   // Prefer structured creators; the "authors" string cannot tell "de Kroon" from a middle name
-  const authors = Array.isArray(meta.creators)
-    ? authorsFromCreators(meta.creators)
-    : parseAuthors(meta.authors);
+  const authors = parseAuthors(meta.authors);
+  const names = Array.isArray(meta.creators)
+    ? namesFromCreators(meta.creators)
+    : authors.length > 0 ? { author: authors } : {};
   const issued = parseDate(meta.date);
 
   /** @type {Record<string, unknown>} */
   const csl = { type: cslType };
 
   if (meta.title) csl.title = meta.title;
-  if (authors.length > 0) csl.author = authors;
+  Object.assign(csl, names);
   if (issued) csl.issued = issued;
   // Accept both uppercase (Zotero-style) and lowercase (MCP response) field names
   if (meta.DOI || meta.doi) csl.DOI = meta.DOI || meta.doi;
-  if (meta.containerTitle || meta.publicationTitle)
-    csl["container-title"] = meta.containerTitle || meta.publicationTitle;
+  // bookTitle, proceedingsTitle, ... as get_items_details returns them; containerTitle for older metadata files
+  const container = meta.containerTitle || meta[CONTAINER_TITLE_FIELD[meta.itemType]] || meta.publicationTitle;
+  if (container) csl["container-title"] = container;
   if (meta.volume) csl.volume = meta.volume;
   if (meta.issue) csl.issue = meta.issue;
   if (meta.page || meta.pages) csl.page = meta.page || meta.pages;
@@ -202,6 +238,8 @@ function metadataToCsl(meta) {
 function convertMetadataToCsl(metadata) {
   const map = new Map();
   for (const [key, meta] of Object.entries(metadata)) {
+    // get_items_details' not_found list (and anything else that is not an item) is not metadata
+    if (!meta || typeof meta !== "object" || Array.isArray(meta)) continue;
     map.set(key, metadataToCsl(meta));
   }
   return map;
@@ -249,20 +287,86 @@ function unescapeXml(text) {
 // Citation text formatter (ported from citation-formatter.ts)
 // ---------------------------------------------------------------------------
 
+// Differences between the author-date styles in the placeholder text, as citeproc renders them
+const AUTHOR_DATE = {
+  apa: { yearSep: ", ", and: "&", pageLabel: true },
+  harvard: { yearSep: ", ", and: "and", pageLabel: true },
+  chicago: { yearSep: " ", and: "and", pageLabel: false },
+};
+
 /**
- * @param {Array<Record<string, unknown>>} items
- * @param {string} citationStyle
- * @param {string} [num]
+ * Locator as citeproc renders a locator without label (= page): "12" → "p. 12", "12-15" → "pp. 12–15".
+ * @param {string} locator
+ * @param {boolean} pageLabel
  * @returns {string}
  */
-function formatCitationText(items, citationStyle, num) {
+function formatLocator(locator, pageLabel) {
+  const bare = locator.trim().replace(/^pp?\.\s*/i, "");
+  if (!/^[\divxlcdm]/i.test(bare) || /^[a-z]{2,}\.?\s/i.test(bare)) return locator.trim();
+  const pages = bare.replace(/(\d)\s*-+\s*(\d)/g, "$1–$2");
+  if (!pageLabel) return pages;
+  return `${/[–,&]/.test(pages) ? "pp." : "p."} ${pages}`;
+}
+
+/**
+ * @param {{prefix?: string, suffix?: string}} opts
+ * @returns {{prefix: string, suffix: string}}
+ */
+function affixes(opts) {
+  const prefix = opts.prefix?.trim() ? `${opts.prefix.trim()} ` : "";
+  const s = opts.suffix?.trim() ?? "";
+  const suffix = !s ? "" : /^[,;.:)\]]/.test(s) ? s : ` ${s}`;
+  return { prefix, suffix };
+}
+
+/**
+ * @param {string} num
+ * @param {number} count
+ * @returns {string[] | undefined}
+ */
+function numbersPerItem(num, count) {
+  const out = [];
+  for (const part of num.split(",").map((p) => p.trim())) {
+    const range = /^(\d+)\s*[-–]\s*(\d+)$/.exec(part);
+    if (range) for (let n = Number(range[1]); n <= Number(range[2]); n++) out.push(String(n));
+    else out.push(part);
+  }
+  return out.length === count ? out : undefined;
+}
+
+/**
+ * @param {number} count
+ * @param {string} citationStyle
+ * @param {{num?: string, locator?: string, prefix?: string, suffix?: string}} opts
+ * @returns {string}
+ */
+function numberedText(count, citationStyle, opts) {
+  const num = opts.num ?? "?";
+  const { prefix, suffix } = affixes(opts);
+  const locator = opts.locator && citationStyle === "ieee" ? `, ${formatLocator(opts.locator, true)}` : "";
+  if (!prefix && !suffix && !locator) return `[${num}]`;
+  const perItem = numbersPerItem(num, count) ?? [num];
+  if (citationStyle === "ieee") return perItem.map((n) => `${prefix}[${n}${locator}]${suffix}`).join(", ");
+  return `[${perItem.map((n) => `${prefix}${n}${suffix}`).join(",")}]`;
+}
+
+/**
+ * @param {Array<Record<string, any>>} items
+ * @param {string} citationStyle
+ * @param {{num?: string, locator?: string, prefix?: string, suffix?: string}} [opts]
+ * @returns {string}
+ */
+function formatCitationText(items, citationStyle, opts = {}) {
   if (citationStyle === "ieee" || citationStyle === "vancouver") {
-    return num ? `[${num}]` : "[?]";
+    return numberedText(items.length, citationStyle, opts);
   }
 
+  const rules = AUTHOR_DATE[citationStyle] ?? AUTHOR_DATE.apa;
+  const { prefix, suffix } = affixes(opts);
+  const locator = opts.locator ? `, ${formatLocator(opts.locator, rules.pageLabel)}` : "";
   const parts = items.map((item) => {
     const authors = item.author;
-    const firstAuthor = authors?.[0]?.family ?? "Unknown";
+    const name = (a) => a.family ?? a.literal ?? "Unknown";
     const year =
       item.issued?.["date-parts"]?.[0]?.[0]?.toString() ?? "n.d.";
 
@@ -275,14 +379,14 @@ function formatCitationText(items, citationStyle, num) {
           : `"${title}"`
         : "Unknown";
     } else if (authors.length > 2) {
-      authorText = `${firstAuthor} et al.`;
+      authorText = `${name(authors[0])} et al.`;
     } else if (authors.length === 2) {
-      authorText = `${firstAuthor} & ${authors[1].family}`;
+      authorText = `${name(authors[0])} ${rules.and} ${name(authors[1])}`;
     } else {
-      authorText = firstAuthor;
+      authorText = name(authors[0]);
     }
 
-    return `${authorText}, ${year}`;
+    return `${prefix}${authorText}${rules.yearSep}${year}${locator}${suffix}`;
   });
 
   return `(${parts.join("; ")})`;
@@ -692,10 +796,12 @@ async function main() {
     return;
   }
 
-  // 4a. Same rule as inject_citations: keys end up in Zotero URIs, so only letters and digits
-  const invalidKeys = [...new Set(matches.flatMap((m) => m.keys))].filter((k) => !/^[A-Za-z0-9]{1,32}$/.test(k));
+  // 4a. Same rule as inject_citations: keys end up in Zotero URIs, so only well-formed Zotero keys
+  const invalidKeys = [...new Set(matches.flatMap((m) => m.keys))].filter((k) => !ZOTERO_KEY.test(k));
   if (invalidKeys.length > 0) {
-    throw new Error(`Invalid Zotero item key(s) in <zcite>: ${invalidKeys.join(", ")} (letters and digits only)`);
+    throw new Error(
+      `Invalid Zotero item key(s) in <zcite>: ${invalidKeys.join(", ")} (a key is 8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ)`
+    );
   }
 
   // 4b. Warn if using a numbered style but tags are missing the num attribute
@@ -721,7 +827,7 @@ async function main() {
     const itemDataList = match.keys.map(
       (k) => cslData.get(k) ?? { type: "article-journal" }
     );
-    const formattedText = formatCitationText(itemDataList, style, match.num);
+    const formattedText = formatCitationText(itemDataList, style, match);
     const fieldCodeXml = generateZoteroFieldCode(citationItems, formattedText);
 
     const newXml = replaceZciteInXml(documentXml, match.fullMatch, fieldCodeXml);

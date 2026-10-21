@@ -100,7 +100,8 @@ describe("get_items_details (MCP)", () => {
       return zLibraryQuery([article("BBBB2222"), article("AAAARRRR")])({ ...req, url: u }, hit);
     });
     const out = await h.call("get_items_details", { item_keys: ["BBBB2222", "CCCC3333"] });
-    expect(Object.keys(out.json)).toEqual(["BBBB2222"]);
+    expect(Object.keys(out.json)).toEqual(["BBBB2222", "not_found"]);
+    expect(out.json.not_found).toEqual(["CCCC3333"]);
   });
 
   it("GID-04 array vuoto → errore strutturato senza chiamate di rete", async () => {
@@ -115,10 +116,19 @@ describe("get_items_details (MCP)", () => {
     expect(json.suggestion).toMatch(/None of these keys exists.*search_library/);
   });
 
-  it("GID-06 chiavi parzialmente inesistenti: restituisce solo quelle trovate", async () => {
+  it("GID-06 chiavi parzialmente inesistenti: voci trovate più not_found con le mancanti, senza isError", async () => {
     h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
-    const out = await h.call("get_items_details", { item_keys: ["AAAARRRR", "NPPEQQQR"] });
-    expect(Object.keys(out.json)).toEqual(["AAAARRRR"]);
+    const out = await h.call("get_items_details", { item_keys: ["AAAARRRR", "NPPEQQQR", "NPPEQQQR", "NPPEQQQS"] });
+    expect(out.isError).toBe(false);
+    expect(Object.keys(out.json)).toEqual(["AAAARRRR", "not_found"]);
+    expect(out.json.not_found).toEqual(["NPPEQQQR", "NPPEQQQS"]);
+    expect(out.json.AAAARRRR.title).toBeDefined();
+  });
+
+  it("GID-17 tutte le chiavi trovate → nessun campo not_found", async () => {
+    h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR"), article("BBBB2222")]));
+    const out = await h.call("get_items_details", { item_keys: ["AAAARRRR", "BBBB2222"] });
+    expect(out.json).not.toHaveProperty("not_found");
   });
 
   it("GID-07 fallback per item senza tipo/titolo", async () => {

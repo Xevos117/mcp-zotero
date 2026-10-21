@@ -30,6 +30,9 @@ export interface CslItemData {
   language?: string;
   edition?: string;
   editor?: CslName[];
+  "container-author"?: CslName[];
+  "collection-editor"?: CslName[];
+  translator?: CslName[];
   "collection-title"?: string;
   "number-of-pages"?: string;
 }

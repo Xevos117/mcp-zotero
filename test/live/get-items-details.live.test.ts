@@ -48,12 +48,14 @@ describe.skipIf(!live.enabled)("get_items_details (live)", () => {
     expect(Object.keys(r.json).sort()).toEqual([...live.bulk].sort());
   });
 
-  it("LIVE-GID-04 solo chiavi sconosciute → risultato vuoto senza isError; miste → solo le note", async () => {
+  it("LIVE-GID-04 solo chiavi sconosciute → risultato vuoto senza isError; miste → le note più not_found", async () => {
     const none = await s.call("get_items_details", { item_keys: [FAKE_KEY, FAKE_KEY_2] });
     expect(none.isError).toBe(false);
     expect(none.json.message).toBe("No items found for the given keys");
     const mixed = await s.call("get_items_details", { item_keys: [live.fixtures.book, FAKE_KEY] });
-    expect(Object.keys(mixed.json)).toEqual([live.fixtures.book]);
+    expect(mixed.isError).toBe(false);
+    expect(Object.keys(mixed.json)).toEqual([live.fixtures.book, "not_found"]);
+    expect(mixed.json.not_found).toEqual([FAKE_KEY]);
   });
 
   it("LIVE-GID-05 override library_id = proprio id; item_keys vuoto → isError", async () => {

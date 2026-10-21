@@ -80,7 +80,7 @@ describe("injectCitations", () => {
     const xml = [
       "<w:body>",
       "<w:p><w:r><w:t>Some text </w:t></w:r>",
-      '<w:r><w:t>&lt;zcite keys=&quot;ABC001&quot;/&gt;</w:t></w:r>',
+      '<w:r><w:t>&lt;zcite keys=&quot;ABCD2345&quot;/&gt;</w:t></w:r>',
       "<w:r><w:t> more text</w:t></w:r></w:p>",
       "</w:body>",
     ].join("");
@@ -109,8 +109,8 @@ describe("injectCitations", () => {
   it("handles multiple zcite tags in one document", async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABC001&quot;/&gt;</w:t></w:r></w:p>',
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;DEF002&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABCD2345&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;DEFG2345&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -129,7 +129,7 @@ describe("injectCitations", () => {
   it('handles multi-citation tag <zcite keys="ABC,DEF"/>', async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABC001,DEF002&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABCD2345,DEFG2345&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -148,7 +148,7 @@ describe("injectCitations", () => {
   it("handles tag with locator attribute", async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABC001&quot; locator=&quot;pp. 12-15&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABCD2345&quot; locator=&quot;pp. 12-15&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -172,7 +172,7 @@ describe("injectCitations", () => {
   it("handles tag with prefix and suffix attributes", async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABC001&quot; prefix=&quot;see &quot; suffix=&quot;, emphasis added&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABCD2345&quot; prefix=&quot;see &quot; suffix=&quot;, emphasis added&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -213,7 +213,7 @@ describe("injectCitations", () => {
   it("appends bibliography before </w:body>", async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABC001&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABCD2345&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -233,7 +233,7 @@ describe("injectCitations", () => {
   it("handles tag with num attribute for numeric styles", async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABC001&quot; num=&quot;1&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABCD2345&quot; num=&quot;1&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -257,8 +257,8 @@ describe("injectCitations", () => {
   it("warns when vancouver style tags are missing num attribute", async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABC001&quot;/&gt;</w:t></w:r></w:p>',
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;DEF002&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABCD2345&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;DEFG2345&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -278,8 +278,8 @@ describe("injectCitations", () => {
   it("no warnings when all vancouver tags have num", async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABC001&quot; num=&quot;1&quot;/&gt;</w:t></w:r></w:p>',
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;DEF002&quot; num=&quot;2&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABCD2345&quot; num=&quot;1&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;DEFG2345&quot; num=&quot;2&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -297,7 +297,7 @@ describe("injectCitations", () => {
   it("no warnings for apa style regardless of num", async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABC001&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABCD2345&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -320,7 +320,7 @@ describe("injectCitations", () => {
     const xml =
       '<w:body><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Title</w:t></w:r>' +
       '<w:r><w:rPr><w:i/></w:rPr><w:t>Subtitle</w:t></w:r>' +
-      '<w:r><w:rPr><w:noProof/></w:rPr><w:t>&lt;zcite keys=&quot;ABC001&quot;/&gt;</w:t></w:r></w:p></w:body>';
+      '<w:r><w:rPr><w:noProof/></w:rPr><w:t>&lt;zcite keys=&quot;ABCD2345&quot;/&gt;</w:t></w:r></w:p></w:body>';
 
     const zipMock = await setupJsZipMock(xml);
     const getStub = vi.fn().mockResolvedValue(defaultZoteroData);
@@ -346,7 +346,7 @@ describe("injectCitations", () => {
   it("handles attributes in non-standard order (num before keys)", async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite num=&quot;1&quot; keys=&quot;ABC001&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite num=&quot;1&quot; keys=&quot;ABCD2345&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -371,11 +371,11 @@ describe("injectCitations", () => {
 
   it("handles XML entity in attribute value (&amp; in locator)", async () => {
     // In .docx XML, a zcite with locator "pp. 12 & 15" would appear as:
-    // &lt;zcite keys=&quot;ABC001&quot; locator=&quot;pp. 12 &amp;amp; 15&quot;/&gt;
+    // &lt;zcite keys=&quot;ABCD2345&quot; locator=&quot;pp. 12 &amp;amp; 15&quot;/&gt;
     // (double-escaped: &amp; in XML attribute, then the whole tag is entity-escaped in w:t)
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABC001&quot; locator=&quot;pp. 12 &amp;amp; 15&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite keys=&quot;ABCD2345&quot; locator=&quot;pp. 12 &amp;amp; 15&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -402,7 +402,7 @@ describe("injectCitations", () => {
   it("handles all attributes in arbitrary order", async () => {
     const xml = [
       "<w:body>",
-      '<w:p><w:r><w:t>&lt;zcite suffix=&quot;, emphasis&quot; num=&quot;3&quot; prefix=&quot;see &quot; locator=&quot;p. 5&quot; keys=&quot;ABC001&quot;/&gt;</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t>&lt;zcite suffix=&quot;, emphasis&quot; num=&quot;3&quot; prefix=&quot;see &quot; locator=&quot;p. 5&quot; keys=&quot;ABCD2345&quot;/&gt;</w:t></w:r></w:p>',
       "</w:body>",
     ].join("");
 
@@ -421,10 +421,7 @@ describe("injectCitations", () => {
       (c: unknown[]) => c[0] === "word/document.xml" && c.length === 2
     );
     const writtenXml = writeCall![1] as string;
-    expect(writtenXml).toContain("[3]");
-    expect(writtenXml).toContain("see ");
-    expect(writtenXml).toContain("emphasis");
-    expect(writtenXml).toContain("p. 5");
+    expect(writtenXml).toContain("<w:t>see [3, p. 5], emphasis</w:t>");
   });
 
   it("handles zcite split across runs (integration)", async () => {
@@ -432,7 +429,7 @@ describe("injectCitations", () => {
       "<w:body>",
       "<w:p>",
       '<w:r><w:rPr><w:lang w:val="en-US"/></w:rPr><w:t>&lt;zcite keys=&quot;AB</w:t></w:r>',
-      '<w:r><w:rPr><w:lang w:val="it-IT"/></w:rPr><w:t>C001&quot;/&gt;</w:t></w:r>',
+      '<w:r><w:rPr><w:lang w:val="it-IT"/></w:rPr><w:t>CD2345&quot;/&gt;</w:t></w:r>',
       "</w:p>",
       "</w:body>",
     ].join("");

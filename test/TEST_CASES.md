@@ -72,7 +72,7 @@ test normali. Non restano `it.fails` nella suite.
 | SL-06/07 | risultato vuoto con/senza query | risultato vuoto (`message`, non isError) "No results found" (con query) / "No items found"; `suggestion` con cosa provare (titolo/autore/anno, senza query) / come aggiungere voci |
 | SL-08 | query/titoli unicode | `q` decodificato identico, unicode preservato |
 | SL-09/10 | metadati mancanti, creator senza nome | fallback Untitled / No authors listed / No date |
-| SL-11 | sort, direction, limit, query non validi | isError con il nome del campo, nessuna chiamata HTTP |
+| SL-11 | sort, direction, limit (stringa, 0, negativo, non intero), query non validi | isError con il nome del campo, nessuna chiamata HTTP |
 | SL-12 | HTTP 403/404/412/429/500/503 | errore strutturato da `runTool`: `error` con "HTTP N", `http_status`, `hint` con il passo successivo |
 | SL-13 | errore di rete | errore strutturato "Network error: …ENOTFOUND…", `hint` (riprova, poi connessione della macchina del server) |
 | SL-14 | creator istituzionale (solo `name`) | nella stringa `authors` (prima: "No authors listed", trovato dall'agente smoke; corretto nel livello 3b) |
@@ -113,14 +113,15 @@ test normali. Non restano `it.fails` nella suite.
 | GID-02 | abstract | escluso di default, incluso con include_abstract |
 | GID-03 | campi strutturali/vuoti | omessi |
 | GID-04/05 | `[]` / nessun item | errore strutturato che dice dove prendere le chiavi (nessuna chiamata HTTP) / risultato vuoto con le chiavi richieste e suggestion |
-| GID-06 | chiavi in parte inesistenti | solo quelle trovate |
+| GID-06 | chiavi in parte inesistenti (anche ripetute) | voci trovate più `not_found` con le mancanti (senza doppioni), senza isError |
+| GID-17 | tutte le chiavi trovate | nessun campo `not_found` |
 | GID-07/08 | fallback, unicode | ok |
 | GID-09/10 | 120 chiavi, 482 chiavi | tutte restituite (GET a blocchi da 50 con limit 50/50/20; nessun 500 per URL lungo) |
 | GID-11 | 20 chiavi | una GET, tutte restituite |
 | GID-12 | item_keys mancante/stringa/numeri, include_abstract non booleano | isError |
 | GID-13/14 | HTTP 4xx/5xx, rete | errore strutturato con `http_status` e `hint` |
 | GID-15 | creators strutturati (cognomi multiparola, editor istituzionale) | `creators` come in Zotero accanto ad `authors` (che ora include anche il nome istituzionale); assente se vuoto |
-| GID-16 | chiavi malformate / risposta con voci non richieste | errore di validazione senza richieste / solo le voci richieste |
+| GID-16 | chiavi malformate / risposta con voci non richieste | errore di validazione senza richieste / solo le voci richieste (le altre in `not_found`) |
 
 ## get_item_fulltext (`get-item-fulltext.test.ts`)
 | ID | Scenario | Atteso |
@@ -137,7 +138,7 @@ test normali. Non restano `it.fails` nella suite.
 | GIF-14 | item 404 | errore strutturato "Item not found in this library", `hint` search_library |
 | GIF-15/16/17 | item HTTP 4xx/5xx, children 500, rete | errore strutturato con `http_status` e `hint` |
 | GIF-18 | ZOTERO_API_KEY assente | errore strutturato con `hint` (chiave da zotero.org/settings/keys nelle impostazioni del server), nessuna chiamata HTTP |
-| GIF-19 | item_key mancante o non stringa, max_characters stringa | isError |
+| GIF-19 | item_key mancante o non stringa, max_characters stringa, negativo o non intero (0 resta "nessun limite") | isError |
 | GIF-20 | solo un allegato linked_url con contentType PDF | errore con "linked URL", attachment_key e url del link (aprirlo con un tool web o import_pdf_to_zotero), nessuna GET fulltext |
 | GIF-21 | link elencato prima di un PDF importato | usa il PDF importato |
 | GIF-22 | chiave di un allegato linked_url | errore con "linked URL" e url, nessuna GET fulltext |
@@ -330,6 +331,8 @@ test normali. Non restano `it.fails` nella suite.
 | IC-01 | 1 zcite | `*_cited.docx` con XML valido, field code CSL_CITATION (uris), BIBL, "(Smith, 2023)"; originale intatto |
 | IC-02 | più tag, multi-chiave, chiavi ripetute | 1 GET per chiave, "(Smith, 2023; Doe & Roe, 2019)" |
 | IC-03 | locator/prefix/suffix | presenti nel field code |
+| IC-03b | locator `12-15`, prefix `see`, suffix `, fig. 2` nei 5 stili | testo visibile come lo rende citeproc con lo stile vero: apa/harvard "(see Smith, 2023, pp. 12–15, fig. 2)", chicago "(see Smith 2023, 12–15, fig. 2)", ieee "see [1, pp. 12–15], fig. 2", vancouver "[see 1, fig. 2]" (lo stile NLM non stampa il locator) |
+| IC-23b | capitolo di libro con curatore, curatore di collana, autore istituzionale e contributor | itemData con `container-title` (bookTitle), `editor`, `collection-editor`, autore `literal`; contributor escluso; bibliografia citeproc "In U. Gialli (Ed.), Collected Gammas (pp. 5–30). G Press." |
 | IC-04/05 | ieee con num e senza / vancouver con tutti i num | [1] e [?] + warning (quanti hanno num, [?] fino a Refresh, come rimediare) / nessun warning |
 | IC-06 | nessuno zcite | found 0, output scritto, warning "No <zcite> placeholders found…" (intestazioni, piè di pagina, note non lette), nessuna chiamata HTTP |
 | IC-07 | unicode (autori, titolo >30 caratteri, nome file) | XML ben formato, testo corretto |
@@ -345,7 +348,7 @@ test normali. Non restano `it.fails` nella suite.
 | IC-20 | cartella `x.docx.d/` | output accanto all'input |
 | IC-21 | file_path mancante o numero, style non valido | isError |
 | IC-22 | `keys=" A, B ,"` con spazi | chiavi ripulite, URI senza spazi, nessuna richiesta fuori route |
-| IC-24 | chiave `<zcite>` non alfanumerica (`../tags`, `AB?C`, mista a una valida) | isError "Invalid Zotero item key(s) in <zcite>" con "No file was written" e da dove prendere le chiavi, nessuna richiesta, nessun output (come SK-10) |
+| IC-24 | chiave `<zcite>` non valida per Zotero (`../tags`, `AB?C`, mista a una valida, con 0/1/O, minuscole, 9 caratteri) | isError "Invalid Zotero item key(s) in <zcite>: <solo le chiavi errate> (a key is 8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ)" con "No file was written" e da dove prendere le chiavi, nessuna richiesta, nessun output (come SK-10) |
 | IC-23 | itemData | volume/issue/page/publisher/publisher-place inclusi, abstract escluso, cognome multiparola intatto |
 
 Gli output di IC-01/02/03/04/07/19/23 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
@@ -377,8 +380,8 @@ una PR separata, il caso diventa normale) o le smentisce (il caso si rimuove). i
 | SK-05 | chiavi assenti da metadata.json (sola e accanto a una presente) | exit 1 "2 cited key(s) not found in the metadata: …", nessun output (come IC-16) |
 | SK-06 | argomenti mancanti, libreria non valida, stile `mla`, file inesistenti | exit 1 con messaggio |
 | SK-07 | copia `inject.mjs` sotto `package.json` `"type": "commonjs"` | esegue senza SyntaxError/warning |
-| SK-08 | metadata.json da get_items_details (cognomi multiparola, nome istituzionale, nessun autore) | itemData e testo identici a inject_citations |
-| SK-10 | chiave `<zcite>` non alfanumerica (`../tags`, `AB?C`, mista a una valida) | exit 1 con lo stesso errore di inject_citations, nessun output |
+| SK-08 | metadata.json da get_items_details con `not_found` (cognomi multiparola, nome istituzionale, nessun autore, capitolo con curatore, locator/prefix/suffix) | `not_found` ignorato; itemData e testo identici a inject_citations (`literal`, `container-title`, `editor`, "(see Gamma, 2020, p. 7, n. 3)") |
+| SK-10 | chiave `<zcite>` non valida per Zotero (`../tags`, `AB?C`, mista a una valida, con 0/1, minuscole) | exit 1 con lo stesso errore di inject_citations (solo le chiavi errate), nessun output |
 | SK-V01 | stili apa, harvard, chicago, ieee, vancouver; singola, multi-chiave con locator/prefix, ripetuta | output di inject.js valido (struttura, schema, URI, citeproc con 2 voci in bibliografia, parti chiave) |
 | SK-V02 | libreria `groups/777` | URI di gruppo validi |
 | SK-09 | `place` restituito da get_items_details | `publisher-place` nell'itemData come in inject_citations (bug trovato da LIVE-SK-01, corretto: prima inject.js leggeva solo `publisherPlace`) |
@@ -509,10 +512,10 @@ le serve come route della FakeNet, `serveCorpusLibrary()` serve la libreria cura
 | CORPUS-04/05 | corpus guastato in una copia: email, `@` nell'URL, valore dell'ambiente, ORCID, licenza NC, campo vietato, PDF cambiato, anni diversi, chiave non valida | ciascun controllo scatta |
 | CORPUS-AID-01 | `add_items_by_doi` su tutti i DOI del corpus (`test/tools/corpus.test.ts`) | ogni DOI risolto dalle cassette, un item per opera, nessuna richiesta senza route |
 | CORPUS-AID-02 | item creato contro la voce curata, campo per campo | uguale salvo le differenze note (tabella `KNOWN`, causa per campo); una differenza nota sparita va tolta dalla tabella |
-| CORPUS-AID-03 (`it.fails`) | differenze del prodotto, una per causa e opera | publisher-location, event, container-title-short, sottotitolo, article-number, editor, contributor, nome `literal`, JATS negli abstract, tipo CSL `article` → journalArticle |
+| CORPUS-AID-03 (`it.fails`) | differenze del prodotto, una per causa e opera | publisher-location, event, container-title-short, sottotitolo, article-number, contributor, JATS negli abstract, tipo CSL `article` → journalArticle (curatori e nome `literal` corretti: ora in CORPUS-AID-02) |
 | CORPUS-IC-01 | `inject_citations` sulla libreria curata in apa/harvard/chicago/ieee/vancouver | docx valido (`expectValidDocx`), 7 citazioni, 12 voci in bibliografia |
 | CORPUS-IC-02 | apa | coppia Peroni 2023 (coautori diversi) disambiguata con i coautori come vuole APA 7; coppia Eve 2020 (stesso autore unico) con 2020a/2020b; "Иванов, Н.", "de las Casas, D.", autori collettivi, "p. 110" |
-| CORPUS-IC-03 (`it.fails`) | apa, capitolo | "In J. Edmond (Ed.), *Digital Technology…*" assente: l'`itemData` incorporato perde libro e curatori del `bookSection` |
+| CORPUS-IC-03 | apa, capitolo | "In J. Edmond (Ed.), Digital Technology and the Practices of Humanities Research (pp. 105–122)" dai dati incorporati (titolo del libro e curatori del `bookSection` nell'`itemData`) |
 | CORPUS-PDF-01 | `find_and_attach_pdfs` sulle 3 opere con PDF (Unpaywall registrato) | PDF veri scaricati, caricati identici, testo estratto (anche cirillico) nel PUT fulltext |
 | CORPUS-PDF-02 | `add_items_by_doi` con `UNPAYWALL_EMAIL` | voce creata e PDF allegato dalla risposta Unpaywall registrata |
 | E2E-C01 | server compilato: `add_items_by_doi` su un DOI Crossref (cirillico) e uno DataCite (arXiv) (`test/e2e/corpus.e2e.test.ts`) | titoli e numero di autori come nella voce curata |
@@ -591,7 +594,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 | `search-library` | LIVE-SL-01 query sul titolo → solo quella voce; 02 sort title asc sul prefisso della run; 03 5 sort × 2 direzioni; 04 limit 500 → min(100, totale); 05 dateAdded desc ordinato; 06 nessun risultato senza isError; 07 argomenti non validi; 08 override utente, gruppo senza id, gruppo inesistente |
 | `get-collections` | LIVE-GC-01 collezione e sottocollezione con genitore; 02 include_trashed; 03 override e tipo sbagliato |
 | `get-collection-items` | LIVE-GCI-01 collezione con 3 voci note + inclusione delle fixture; 02 sottocollezione; 03 105 voci (paginazione >100); 04 allegato standalone escluso/incluso; 05 vuota; 06 inesistente / chiave mancante; 07 override |
-| `get-items-details` | LIVE-GID-01 campi per tipo e creators; 02 include_abstract; 03 105 chiavi; 04 sconosciute / miste; 05 override, lista vuota |
+| `get-items-details` | LIVE-GID-01 campi per tipo e creators; 02 include_abstract; 03 105 chiavi; 04 sconosciute / miste (trovate più `not_found`); 05 override, lista vuota |
 | `get-item-fulltext` | LIVE-GIF-01 PDF importato → testo; 02 max_characters; 03 chiave dell'allegato; 04 webpage; 05 URL senza allegati; 06 nessun PDF; 07 inesistente / max_characters non numerico; 08 solo un link a un PDF → guida al link (LIVE-STALE-3) |
 | `create-collection` | LIVE-CC-01 primo livello; 02 sottocollezione; 03 nome ripulito + override; 04 nome vuoto; 05 genitore inesistente leggibile |
 | `add-items` | LIVE-AI-01 8 tipi con collezione e tag, campi verificati via API; 02 55 voci in due POST; 03 tipo/campo/creatorType non validi, lista vuota; 04 collezione inesistente leggibile |

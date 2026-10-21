@@ -21,9 +21,7 @@ const CAUSES: Record<string, [Kind, string]> = {
   place: ["product", "publisher-location di Crossref ignorato (la CSL standard dice publisher-place): luogo perso"],
   event: ["product", "event della CSL ignorato: conferenceName perso"],
   short: ["product", "container-title-short ignorato: journalAbbreviation perso"],
-  editor: ["product", "curatori della CSL persi (solo author è mappato)"],
   contributor: ["product", "contributor della CSL persi (relatori della tesi)"],
-  literal: ["product", "nome istituzionale (literal) scritto come firstName/lastName invece del campo unico name"],
   jats: ["product", "abstract con il markup JATS di Crossref (<jats:p>) invece del testo"],
   subtitle: ["product", "sottotitolo della CSL perso nel titolo"],
   article: ["product", "tipo CSL article (preprint) importato come journalArticle: repository perso"],
@@ -39,11 +37,11 @@ const CAUSES: Record<string, [Kind, string]> = {
 const KNOWN: Record<string, Record<string, keyof typeof CAUSES>> = {
   conneau2020: { place: "place", conferenceName: "event" },
   ivanov2022: { journalAbbreviation: "short" },
-  edmond2020: { creators: "editor", place: "place", abstractNote: "jats" },
+  edmond2020: { place: "place", abstractNote: "jats" },
   eve2020: { creators: "chapterEditor", title: "chapterTitle", place: "place", abstractNote: "jats" },
   kochan2017: { title: "subtitle", place: "place", abstractNote: "jats" },
   gualandi2022: { creators: "contributor", university: "university" },
-  rda2020: { itemType: "reportType", creators: "literal", publisher: "reportType", publicationTitle: "reportType", institution: "reportType" },
+  rda2020: { itemType: "reportType", publisher: "reportType", publicationTitle: "reportType", institution: "reportType" },
   jiang2023: { itemType: "article", publisher: "article", repository: "article", creators: "particles", archiveID: "arxivId" },
   eve2020b: { pages: "articleNumber" },
   peroni2023a: { pages: "articleNumber", journalAbbreviation: "short" },
@@ -188,12 +186,12 @@ describe("corpus reale: inject_citations sulla libreria curata", () => {
     expect(r.rendered!.bibliography.find((b) => b.includes("Violins"))).toContain("(2020b)");
   });
 
-  // the itemData embedded in the field (zoteroItemToCsl) keeps neither the book title nor the editors of a
-  // bookSection: what Zotero renders when the item is not in the reader's library (design §7.1)
-  it.fails("CORPUS-IC-03 apa: il capitolo cita libro e curatrice (In J. Edmond (Ed.), …) dai dati incorporati", async () => {
+  // the itemData embedded in the field (zoteroItemToCsl) keeps the book title and the editors of a bookSection:
+  // what Zotero renders when the item is not in the reader's library (design §7.1)
+  it("CORPUS-IC-03 apa: il capitolo cita libro e curatrice (In J. Edmond (Ed.), …) dai dati incorporati", async () => {
     const r = await inject("apa");
     const entry = r.rendered!.bibliography.find((b) => b.includes("Violins in the Subway"))!;
-    expect(entry).toContain("In J. Edmond (Ed.), <i>Digital Technology and the Practices of Humanities Research</i>");
+    expect(entry).toContain("In J. Edmond (Ed.), Digital Technology and the Practices of Humanities Research (pp. 105–122)");
   });
 });
 

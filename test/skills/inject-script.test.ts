@@ -31,8 +31,8 @@ function run(args: string[], cwd = ROOT, script = SCRIPT): Promise<Run> {
 
 // Formato restituito da get_items_details (DOI maiuscolo, authors come stringa)
 const METADATA = {
-  SMITH001: { itemType: "journalArticle", title: "On Testing", authors: "John Smith", date: "2023", DOI: "10.1/x", publicationTitle: "J. Tests", volume: "4", pages: "1-9" },
-  DOEROE01: { itemType: "book", title: "Pair Book", authors: "Jane Doe, Rick Roe", date: "2019-03-01", publisher: "Press" },
+  SMITH222: { itemType: "journalArticle", title: "On Testing", authors: "John Smith", date: "2023", DOI: "10.1/x", publicationTitle: "J. Tests", volume: "4", pages: "1-9" },
+  PAIR2222: { itemType: "book", title: "Pair Book", authors: "Jane Doe, Rick Roe", date: "2019-03-01", publisher: "Press" },
 };
 
 describe("skill inject.js (processo reale)", () => {
@@ -45,11 +45,11 @@ describe("skill inject.js (processo reale)", () => {
     dir = await tempDir();
     input = await dir.file(
       "paper.docx",
-      await makeDocx(para("A ", zcite({ keys: "SMITH001" })) + para("B ", zcite({ keys: "SMITH001,DOEROE01", locator: "p. 3" })))
+      await makeDocx(para("A ", zcite({ keys: "SMITH222" })) + para("B ", zcite({ keys: "SMITH222,PAIR2222", locator: "p. 3" })))
     );
     numbered = await dir.file(
       "numbered.docx",
-      await makeDocx(para("A ", zcite({ keys: "SMITH001", num: "1" })) + para("B ", zcite({ keys: "SMITH001,DOEROE01", num: "1,2" })))
+      await makeDocx(para("A ", zcite({ keys: "SMITH222", num: "1" })) + para("B ", zcite({ keys: "SMITH222,PAIR2222", num: "1,2" })))
     );
     meta = await dir.file("metadata.json", JSON.stringify(METADATA));
   });
@@ -69,8 +69,8 @@ describe("skill inject.js (processo reale)", () => {
     const xml = await readDocumentXml(await readFile(out));
     const cites = citations(xml);
     expect(cites[1].citationItems.map((c: { uris: string[] }) => c.uris[0])).toEqual([
-      `http://zotero.org/${path}/items/SMITH001`,
-      `http://zotero.org/${path}/items/DOEROE01`,
+      `http://zotero.org/${path}/items/SMITH222`,
+      `http://zotero.org/${path}/items/PAIR2222`,
     ]);
     expect(cites[0].citationItems[0].itemData).toMatchObject({ DOI: "10.1/x", "container-title": "J. Tests", volume: "4", page: "1-9" });
     expect(cites[0].properties.formattedCitation).toBe("(Smith, 2023)");
@@ -96,19 +96,19 @@ describe("skill inject.js (processo reale)", () => {
   });
 
   it('SK-04 keys="A, B" con spazi → chiavi ripulite, itemData presente', async () => {
-    const spaced = await dir.file("spaced.docx", await makeDocx(para(zcite({ keys: "SMITH001, DOEROE01" }))));
+    const spaced = await dir.file("spaced.docx", await makeDocx(para(zcite({ keys: "SMITH222, PAIR2222" }))));
     const out = join(dir.path, "spaced-out.docx");
     expect((await run([spaced, out, meta, "424242"])).code).toBe(0);
     const [c] = citations(await readDocumentXml(await readFile(out)));
     expect(c.citationItems.map((ci: { uris: string[] }) => ci.uris[0])).toEqual([
-      "http://zotero.org/users/424242/items/SMITH001",
-      "http://zotero.org/users/424242/items/DOEROE01",
+      "http://zotero.org/users/424242/items/SMITH222",
+      "http://zotero.org/users/424242/items/PAIR2222",
     ]);
     expect(c.citationItems[1].itemData.title).toBe("Pair Book");
   });
 
   it("SK-05 chiavi assenti da metadata.json → exit 1 con l'elenco (come inject_citations), nessun output", async () => {
-    const missing = await dir.file("missing.docx", await makeDocx(para(zcite({ keys: "GHPSTQQR" })) + para(zcite({ keys: "SMITH001,GHPSTQQS" }))));
+    const missing = await dir.file("missing.docx", await makeDocx(para(zcite({ keys: "GHPSTQQR" })) + para(zcite({ keys: "SMITH222,GHPSTQQS" }))));
     const out = join(dir.path, "missing-out.docx");
     const r = await run([missing, out, meta, "424242"]);
     expect(r.code).toBe(1);
@@ -116,14 +116,20 @@ describe("skill inject.js (processo reale)", () => {
     await expect(readFile(out)).rejects.toThrow();
   });
 
-  it.each(["../tags", "AB?C", "SMITH001,../items/X"])(
-    'SK-10 chiave <zcite> non alfanumerica "%s" → exit 1 con lo stesso errore di inject_citations, nessun output',
-    async (keys) => {
+  it.each([
+    ["../tags", "../tags"],
+    ["AB?C", "AB?C"],
+    ["SMITH222,../items/X", "../items/X"],
+    ["SMITH001", "SMITH001"],
+    ["SMITH222,abcd2345", "abcd2345"],
+  ])(
+    'SK-10 chiave <zcite> non valida per Zotero "%s" → exit 1 con lo stesso errore di inject_citations (nomina "%s"), nessun output',
+    async (keys, badKey) => {
       const bad = await dir.file("badkey.docx", await makeDocx(para(zcite({ keys }))));
       const out = join(dir.path, "badkey-out.docx");
       const r = await run([bad, out, meta, "424242"]);
       expect(r.code).toBe(1);
-      expect(r.stderr).toContain("Invalid Zotero item key(s) in <zcite>");
+      expect(r.stderr).toContain(`Invalid Zotero item key(s) in <zcite>: ${badKey} (a key is 8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ)`);
       await expect(readFile(out)).rejects.toThrow();
     }
   );
@@ -143,7 +149,7 @@ describe("skill inject.js (processo reale)", () => {
     expect(r.stderr).toMatch(message);
   });
 
-  it("SK-08 metadata da get_items_details → itemData e testo identici a inject_citations (cognomi multiparola, nome istituzionale, nessun autore)", async () => {
+  it("SK-08 metadata da get_items_details (con not_found) → itemData e testo identici a inject_citations (cognomi multiparola, nome istituzionale, nessun autore, capitolo con curatori, locator/prefix/suffix)", async () => {
     const items = [
       article("KRPPNQQR", { title: "Insects", date: "2017-10-18", volume: "12", creators: [
         { creatorType: "author", firstName: "Caspar A.", lastName: "Hallmann" },
@@ -153,15 +159,22 @@ describe("skill inject.js (processo reale)", () => {
         creators: [{ creatorType: "author", firstName: "Paulo", lastName: "Caetano da Silva" }, { creatorType: "editor", firstName: "Ed", lastName: "Itor" }] },
       { key: "CPNSPRTR", itemType: "report", title: "Consortium report", date: "2021", creators: [{ creatorType: "author", name: "Test Consortium" }] },
       { key: "NPAUTHQR", itemType: "document", title: "Anonymous memo", date: "2019", creators: [] },
+      { key: "CHAPTER2", itemType: "bookSection", title: "Gamma chapter", bookTitle: "Collected Gammas", pages: "5-30", date: "2020",
+        creators: [{ creatorType: "author", firstName: "Gina", lastName: "Gamma" }, { creatorType: "editor", firstName: "Ugo", lastName: "Gialli" }] },
     ];
     const h = await startHarness();
     try {
       h.net.on("GET", `${ZBASE}/items`, zLibraryQuery(items));
       for (const it of items) h.net.on("GET", `${ZBASE}/items/${it.key}`, zSingle(it));
       const keys = items.map((i) => i.key);
-      const details = await h.call("get_items_details", { item_keys: keys });
+      const details = await h.call("get_items_details", { item_keys: [...keys, "GHPSTQQR"] });
+      expect(details.json.not_found).toEqual(["GHPSTQQR"]);
       const metaPath = await dir.file("meta-live.json", JSON.stringify(details.json));
-      const body = para(zcite({ keys: "KRPPNQQR" })) + para(zcite({ keys: "SILVAQQR,CPNSPRTR" })) + para(zcite({ keys: "NPAUTHQR" }));
+      const body =
+        para(zcite({ keys: "KRPPNQQR" })) +
+        para(zcite({ keys: "SILVAQQR,CPNSPRTR" })) +
+        para(zcite({ keys: "NPAUTHQR" })) +
+        para(zcite({ keys: "CHAPTER2", locator: "7", prefix: "see", suffix: ", n. 3" }));
       const forTool = await dir.file("eq-tool.docx", await makeDocx(body));
       const forScript = await dir.file("eq-script.docx", await makeDocx(body));
 
@@ -180,7 +193,10 @@ describe("skill inject.js (processo reale)", () => {
         "(Hallmann & de Kroon, 2017)",
         "(Caetano da Silva, 2020; Test Consortium, 2021)",
         '("Anonymous memo", 2019)',
+        "(see Gamma, 2020, p. 7, n. 3)",
       ]);
+      expect(fromScript[3].items[0].itemData).toMatchObject({ "container-title": "Collected Gammas", editor: [{ family: "Gialli", given: "Ugo" }] });
+      expect(fromScript[1].items[1].itemData.author).toEqual([{ literal: "Test Consortium" }]);
       await expectValidDocx(await readFile(out));
     } finally {
       await h.close();
@@ -201,8 +217,8 @@ describe("skill inject.js (processo reale)", () => {
   // Trovato dalla suite dal vivo (LIVE-SK-01): get_items_details restituisce il campo Zotero `place`,
   // che inject.js prima ignorava (leggeva solo `publisherPlace`).
   it("SK-09 place da get_items_details → itemData publisher-place come inject_citations", async () => {
-    const placed = await dir.file("meta-place.json", JSON.stringify({ PLACE001: { itemType: "book", title: "Placed Book", authors: "Jane Doe", date: "2020", publisher: "Press", place: "Rome" } }));
-    const src = await dir.file("place.docx", await makeDocx(para(zcite({ keys: "PLACE001" }))));
+    const placed = await dir.file("meta-place.json", JSON.stringify({ PLACE222: { itemType: "book", title: "Placed Book", authors: "Jane Doe", date: "2020", publisher: "Press", place: "Rome" } }));
+    const src = await dir.file("place.docx", await makeDocx(para(zcite({ keys: "PLACE222" }))));
     const out = join(dir.path, "place-out.docx");
     expect((await run([src, out, placed, "424242"])).code).toBe(0);
     const [c] = citations(await readDocumentXml(await readFile(out)));
@@ -211,9 +227,9 @@ describe("skill inject.js (processo reale)", () => {
 
   describe("validazione docx (SK-V)", () => {
     const BODY = (numbered: boolean) =>
-      para("A ", zcite({ keys: "SMITH001", ...(numbered && { num: "1" }) })) +
-      para("B ", zcite({ keys: "DOEROE01,SMITH001", locator: "p. 3", prefix: "see ", ...(numbered && { num: "2,1" }) })) +
-      para("C ", zcite({ keys: "DOEROE01", ...(numbered && { num: "2" }) }));
+      para("A ", zcite({ keys: "SMITH222", ...(numbered && { num: "1" }) })) +
+      para("B ", zcite({ keys: "PAIR2222,SMITH222", locator: "p. 3", prefix: "see ", ...(numbered && { num: "2,1" }) })) +
+      para("C ", zcite({ keys: "PAIR2222", ...(numbered && { num: "2" }) }));
 
     it.each<CitationStyle>(["apa", "harvard", "chicago", "ieee", "vancouver"])(
       "SK-V01 stile %s: output di inject.js valido (struttura, schema, URI, citeproc, parti chiave)",
