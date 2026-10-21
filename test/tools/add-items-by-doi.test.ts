@@ -172,6 +172,24 @@ describe("add_items_by_doi (MCP)", () => {
       expect(h.net.toHost("doi.org")[0].url.pathname).not.toContain("<");
     });
 
+    it("AID-32 entità HTML nei metadati del registro → caratteri nella voce, testo ostile resta testo", async () => {
+      h.net.on("GET", DOI_ROUTE, doiResolver({
+        "10.1016/j.cor.2009.01.015": csl("10.1016/j.cor.2009.01.015", {
+          title: "&lt;script&gt;alert(1)&lt;/script&gt; &amp;amp; routing",
+          "container-title": "Computers &amp; Operations Research",
+          author: [{ family: "Felipe", given: "&#193;ngel" }],
+        }),
+      }));
+      h.net.on("POST", ITEMS, itemsAndAttachments());
+      const out = await h.call("add_items_by_doi", { dois: ["10.1016/j.cor.2009.01.015"], auto_attach_pdf: false });
+      expect(out.isError).toBeFalsy();
+      const body = h.net.requests("POST", ITEMS)[0].json<Array<Record<string, any>>>();
+      expect(body[0].publicationTitle).toBe("Computers & Operations Research");
+      // una sola decodifica: "&amp;amp;" diventa "&amp;", il tag resta testo da salvare così com'è
+      expect(body[0].title).toBe("<script>alert(1)</script> &amp; routing");
+      expect(body[0].creators[0]).toMatchObject({ firstName: "Ángel", lastName: "Felipe" });
+    });
+
     it("AID-10 array vuoto → errore strutturato, nessuna rete", async () => {
       expectErrorJson(await h.call("add_items_by_doi", { dois: [] }), "At least one DOI is required");
       expect(h.net.calls).toHaveLength(0);
