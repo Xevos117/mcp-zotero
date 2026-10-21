@@ -191,9 +191,15 @@ jobs:
           # Passed through env, never interpolated into the script (workflow_dispatch input).
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
-          # Create the release if it doesn't exist yet
-          if ! gh release view "$TAG" > /dev/null 2>&1; then
-            gh release create "$TAG" --title "$TAG" --generate-notes
+          # Create the release if it doesn't exist yet: only for the version in package.json, and on the commit this
+          # run tested (a manual run from another branch must not tag the default branch)
+          if ! timeout 60 gh release view "$TAG" > /dev/null 2>&1; then
+            VERSION=$(node -p 'require("./package.json").version')
+            if [ "${TAG#v}" != "$VERSION" ]; then
+              echo "::error::package.json version $VERSION does not match the release tag $TAG: no release created"
+              exit 1
+            fi
+            timeout 60 gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
           fi
           echo "name=$TAG" >> "$GITHUB_OUTPUT"
 

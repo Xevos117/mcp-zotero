@@ -98,6 +98,17 @@ describe("workflow dal vivo e agente smoke (WL)", () => {
     expect(zips.indexOf("- name: Resolve or create release")).toBeLessThan(zips.indexOf("- name: Check out the release tag"));
     expect(zips.indexOf("- name: Check out the release tag")).toBeLessThan(zips.indexOf("- name: Create skill zip archives"));
     expect(step(zips, "Check out the release tag")).toContain('if [ "${TAG#v}" != "$VERSION" ]; then');
+    // a new release only for the package.json version, tagged on the tested commit
+    const create = step(zips, "Resolve or create release");
+    expect(create.indexOf('if [ "${TAG#v}" != "$VERSION" ]; then')).toBeGreaterThan(0);
+    expect(create.indexOf('if [ "${TAG#v}" != "$VERSION" ]; then')).toBeLessThan(create.indexOf("gh release create"));
+    expect(create).toContain('gh release create "$TAG" --target "$GITHUB_SHA"');
+  });
+
+  it("WL-06c la issue settimanale si apre anche senza report (download non bloccante), comandi gh con timeout", () => {
+    const weekly = job(agent, "weekly-issue");
+    expect(weekly).toMatch(/download-artifact@[0-9a-f]{40} # [^\n]+\n {8}# [^\n]+\n {8}continue-on-error: true/);
+    for (const m of weekly.matchAll(/\bgh issue (list|comment|create)\b/g)) expect(weekly.slice(Math.max(0, m.index! - 11), m.index)).toBe("timeout 60 ");
   });
 
   it("WL-06b il job di pulizia dell'agente pulisce anche se il mascheramento del nome del gruppo fallisce", () => {
