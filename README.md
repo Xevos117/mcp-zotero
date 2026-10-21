@@ -169,12 +169,15 @@ To enable deletion, set the `UNSAFE_OPERATIONS` environment variable to one of t
 1. Download `mcp-zotero.mcpb` from the [latest release](https://github.com/Xevos117/mcp-zotero/releases/latest)
    (available from the first release after 2.0.2).
 2. Open the file with Claude Desktop (macOS or Windows; e.g. double-click it) and confirm in the installation dialog.
+   The bundle itself is not platform-specific (`manifest.json` lists macOS, Windows and Linux, and CI runs it on
+   Linux), so other MCPB-compatible clients can install it too.
 3. Fill in your **Zotero API key** and **Zotero user ID** (see [Setup](#setup)). Optional settings: library type and
    group ID (for a group library), the email for Unpaywall (open-access PDF lookup) and which deletions are allowed
    (default: none, see [Unsafe Operations](#unsafe-operations)).
 
-The extension bundles the server and its dependencies and runs with the Node.js runtime that ships with Claude
-Desktop, so no separate Node.js or npm install is needed. The API key is declared as a sensitive setting (masked
+The extension bundles the server and all its dependencies, so no npm install is needed. It needs Node.js 22 or newer
+(`compatibility.runtimes.node` in the manifest): according to the MCPB documentation, Claude Desktop runs Node.js
+extensions with the runtime that ships with the app. The API key is declared as a sensitive setting (masked
 input, stored securely by the client). Deletions stay disabled unless you change *Deletions allowed* in the
 extension settings.
 
@@ -345,9 +348,16 @@ Other owner settings:
 2. Make sure CI, live tests and the agent smoke test are green on `main`.
 3. Run the manual [Word checklist](test/WORD_CHECKLIST.md) on a document injected by the release candidate
    and record the results in its log.
-4. Publish the GitHub release: the [release workflow](.github/workflows/release.yml) runs the tests, publishes
+4. Before the first release that ships the Claude Desktop extension (and whenever `manifest.json` or the Node.js
+   requirement changes): build it with `npm run bundle`, install `dist/mcp-zotero.mcpb` once in a real Claude
+   Desktop (macOS or Windows), fill in a test key and user ID, and check that the 15 tools appear and
+   `get_collections` answers.
+5. Publish the GitHub release: the [release workflow](.github/workflows/release.yml) runs the tests, publishes
    to npm, publishes `server.json` to the [MCP Registry](https://registry.modelcontextprotocol.io) and attaches
-   the skill zips and the Claude Desktop extension (`mcp-zotero.mcpb`).
+   the skill zips and the Claude Desktop extension (`mcp-zotero.mcpb`). The release tag must be the version
+   (e.g. `2.0.3`): the registry and bundle jobs check out the tag and fail if `package.json` differs.
+6. If only the `mcp-registry` job fails, use **Re-run failed jobs** on the run: **Re-run all jobs** stops at the
+   npm publish (the version already exists) and so never reaches the registry.
 
 ### Debug with MCP Inspector
 
