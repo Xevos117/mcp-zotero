@@ -67,7 +67,9 @@ gets its environment from whoever starts the session, never from the agent: MCP 
 `.github/agents/agent-smoke.json`) and the hooks of
 `.claude/agent-smoke/settings.json` (Bash allowlist, delete policy, audit log used as evidence by
 `test/live/verify-claims.mjs`; the audit hook numbers every call and the exploratory claims reference calls by
-that `call_no`). Local runs use the same pieces: `test/live/agent/README.md`.
+that `call_no`; on pull requests the agent runs the base branch's hooks, so the first numbered run after the change
+that introduced numbering is a manual run on `main` after the merge). Local runs use the same pieces:
+`test/live/agent/README.md`.
 
 The test account must never be identifiable in public logs, artifacts, summaries or comments (user id, username,
 group id and name, `users|groups/<id>` URIs). Every job that talks to it starts with
