@@ -139,11 +139,17 @@ function retryAfterSeconds(response: { headers?: { get?: (name: string) => strin
   return Number.isFinite(seconds) && seconds >= 0 ? seconds : undefined;
 }
 
-/** Short plain-text reason from a Zotero error body ("Write access denied"), never an HTML page. */
+/**
+ * Short plain-text reason from a Zotero error body ("Write access denied"), never an HTML page. Library paths and
+ * long digit runs (user and group ids) are masked: the account behind the server must not be identifiable.
+ */
 function apiReason(err: unknown): string | undefined {
   const reason = (err as { reason?: unknown }).reason;
   if (typeof reason !== "string") return undefined;
-  const text = reason.trim();
+  const text = reason
+    .trim()
+    .replace(/\b(users|groups)\/\d+/g, "$1/<id>")
+    .replace(/\b\d{5,}\b/g, "<id>");
   if (!text || /^</.test(text)) return undefined;
   return text.length > 300 ? `${text.slice(0, 300)}…` : text;
 }

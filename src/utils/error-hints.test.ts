@@ -56,6 +56,13 @@ describe("describeError", () => {
     });
   });
 
+  it("library paths and user/group ids in the error body are masked", () => {
+    expect(describeError(apiError(403, "Key does not have access to /users/13885496/items or group 6178978"))!.details).toBe(
+      "Key does not have access to /users/<id>/items or group <id>"
+    );
+    expect(describeError(apiError(404, "Group groups/777 not found; version 1234"))!.details).toBe("Group groups/<id> not found; version 1234");
+  });
+
   it("an HTML error body is not copied into details; long bodies are cut", () => {
     expect(describeError(apiError(500, "<html><body>oops</body></html>"))).not.toHaveProperty("details");
     expect(describeError(apiError(400, "x".repeat(400)))!.details).toHaveLength(301);
