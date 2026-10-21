@@ -1,0 +1,112 @@
+name: PoC Word checklist (Zotero + WordCraft)
+
+# Proof of concept, not a check: runs Zotero desktop under Xvfb and refreshes the docx written by
+# inject_citations through WordCraft (Zotero's word-processor protocol), to decide the "ipotesi Word"
+# of test/WORD_CHECKLIST.md. No Anthropic API, no Zotero account: items come from the itemData the
+# product embeds in the fields (fake Zotero API, like npm run smoke).
+on:
+  push:
+    branches: ["poc/word-auto-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ZOTERO_VERSION: "10.0.6"
+  WORDCRAFT_VERSION: "0.8.0"
+
+jobs:
+  refresh:
+    name: refresh (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            zotero_arch: x86_64
+            zotero_sha256: 246c2574a9ac526abeaf3027ffd22fc45536a5ab25f227bb1df932fca9cedd63
+            wordcraft_arch: x86_64
+            wordcraft_sha256: 0ece07cf3d91b923dfd80f90310e04983bde66f0279c6b60ddce89596dde0ddf
+          - runner: ubuntu-24.04-arm
+            zotero_arch: arm64
+            zotero_sha256: 0df2782926a70d2744286640262c9d3e81725bc68182c0d752d855a2b620ea60
+            wordcraft_arch: aarch64
+            wordcraft_sha256: a862de2256e43c987dc8ea009ba52ac25db34091fd649b666133931ac68e02cc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 3
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: timeout 300 npm ci --ignore-scripts
+        timeout-minutes: 6
+
+      - run: timeout 180 npm run build
+        timeout-minutes: 4
+
+      - name: System packages (Xvfb, GTK for Zotero)
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          T0=$(date +%s)
+          sudo timeout 180 apt-get update -qq
+          sudo timeout 240 apt-get install -y -qq --no-install-recommends xvfb libgtk-3-0t64 libdbus-glib-1-2 libasound2t64 libxtst6 > /dev/null
+          echo "apt: $(( $(date +%s) - T0 ))s"
+
+      - name: Cache Zotero and WordCraft
+        id: tools-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        timeout-minutes: 4
+        with:
+          path: ~/word-tools
+          key: word-tools-zotero${{ env.ZOTERO_VERSION }}-wordcraft${{ env.WORDCRAFT_VERSION }}-${{ runner.arch }}
+
+      - name: Download Zotero and WordCraft (pinned sha256)
+        if: steps.tools-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          mkdir -p ~/word-tools && cd ~/word-tools
+          z="Zotero-${ZOTERO_VERSION}_linux-${{ matrix.zotero_arch }}.tar.xz"
+          w="wordcraft-${WORDCRAFT_VERSION}-linux-${{ matrix.wordcraft_arch }}.tar.gz"
+          timeout 300 curl -sSfL --retry 2 --max-time 280 -o "$z" "https://download.zotero.org/client/release/${ZOTERO_VERSION}/$z"
+          timeout 300 curl -sSfL --retry 2 --max-time 280 -o "$w" "https://github.com/storytold/wordcraft/releases/download/v${WORDCRAFT_VERSION}/$w"
+          printf '%s  %s\n%s  %s\n' "${{ matrix.zotero_sha256 }}" "$z" "${{ matrix.wordcraft_sha256 }}" "$w" | sha256sum -c -
+          timeout 120 tar xJf "$z" && timeout 120 tar xzf "$w"
+          rm "$z" "$w"
+          mv Zotero_linux-* zotero && mv "wordcraft-${WORDCRAFT_VERSION}-linux-${{ matrix.wordcraft_arch }}" wordcraft
+          du -sh zotero wordcraft
+
+      - name: Inject, refresh through Zotero, verify
+        timeout-minutes: 12
+        env:
+          XVFB: Xvfb
+        run: timeout 660 test/word-proxy/ci.sh ~/word-tools/zotero ~/word-tools/wordcraft/bin/wordcraft-cli "$RUNNER_TEMP/word-proxy"
+
+      - name: Upload refreshed docx, traces, Zotero debug log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        timeout-minutes: 3
+        with:
+          name: word-proxy-${{ matrix.zotero_arch }}
+          retention-days: 3
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/word-proxy/*.docx
+            ${{ runner.temp }}/word-proxy/docs/*.docx
+            ${{ runner.temp }}/word-proxy/*.trace
+            ${{ runner.temp }}/word-proxy/zotero.log
+            ${{ runner.temp }}/word-proxy/report.json

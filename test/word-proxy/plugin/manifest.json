@@ -1,0 +1,6 @@
+{
+  "manifest_version": 2,
+  "name": "Word checklist automation stub",
+  "version": "0.1",
+  "applications": { "zotero": { "id": "wc-auto@poc.local", "update_url": "https://localhost/none.json", "strict_min_version": "7.0", "strict_max_version": "10.*" } }
+}
