@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Markdown report of an agent smoke run, for the Job Summary and the sticky PR comment of claude-agent-smoke.yml:
+// Markdown report of an agent smoke run, for the Job Summary and the sticky PR comment of claude-agent-smoke.yml
+// (live tests + agent smoke):
 // verdict, problems and warnings (verdict.json, from verify-claims), scenario table, exploratory X1..X5 and friction
 // (claims.json, agent-report.json), turns, duration and cost (the result message of execution.json).
 // Input: the SCRUBBED copy of agent-out (test/live/scrub-report.mjs output). Fails closed (exit 1, nothing

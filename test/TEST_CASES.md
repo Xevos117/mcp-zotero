@@ -8,7 +8,7 @@ Suite aggiunta in `test/` (i test storici restano in `src/**/*.test.ts`).
 | `npm run test:e2e` | `npm run build`, poi `test/e2e/**` con `vitest.e2e.config.ts` | ~4 s + build |
 | `npm run smoke` | server compilato su stdio, libreria utente e di gruppo, fetch simulata; controllo strutturale del docx | ~2 s |
 | `npm run test:live` | `npm run build`, poi `test/live/**/*.live.test.ts` con `vitest.live.config.ts` contro un account Zotero reale (solo con `ZOTERO_TEST_API_KEY`, vedi sezione LIVE) | ~2-3 min |
-| agente smoke | workflow `claude-agent-smoke.yml` o `/test-mcp-zotero` in locale (sezione "Agente smoke") | ~1-5 min |
+| agente smoke | workflow `claude-agent-smoke.yml` (dopo la suite dal vivo) o `/test-mcp-zotero` in locale (sezione "Agente smoke") | ~1-5 min |
 | checklist Word | a mano a ogni release (`test/WORD_CHECKLIST.md`) | ~15 min |
 
 Timeout: unit `testTimeout`/`hookTimeout` 10 s (`vitest.config.ts`); e2e 60 s, ogni chiamata MCP 15 s,
@@ -608,15 +608,22 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 | `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations |
 | `groups` | solo con gruppo `mzt-test…`: LIVE-GRP-01 server in modalità gruppo dall'ambiente (`ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID`): get_user_id → `groups/<id>` con lo user_id dell'utente (get_user_id descrive sempre la libreria dell'ambiente, gli argomenti per chiamata non si applicano); 02 create_collection, add_items, get_collection_items e inject nel gruppo per singola chiamata; 03 server in modalità gruppo senza argomenti di libreria: legge collezione e voce create in 02, override per chiamata verso la libreria utente |
 
-### In CI (`.github/workflows/live-tests.yml`)
+### In CI (`.github/workflows/claude-agent-smoke.yml`, "Live tests + agent smoke")
 
+Suite dal vivo e agente smoke sono **un solo workflow** (il file tiene il nome `claude-agent-smoke.yml` perché la regola
+di federazione del job dell'agente lo nomina): `changes` (`scripts/live-scope.mjs`) → `live-tests-run` → [posto per un
+futuro job `word-render`] → `agent-smoke-prepare`/`-run`/`-verify` (`-comment` sulle PR) solo se la suite dal vivo è
+passata (nessun costo dell'agente quando il live è rosso) → verdetti `live-tests` e `agent-smoke` → `agent-smoke-cleanup`
+(sempre) e `live-tests-weekly-issue` (solo per i fallimenti del venerdì). Ambito: PR dello stesso repo per file cambiati
+(ogni modifica rilevante per l'agente fa girare anche il live); push su `main` e venerdì `23 3 * * 5` solo live; a mano
+con l'input `scope` (`live+agent`, predefinito, o `live`), anche da deps-update.yml sul branch delle dipendenze.
 Il job `live-tests-run` gira sulle PR dello stesso repo (saltato per le PR da fork e di Dependabot, che non hanno i
-secret), su `main`, ogni venerdì e a mano (anche avviato da deps-update.yml sul branch delle dipendenze), nell'environment
+secret), su `main`, ogni venerdì e a mano, nell'environment
 `zotero-live`. Il check obbligatorio è il job `live-tests` (senza environment), che gira sempre tranne quando l'intero
 workflow è annullato (una run sostituita risulta "cancelled", non rossa) e non viene mai saltato (un check obbligatorio
 saltato vale come superato): fallisce se `changes` non è riuscito o se `live-tests-run` è fallito o scaduto (un job
 scaduto termina "cancelled"); passa senza la suite solo se `changes` è riuscito e non ha trovato file rilevanti, o per
-fork e Dependabot. Concurrency per workflow e PR/ref senza `cancel-in-progress` (anche per l'agente smoke): una
+fork e Dependabot. Concurrency per workflow e PR/ref senza `cancel-in-progress`: una
 run in corso non viene annullata da un push più recente, che resta in coda; un annullamento a metà suite aveva lasciato
 voci e collezioni sull'account di test (2026-10-12, run mv4hpbf7-d515: 2 collezioni rimosse dalla pulizia degli avanzi più vecchi di 6 h
 alla prima run dopo le 6 h, base tornata a `collections:1`). Riprodotto con un annullamento voluto (run
@@ -647,7 +654,8 @@ configurazione `.github/agents/agent-smoke.json`, modello `claude-sonnet-5-5`, a
 `zotero-live`, `id-token: write`, nessuna API key) carica la skill di progetto e usa il server come un utente. Il prompt è solo "Carica la skill
 test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt.". **L'esito non è dell'agente**: lo decide
 `test/live/verify-claims.mjs`, poi la stessa pulizia di live-tests (solo pulizia, sul runId dell'agente).
-Gira sulle PR (contestuale alle modifiche) e a mano (`workflow_dispatch`, ad esempio su `main` dopo un merge).
+Gira sulle PR (contestuale alle modifiche) e a mano (`workflow_dispatch` con `scope: live+agent`, ad esempio su `main`
+dopo un merge), sempre nello stesso workflow della suite dal vivo e solo dopo che questa è passata.
 `prepare.mjs` svuota `agent-out/` e `agent-audit/` prima di scrivere il contesto, gli hook marcano ogni riga di audit
 e di negazione con il runId e verify-claims rifiuta righe di un'altra run. Il contesto di riferimento è la copia scritta
 da prepare in `agent-audit/` (in CI portata accanto all'audit come `audit-context.json`): `agent-out/context.json`, che
@@ -805,6 +813,8 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | WL-04 | job prepare, agent-run, verify, cleanup e live-tests-run | primo step con segreti Zotero = "Mask the test group name" |
 | WL-05 | upload degli artifact e Job Summary; job `comment` | solo dopo uno scrub riuscito; solo `pull-requests: write`, PR dello stesso repo, niente checkout/npm/segreti/environment, ricontrollo dei percorsi |
 | WL-06 | `release.yml` npm-publish | dopo skill-zips, checkout del tag della release, controllo versione = tag prima di `npm publish` |
+| WL-07 | workflow unico live + agente | `live-tests.yml` non esiste più; `changes` con `live-scope.mjs`; prepare dopo `live` riuscito; verdetti `live-tests` e `agent-smoke` (rosso se il live non è passato); `id-token`, `issues: write`, `pull-requests: write` ciascuno in un solo job; cron del venerdì; input `scope`; posto per `word-render`; timeout su ogni job e step, azioni fissate per SHA; deps-update avvia una sola run con `scope=live+agent` |
+| WL-08/08b | `scripts/live-scope.mjs`: PR solo docs, sul codice, sulla suite dal vivo, solo sulla skill dell'agente, sul workflow; push; schedule; manuale senza input, `live`, `live+agent`; scope sconosciuto; processo | live/agent attesi (la skill dell'agente fa girare anche il live); errore; `live=…`/`agent=…` per `$GITHUB_OUTPUT` |
 | CR-01a..d | `mask-group-name.mjs` (`test/utils/ci-report.test.ts`): lettura con header e timeout; 503 poi 200, 404, rete giù, nome assente; output `::add-mask::` e `$GITHUB_ENV`; processo senza gruppo, senza chiave, id non numerico | nome; ritenta solo 429/5xx/rete, errori senza il nome; delimitatore casuale, a capo rifiutato; no-op / exit 1 |
 | CR-02a..c | scrub-report e redact con il nome del gruppo; senza `ZOTERO_TEST_GROUP_NAME` ma con un gruppo | nome, id e username mascherati / token; exit 1 senza output |
 | CR-03a..e | `agent/summary.mjs`: riepilogo completo; senza verdetto; testo dell'agente con HTML, menzioni, `\|`, a capo, troppo lungo; `runStats`; controllo prima di pubblicare (segnaposto, user id, nome del gruppo, `users/<id>` senza variabili, gruppo senza nome); processo pulito / con un id | marcatore, tabelle, statistiche; titolo "no verdict"; testo inerte e troncato; ultimo `result`; problemi giusti; file scritto / exit 1 senza file né id nel messaggio |
@@ -843,8 +853,8 @@ Federation di Anthropic, nessun secret). Quattro job con il minimo dei permessi:
   modo), la committa in locale ed esegue **la copia di `main` del gate** (controlli statici ed età) su quel commit; poi
   push di `deps/<data>` e PR col `GITHUB_TOKEN`, etichetta `dipendenze` (serve "Allow GitHub Actions to create and approve pull requests").
   Gli eventi del `GITHUB_TOKEN` non fanno partire `pull_request`/`push`, quindi avvia con `gh workflow run --ref` i
-  workflow obbligatori: `test.yml` sempre; `live-tests.yml` e `claude-agent-smoke.yml` (secret, id-token) **solo se il
-  gate è passato**. Altrimenti commenta la PR (merge automatico disattivato, motivi del gate) e il merge-gate non parte.
+  workflow obbligatori: `test.yml` sempre; `claude-agent-smoke.yml` (secret, id-token; `scope=live+agent`: live-tests
+  poi agent-smoke nella stessa run) **solo se il gate è passato**. Altrimenti commenta la PR (merge automatico disattivato, motivi del gate) e il merge-gate non parte.
 - **merge-gate**: senza npm, checkout pulito di `main`; esegue la copia di `main` di `scripts/deps-merge-gate.mjs` sulla
   testa della PR, verifica base `main`, testa invariata, autore = `github-actions[bot]` registrato da open-pr, poi aspetta
   fino a 180 min (live-tests e agent-smoke condividono il lock: attese fino a 70 min ciascuno più la run dell'agente) che `test (node 22/24/26)`, `live-tests` e `agent-smoke` siano tutti verdi su quello SHA (solo check di

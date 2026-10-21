@@ -235,8 +235,8 @@ jobs:
         run: |
           gh workflow run test.yml --repo "$REPO" --ref "$BRANCH"
           if [ "$GATE" = "true" ]; then
-            gh workflow run live-tests.yml --repo "$REPO" --ref "$BRANCH"
-            gh workflow run claude-agent-smoke.yml --repo "$REPO" --ref "$BRANCH"
+            # one run of the live workflow: live-tests, then agent-smoke (default scope live+agent)
+            gh workflow run claude-agent-smoke.yml --repo "$REPO" --ref "$BRANCH" -f scope=live+agent
           else
             {
               echo "Merge automatico disattivato: il gate delle dipendenze non è passato, quindi test dal vivo e agente smoke (che usano i secret) non sono stati avviati su questo branch. Da rivedere a mano."

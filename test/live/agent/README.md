@@ -3,7 +3,7 @@
 The skill `.claude/skills/test-mcp-zotero` only describes the path the agent follows. Everything the agent
 must not decide is set by whoever starts the session, the same way in CI and locally:
 
-| What | Where | CI (`.github/workflows/claude-agent-smoke.yml`) | Locally |
+| What | Where | CI (`.github/workflows/claude-agent-smoke.yml`, after the live suite) | Locally |
 |---|---|---|---|
 | Run context, diff | `test/live/agent/prepare.mjs` | `--mode ci` (dedicated test account only) | `--mode local`, `ZOTERO_LIVE_SAFE_MODE=1` on a personal library |
 | MCP server | `test/live/agent/mcp.template.json` | rendered by `render-mcp.mjs` into `$RUNNER_TEMP` (key only in that file, mode 600) | passed as is: Claude Code expands `${VAR}` from your environment |
