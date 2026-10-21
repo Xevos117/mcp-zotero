@@ -560,7 +560,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 ### In CI (`.github/workflows/live-tests.yml`)
 
 Il job `live-tests-run` gira sulle PR dello stesso repo (saltato per le PR da fork e di Dependabot, che non hanno i
-secret), su `main`, ogni notte e a mano (anche avviato da deps-update.yml sul branch delle dipendenze), nell'environment
+secret), su `main`, ogni venerdì e a mano (anche avviato da deps-update.yml sul branch delle dipendenze), nell'environment
 `zotero-live`. Il check obbligatorio è il job `live-tests` (senza environment), che gira sempre tranne quando l'intero
 workflow è annullato (una run sostituita risulta "cancelled", non rossa) e non viene mai saltato (un check obbligatorio
 saltato vale come superato): fallisce se `changes` non è riuscito o se `live-tests-run` è fallito o scaduto (un job
@@ -584,8 +584,8 @@ Lo step dei test (18 min) è più corto del job (30 min); poi, sempre:
   fine teardown), con le stesse regole sui marcatori; sull'account dedicato anche gli avanzi > 6 h;
 - `test/live/scrub-report.mjs`: copia report e riepilogo mascherando chiave, user id, username, gruppo ed email, e
   fallisce se un segreto sopravvive; artifact conservato 7 giorni.
-Un job separato con `issues: write` apre o aggiorna la issue "Test dal vivo notturni falliti" solo per i fallimenti
-notturni, con il link alla run e i nomi dei test (mai dati).
+Un job separato con `issues: write` apre o aggiorna la issue "Test dal vivo settimanali falliti" solo per i fallimenti
+della run del venerdì, con il link alla run e i nomi dei test (mai dati).
 
 ## Agente smoke (`.github/workflows/claude-agent-smoke.yml`, skill `.claude/skills/test-mcp-zotero`)
 
@@ -777,7 +777,7 @@ Federation di Anthropic, nessun secret). Quattro job con il minimo dei permessi:
   fino a 180 min (live-tests e agent-smoke condividono il lock: attese fino a 70 min ciascuno più la run dell'agente) che `test (node 22/24/26)`, `live-tests` e `agent-smoke` siano tutti verdi su quello SHA (solo check di
   GitHub Actions, app id 15368, la run più recente per nome) (non si affida solo al ruleset) e solo
   allora `gh pr merge --auto --squash --match-head-commit <sha>` col `GITHUB_TOKEN`. Altrimenti la PR resta al
-  proprietario. Il push su `main` del merge automatico non fa partire workflow; il notturno copre `main`.
+  proprietario. Il push su `main` del merge automatico non fa partire workflow; la run del venerdì copre `main`.
 - **issue**: se l'agente ha scritto `agent-out/deps-issue.md` (major disponibili con le breaking changes trovate in
   Context7, aggiornamenti rinviati), apre una issue con l'etichetta `dipendenze`, o commenta quella già aperta, con il
   link alla PR e alla run. Gira anche senza PR (solo major). PR e issue con l'etichetta `dipendenze` sono il segnale
