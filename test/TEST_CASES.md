@@ -211,6 +211,7 @@ test normali. Non restano `it.fails` nella suite.
 | AID-19 | green con sola landing page | landing_url + suggerimento import_pdf_to_zotero |
 | AID-20 | Unpaywall 404/500/rete | item creati, pdf_attached false |
 | AID-31 | Unpaywall risponde 200 con HTML | item creato, pdf_attached false, nessun errore grezzo |
+| AID-32 | entità HTML nei metadati di doi.org (`&amp;`, `&lt;script&gt;`, `&amp;amp;`, `&#193;`) | decodificate una sola volta: rivista "Computers & Operations Research", titolo con il testo letterale `<script>…` e `&amp;`, nome "Ángel" |
 | AID-21 | **quota storage** (413) | storage_quota_warning (cosa dire all'utente, poi find_and_attach_pdfs), item creati |
 | AID-22 | quota piena su 12 DOI | upload successivi saltati |
 | AID-23 | un download 404 | risultati per singolo item |
@@ -329,6 +330,7 @@ test normali. Non restano `it.fails` nella suite.
 | ID | Scenario | Atteso |
 |---|---|---|
 | IC-01 | 1 zcite | `*_cited.docx` con XML valido, field code CSL_CITATION (uris), BIBL, "(Smith, 2023)"; originale intatto |
+| IC-01b | voce con `<script>`, `&`, `]]>`, virgolette e frammenti di XML Word in titolo, rivista e autore | docx valido, nessun elemento iniettato (tutto escapato), itemData con il testo letterale |
 | IC-02 | più tag, multi-chiave, chiavi ripetute | 1 GET per chiave, "(Smith, 2023; Doe & Roe, 2019)" |
 | IC-03 | locator/prefix/suffix | presenti nel field code |
 | IC-03b | locator `12-15`, prefix `see`, suffix `, fig. 2` nei 5 stili | testo visibile come lo rende citeproc con lo stile vero: apa/harvard "(see Smith, 2023, pp. 12–15, fig. 2)", chicago "(see Smith 2023, 12–15, fig. 2)", ieee "see [1, pp. 12–15], fig. 2", vancouver "[see 1, fig. 2]" (lo stile NLM non stampa il locator) |
@@ -449,6 +451,18 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 | TL-06 | url | `format: uri` |
 | TL-07 | tool sconosciuto | isError |
 | TL-08 | override libreria | `library_type` enum user/group, `library_id` pattern numerico, mai required |
+
+## Entità HTML nei metadati dei registri (`src/utils/html-entities.test.ts`)
+
+| ID | Caso | Atteso |
+|---|---|---|
+| HE-01 | `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`, `&nbsp;`, `&ndash;`, `&mdash;` | caratteri corrispondenti |
+| HE-02 | entità numeriche decimali ed esadecimali | `Café`, trattino lungo, emoji |
+| HE-03 | `&amp;lt;`, `&amp;amp;` | una sola passata: testo `&lt;`, `&amp;` (mai `<`) |
+| HE-04 | `&lt;script&gt;…`, `]]&gt; &lt;w:r&gt;` | testo letterale, nessuna interpretazione HTML |
+| HE-05 | entità sconosciute, `&#0;`, surrogati, fuori range, `&` isolato, senza `;` | invariate |
+| HE-06 | testo senza `&` | stessa stringa |
+| HE-07 | CSL annidato | ogni stringa decodificata, chiavi e valori non stringa invariati |
 
 ## Helper pubblici (`test/utils/helpers.test.ts`)
 | ID | Scenario | Atteso |

@@ -78,6 +78,31 @@ describe("inject_citations (MCP)", () => {
     expect(h.net.requests("GET", ITEM_ROUTE).map((r) => r.url.pathname)).toEqual([`/users/${USER_ID}/items/SMITH222`]);
   });
 
+  it("IC-01b metadati con caratteri XML/HTML (titolo con <script>, &, ]]>) → testo letterale, docx valido", async () => {
+    const HOSTILE = article("HQST2345", {
+      title: "<script>alert(1)</script> & ]]> \"quoted\" <w:r><w:t>x</w:t></w:r>",
+      publicationTitle: "Computers & Operations Research",
+      creators: [{ creatorType: "author", firstName: "Ángel", lastName: "Felipe & <Co>" }],
+      date: "2009",
+    });
+    serveItems(h, { HQST2345: HOSTILE });
+    const input = await dir.file("hostile.docx", await makeDocx(para("See ", zcite({ keys: "HQST2345" }), ".")));
+    const out = await h.call("inject_citations", { file_path: input });
+    expect(out.isError, out.text).toBe(false);
+    const bytes = await readFile(out.json.output_path);
+    const xml = await readDocumentXml(bytes);
+    expect(XMLValidator.validate(xml)).toBe(true);
+    // nessun elemento iniettato: i caratteri speciali arrivano escapati nel documento
+    expect(xml).not.toContain("<script>");
+    expect(xml).not.toMatch(/<w:t>x<\/w:t><\/w:r>/);
+    const [c] = citations(xml);
+    expect(c.citationItems[0].itemData).toMatchObject({
+      title: "<script>alert(1)</script> & ]]> \"quoted\" <w:r><w:t>x</w:t></w:r>",
+      "container-title": "Computers & Operations Research",
+    });
+    await expectValidDocx(bytes, { libraryPath: `users/${USER_ID}` });
+  });
+
   it("IC-02 più tag, multi-chiave e chiavi ripetute: una sola GET per chiave", async () => {
     serveItems(h, { SMITH222: SMITH, PAIR2222: DOE_ROE });
     const input = await dir.file(

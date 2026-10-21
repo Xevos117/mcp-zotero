@@ -3,6 +3,7 @@ import { mapWithConcurrency } from "./concurrency.js";
 import { fetchWithRetry } from "./fetch-retry.js";
 import { errorMessage } from "./error-formatter.js";
 import { InvalidJsonResponseError, readJsonObject } from "./json-response.js";
+import { decodeEntitiesDeep } from "./html-entities.js";
 
 export async function resolveDoi(doi: string): Promise<CslItemData> {
   const response = await fetchWithRetry(`https://doi.org/${encodeURIComponent(doi)}`, {
@@ -24,7 +25,8 @@ export async function resolveDoi(doi: string): Promise<CslItemData> {
   }
 
   try {
-    return await readJsonObject<CslItemData>(response);
+    // the registries send some strings HTML-escaped ("Computers &amp; Operations Research"): store the characters
+    return decodeEntitiesDeep(await readJsonObject<CslItemData>(response));
   } catch (err) {
     // doi.org answers some unresolvable DOIs with an HTML page and status 200
     if (err instanceof InvalidJsonResponseError) throw new Error(`DOI not found or not resolvable: ${doi} (${err.message})`);
