@@ -20,6 +20,9 @@ if [ -n "${ZOTERO_TEST_GROUP_ID:-}" ] && [ "$(tr ',' '\n' <<< "$group_keys" | gr
   WORD_PROXY_REAL=1 WORD_PROXY_KEYS="$group_keys" timeout 120 node "$HERE/gen.mjs" "$D" "$ZOTERO_TEST_GROUP_ID"
   steps+=("lib-group,refresh,$S/apa,$D/checklist-apa-group_cited.docx")
 fi
+# From here on only placeholder ids (users/000000, groups/777): see scrub.mjs --ids
+shopt -s nullglob
+timeout 60 node "$HERE/scrub.mjs" --ids "$OUT/items.json" "$D"/*.docx
 ZOTERO_JS_SETUP="$HERE/load-items.js" WCAUTO_ITEMS="$OUT/items.json" timeout 900 "$HERE/run.sh" "$Z" "$WC" "$OUT" "${steps[@]}"
 labels=(); for s in "${steps[@]}"; do labels+=("${s%%,*}"); done
 timeout 60 node "$HERE/verify.mjs" "$OUT" "${labels[@]}" > "$OUT/report.json"

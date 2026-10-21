@@ -19,7 +19,6 @@ user_pref("extensions.zotero.useDataDir", true);
 user_pref("extensions.zotero.firstRun2", false);
 user_pref("extensions.zotero.sync.autoSync", false);
 user_pref("extensions.zotero.automaticScraperUpdates", false);
-user_pref("extensions.zotero.integration.libreoffice.skipInstallation", true);
 user_pref("app.update.enabled", false);
 user_pref("app.update.auto", false);
 user_pref("extensions.wcauto.style", "${STYLE:-http://www.zotero.org/styles/apa}");

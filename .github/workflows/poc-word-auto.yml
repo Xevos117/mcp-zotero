@@ -200,20 +200,24 @@ jobs:
           o="$RUNNER_TEMP/word-library"
           rm -rf "$o/profile" "$o/data" "$o/items.json"
           shopt -s nullglob
-          files=("$o"/*.docx "$o"/docs/*.docx "$o"/*.trace "$o"/zotero.log "$o"/report.json "$o"/keys.env "$o"/skipped)
-          [ ${#files[@]} -eq 0 ] || timeout 120 node test/word-proxy/scrub.mjs "${files[@]}"
-          # Fail (and upload nothing) if any value survived the scrub
-          for v in "$ZOTERO_TEST_API_KEY" "$ZOTERO_TEST_USERNAME" "$ZOTERO_TEST_USER_ID"; do
-            [ -z "$v" ] && continue
-            for f in "${files[@]}"; do
-              case "$f" in *.docx) unzip -p "$f" | grep -qF -- "$v" && { echo "::error::scrub failed"; rm -rf "$o"; exit 1; } ;;
-                           *) grep -qF -- "$v" "$f" && { echo "::error::scrub failed"; rm -rf "$o"; exit 1; } ;; esac
+          files=("$o"/*.docx "$o"/docs/*.docx "$o"/*.trace "$o"/*.log "$o"/*.json "$o"/keys.env "$o"/skipped)
+          existing=(); for f in "${files[@]}"; do [ -f "$f" ] && existing+=("$f"); done
+          [ ${#existing[@]} -eq 0 ] || timeout 120 node test/word-proxy/scrub.mjs "${existing[@]}"
+          # Upload nothing if a value (or a numeric id other than the placeholders, e.g. in a clipped
+          # trace line) survived
+          leak=0
+          for f in "${existing[@]}"; do
+            if [[ "$f" == *.docx ]]; then text=$(unzip -p "$f"); else text=$(cat "$f"); fi
+            for v in "$ZOTERO_TEST_API_KEY" "$ZOTERO_TEST_USERNAME" "$ZOTERO_TEST_USER_ID" "$ZOTERO_TEST_GROUP_ID"; do
+              [ -n "$v" ] && [[ "$text" == *"$v"* ]] && leak=1
             done
+            grep -Eo '(users|groups)/[0-9]+' <<< "$text" | grep -Evq '^(users/000000|groups/777)$' && leak=1
           done
-          echo "scrubbed ${#files[@]} files"
+          if [ "$leak" = 1 ]; then echo "::error::scrub incomplete, outputs removed"; rm -rf "$o"; exit 1; fi
+          echo "scrubbed ${#existing[@]} files"
 
       - name: Upload scrubbed outputs
-        if: always()
+        if: success()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         timeout-minutes: 3
         with:
