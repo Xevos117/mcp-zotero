@@ -56,5 +56,5 @@ them). Locally, render them first (Zotero 10 + `wordcraft-cli`, see `test/word-p
 <wordcraft-cli> agent-render`, then add `--render agent-render` to the verify-claims command. Without
 `agent-render/` the agent skips step 5b and verify-claims runs without `--render`.
 
-Expected cost with `claude-sonnet-5-5`: see the "Collaudo locale" paragraph of the agent smoke section in
+Local run with `claude-sonnet-5-5`: see the "Collaudo locale" paragraph of the agent smoke section in
 `test/TEST_CASES.md`.

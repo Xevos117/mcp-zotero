@@ -793,15 +793,14 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 - **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
   comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
   docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
-  negati; 140 turni, tetto di 2 USD (`maxBudgetUsd`, `.github/agents/agent-smoke.json`; le run reali usano 65-98 turni e 0,37-0,67 USD), `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min (costo atteso: vedi
-  il collaudo locale sotto). La chiave Zotero sta solo nel file
+  negati; 140 turni, tetto di 2 USD (`maxBudgetUsd`, `.github/agents/agent-smoke.json`; le run reali usano 65-98 turni), `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min. La chiave Zotero sta solo nel file
   di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente. Gli artifact fra i job
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
   nel job successivo), username, nome del gruppo, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne
   resta uno (anche dentro i docx) o se c'è un gruppo senza il suo nome; conservazione 1 giorno. Ogni job che usa
   l'account comincia mascherando il nome del gruppo (`mask-group-name.mjs`).
 - **Riepilogo**: dopo lo scrub, `test/live/agent/summary.mjs` scrive il Job Summary (verdetto, problemi e avvisi,
-  tabella degli scenari, esplorativi X1–X5 con le chiamate come le ha registrate l'audit, friction, turni/durata/costo)
+  tabella degli scenari, esplorativi X1–X5 con le chiamate come le ha registrate l'audit, friction, turni e durata; il costo non compare nei testi pubblici)
   dalla copia scrubbata; non scrive nulla se nel testo, pubblicato o prima dell'escape, resta un segreto dell'ambiente,
   il nome del gruppo o un `users|groups/<id>` diverso dai segnaposto. Il job
   `agent-smoke-comment` (PR dello stesso repo, solo `pull-requests: write`, niente checkout, npm o segreti) ricontrolla
@@ -962,7 +961,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | CP-02 | testo normale di PR o issue delle dipendenze | nessun problema |
 
 Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`, stessa
-configurazione della CI: template MCP, `--tools`, `dontAsk`, hook): 78 turni, 0,69 USD, 2 min 20 s (i limiti in CI,
+configurazione della CI: template MCP, `--tools`, `dontAsk`, hook): 78 turni, 2 min 20 s (i limiti in CI,
 160 turni e 3 USD, lasciano margine). P0, F0-F6, F8-F10 e 8 righe T passati, F7 saltato (nessun gruppo);
 18 docx in 9 `compare_group` (parità nei 5 stili, edge, nozcite, nonum-ieee, bare-id) tutti identici fra i due
 produttori; 4 esplorativi (1 ok, 3 unclear, nessun bug). Hook: 69 chiamate nell'audit, esattamente 2 negazioni, le

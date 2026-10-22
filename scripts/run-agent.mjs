@@ -14,7 +14,7 @@
 // jsonSchema (object, optional), transcript (output path), report (output path, with jsonSchema).
 // Values "${VAR}" in mcpConfig are expanded from the environment (e.g. ${RUNNER_TEMP}).
 // Exit 0 only if the agent finished without error (and returned the structured report, if a schema is given).
-// The log shows only metadata (turns, cost, stop reason) and the error text, never the agent's messages.
+// The log shows only metadata (turns, duration, stop reason; no cost, the log is public) and the error text, never the agent's messages.
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -176,7 +176,7 @@ async function main() {
     writeFileSync(config.report, JSON.stringify(result?.structured_output ?? {}, null, 2));
   }
   if (result) {
-    console.log(`agent finished: ${result.subtype}, ${result.num_turns} turns, ${Math.round(result.duration_ms / 1000)} s, estimated cost $${(result.total_cost_usd ?? 0).toFixed(2)}`);
+    console.log(`agent finished: ${result.subtype}, ${result.num_turns} turns, ${Math.round(result.duration_ms / 1000)} s`);
   }
   // the SDK also throws after an error result: report the result's reason, which names the API error
   const checked = outcome(result, config);
