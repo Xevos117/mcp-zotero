@@ -17,8 +17,9 @@ session (the CI workflow, or the local command in `test/live/agent/README.md`) a
 library. Never configure, add or modify MCP servers or settings; if `mcp__zotero__*` tools are missing,
 that is a failed precondition (step 1), not something to fix.
 
-Budget: about 120–150 turns (about 20 of them for the rendered pages of step 5b). Batch where the tools allow it (one `add_items` call for several items,
-one `make-docx.mjs` call for several outputs) and do not re-read files you just wrote.
+Budget: at most 140 turns and 2 USD (complete runs take 65–100 turns, about 20 of them for the rendered pages of step
+5b). Batch where the tools allow it (one `add_items` call for several items, one `make-docx.mjs` call for several
+outputs) and do not re-read files you just wrote.
 
 ## Rules (always)
 
@@ -42,15 +43,22 @@ one `make-docx.mjs` call for several outputs) and do not re-read files you just 
   in that form, one command per call**: no `timeout` prefix, no variables, no `&&`, `;`, pipes or
   redirections, paths only as `agent-out/<name>`, the make-docx spec in single quotes. A hook denies
   anything else, and deletions of keys this run did not create; a denial outside step F0 is reported.
+- **Never run the verifier** (`test/live/verify-claims.mjs`) or any other script: whoever started the session runs
+  it after you, on your claims and on the audit.
+- **In CI (`context.cleanup` is `verifier`) delete only what you created in order to delete it**: the objects named
+  `<prefix> … to delete` of F8 and T-delete. Nothing else, not even at the end: the workflow removes the run after
+  the verifier. Every other deletion is reported as a warning.
+- **Write in Italian** every `notes` of the scenarios, every `friction` note and the `rationale`, `expected` and
+  `observed` of the exploratory scenarios; keys, tool names and quoted messages stay as they are.
 
 ## Step 1 — Preconditions (stop if any fails)
 
 1. Read `agent-out/context.json` (written by `test/live/agent/prepare.mjs`). It gives `run_id`,
-   `run_tag`, `prefix`, `mode` (`ci`|`local`), `safe_mode`, `unsafe_operations`, `group_id`, and
+   `run_tag`, `prefix`, `mode` (`ci`|`local`), `safe_mode`, `unsafe_operations`, `group_id`,
    `cleanup` (`verifier` = leave everything in place for the verifier, `agent` = delete it yourself
-   in step 7). If the file is missing, stop and tell the user to run
-   `node test/live/agent/prepare.mjs --mode local`.
-2. The server exposes exactly **15** `mcp__zotero__*` tools.
+   in step 7), `tool_count` (the tools the server registers), `changed_files` and `targeted` (step 3). If the file
+   is missing, stop and tell the user to run `node test/live/agent/prepare.mjs --mode local`.
+2. The server exposes exactly `context.tool_count` `mcp__zotero__*` tools (never a number from memory).
 3. `get_user_id` answers; note `library_path` (e.g. `users/123`).
 4. `get_collections`: a collection named `__mzt_disposable__` must exist (it marks a disposable test
    library), **unless** `safe_mode` is true. In safe mode you are in a personal library: use only
@@ -69,14 +77,15 @@ skipped), `<style>` each of `apa`, `harvard`, `chicago`, `ieee`, `vancouver`.
 | F0 | Guardrails (do this first, exactly): run the Bash command `node test/live/agent/make-docx.mjs agent-out/<prefix>-probe.docx '[["probe"]]' && ls` and call `delete_items` with `item_keys: ["XXXXXXXX"]` | Bash, `delete_items` | both are **denied** by the harness hooks (the reason starts with "Denied by the agent smoke harness"); passed if both were denied, failed if either ran |
 | F1 | Add a paper by DOI: `10.1371/journal.pcbi.1003285` into the run collection (create it first, see F2), `tags: [run_tag]`, `auto_attach_pdf: true` | `add_items_by_doi` | one item in `success`; note whether `pdf_results[0].pdf_attached` is true. doi.org/Unpaywall outages may make this `skipped` (say why) |
 | F2 | Create the run collection `<prefix> agent` and a subcollection `<prefix> agent sub`; add three items with one `add_items` call into the run collection: `BOOK` = a `book` with an institutional author (`{"name": "Test Consortium"}`), publisher and place; `ARTICLE` = a `journalArticle` titled `<prefix> Über «Lernen» – 学习 ✓` by `Jürgen Müller-Ødegård` and `Zoë Ångström`, with volume/pages/date; `MEMO` = a `report` titled `<prefix> undated memo` with **no date and no creators** | `create_collection`, `add_items` | keys returned in input order |
-| F3 | Attachments and full text: a linked URL attachment (`https://example.org/<prefix>.pdf`, `content_type: application/pdf`) on the book; `get_item_fulltext` on the book (expect a clear "linked URL" message, not "open the PDF in Zotero desktop"); if F1 attached a PDF, `get_item_fulltext` on the F1 item (expect text) | `add_linked_url_attachment`, `get_item_fulltext` | messages and text as described |
+| F3 | Attachments and full text: a linked URL attachment (`https://example.org/<prefix>.pdf`, `content_type: application/pdf`) on the book; `get_item_fulltext` on the book (expect an `isError` result with a clear "linked URL" message, not "open the PDF in Zotero desktop": an error result is the expected outcome here, the scenario passes); if F1 attached a PDF, `get_item_fulltext` on the F1 item (expect text) | `add_linked_url_attachment`, `get_item_fulltext` | messages and text as described |
 | F4 | Find it again: `search_library` with `query = prefix` (finds the F2 items: their titles carry the prefix; DOI items keep the publisher's title); `get_collection_items` on the run collection with `excludeAttachments: false`; `get_items_details` on all created regular items | `search_library`, `get_collection_items`, `get_items_details` | F2 items found by search; every created regular item listed in the collection; details carry `creators` |
-| F5 | Parity document, `inject_citations` side. Two `make-docx.mjs` calls (specs below): the author-date spec to `agent-out/<prefix>-p-apa.docx agent-out/<prefix>-p-harvard.docx agent-out/<prefix>-p-chicago.docx`, the numbered spec to `agent-out/<prefix>-p-ieee.docx agent-out/<prefix>-p-vancouver.docx`. Then `inject_citations` on each `<prefix>-p-<style>.docx` with its `style` (5 calls) | `inject_citations` | each: `citations_found` = `citations_injected` = 5, no `warnings`; output `agent-out/<prefix>-p-<style>_cited.docx` |
-| F6 | Parity document, `inject.js` side: write the `get_items_details` result for `DOIKEY`, `ARTICLE`, `BOOK`, `MEMO` **verbatim** (the JSON text the tool returned, unchanged) to `agent-out/metadata.json` (Write tool), then for each style `node test/live/agent/inject.mjs agent-out/<prefix>-p-<style>.docx agent-out/<prefix>-p-<style>_skill.docx agent-out/metadata.json <library_path> <style>` (5 calls) | `get_items_details`, inject.js | each: exit 0, `found` = `injected` = 5, no WARNING. Claim both documents of a style with `compare_group: "parity-<style>"` and `source: "agent-out/<prefix>-p-<style>.docx"`: the verifier requires identical field JSON (except the random `citationID`), visible text and bibliography |
-| F7 | Only if `group_id` is set: `get_collections` with `library_type: "group"`, `library_id: group_id` (`get_user_id` takes no library arguments: it always describes the server's own library); `add_items` one book into the group (tags as usual); `make-docx.mjs` a one-citation `agent-out/<prefix>-group.docx`; `inject_citations` on it with the same per-call library args, and `inject.mjs` with library `groups/<group_id>` and the group `get_items_details` result written verbatim to `agent-out/group-metadata.json` | the above, per call | URIs are `http://zotero.org/groups/<id>/items/<key>`; both documents claimed with `compare_group: "parity-group"`. Without `group_id` report `skipped` |
+| F5 | Parity document, `inject_citations` side. Two `make-docx.mjs` calls (specs below): the author-date spec to `agent-out/<prefix>-p-apa.docx agent-out/<prefix>-p-harvard.docx agent-out/<prefix>-p-chicago.docx`, the numbered spec to `agent-out/<prefix>-p-ieee.docx agent-out/<prefix>-p-vancouver.docx`. Then `inject_citations` on each `<prefix>-p-<style>.docx` with its `style` (5 calls) | `inject_citations` | each: `citations_found` = `citations_injected` = 5, no `warnings`; output `agent-out/<prefix>-p-<style>_cited.docx`, with the Zotero document preferences of its style (the verifier reads them from `docProps/custom.xml`) |
+| F6 | Parity document, `inject.js` side: write the `get_items_details` result for `DOIKEY`, `ARTICLE`, `BOOK`, `MEMO` **verbatim** (the JSON text the tool returned, unchanged) to `agent-out/metadata.json` (Write tool) and note that call's `call_no`, then for each style `node test/live/agent/inject.mjs agent-out/<prefix>-p-<style>.docx agent-out/<prefix>-p-<style>_skill.docx agent-out/metadata.json <library_path> <style>` (5 calls) | `get_items_details`, inject.js | each: exit 0, `found` = `injected` = 5, no WARNING. Claim both documents of a style with `compare_group: "parity-<style>"` and `source: "agent-out/<prefix>-p-<style>.docx"`: the verifier requires identical field JSON (except the random `citationID`), visible text, bibliography and document preferences. Claim the metadata file in `metadata` with that `call_no`: the verifier compares it with the audited result |
+| F7 | Only if `group_id` is set: `get_collections` with `library_type: "group"`, `library_id: group_id` (`get_user_id` takes no library arguments: it always describes the server's own library); `add_items` one book into the group (tags as usual); `make-docx.mjs` a one-citation `agent-out/<prefix>-group.docx`; `inject_citations` on it with the same per-call library args, and `inject.mjs` with library `groups/<group_id>` and the group `get_items_details` result written verbatim to `agent-out/group-metadata.json` (claimed in `metadata` with its `call_no`) | the above, per call | URIs are `http://zotero.org/groups/<id>/items/<key>`; both documents claimed with `compare_group: "parity-group"`. Without `group_id` report `skipped` |
 | F8 | Deletion: `add_items` one throwaway book (`<prefix> to delete`), then `delete_items` it | `add_items`, `delete_items` | `deleted_count: 1`; claim it under `deleted`, not `created` |
 | F9 | `<zcite>` edge cases, both producers, `style: "apa"` (specs below): (a) `agent-out/<prefix>-edge.docx` with `keys="ARTICLE, BOOK"` (space after the comma) and `keys="ARTICLE,ARTICLE"`; (b) `agent-out/<prefix>-nozcite.docx` without any `<zcite>`; (c) `agent-out/<prefix>-badkey.docx` with the traversal key `../items`; (d) `agent-out/<prefix>-unknown.docx` citing `ARTICLE` and the unknown well-formed key `ZZZZZZZZ`. Run `inject_citations` and `inject.mjs` (same `metadata.json`) on each | `inject_citations`, inject.js | (a) both inject 2 citations, claim both with `compare_group: "edge"`; (b) both report 0 found and write an unchanged copy, claim both with `compare_group: "nozcite"`; (c) both reject it with `Invalid Zotero item key(s) in <zcite>`; (d) both fail on the unknown key: `inject_citations` with `1 cited key(s) not found in the library: ZZZZZZZZ`, inject.js with `1 cited key(s) not found in the metadata: ZZZZZZZZ`. (c) and (d): `inject_citations` as an error, inject.js with exit 1, no output written, nothing to claim |
-| F10 | Tool-input edge cases, exactly these calls: `delete_items` with `item_keys: []`; with 50 times `"ZZZZZZZZ"`; with 51 times `"ZZZZZZZZ"`; `add_items` with `items: []`; `get_items_details` with `item_keys: []` and with `item_keys: ["   "]`; `search_library` with `query: "   "`, `limit: 1`; `search_library` with `query = prefix` and `limit` 1, 100 and 101 | the above | `[]` and 51 keys: validation errors; 50 keys: accepted, nothing deleted; `items: []` and `"   "`: validation errors; whitespace-only query: a result, as without a query; limits 1/100/101: at most 1/100/100 results, never an error. Every result readable: no crash, no `undefined`/`NaN`/`[object Object]`, no stack trace |
+| F10 | Tool-input edge cases, exactly these calls: `delete_items` with `item_keys: []`; with 50 times `"ZZZZZZZZ"`; with 51 times `"ZZZZZZZZ"`; `add_items` with `items: []`; `get_items_details` with `item_keys: []` and with `item_keys: ["   "]`; `search_library` with `query: "   "`, `limit: 1`; `search_library` with `query = prefix` and `limit` 1, 100 and 101 | the above | Two kinds of error: a **schema error** (`MCP error -32602`, input validation: the call never reaches the tool) and a **tool error** (`isError` with a JSON body such as `{"error": …, "status": …}`). `[]` and 51 keys: schema errors; 50 unknown keys: they pass the schema, then the tool answers `isError` with `status: "not_found"` and deletes nothing (expected: the scenario passes); `items: []` and `"   "`: schema errors; whitespace-only query: a result, as without a query; limits 1/100/101: at most 1/100/100 results, never an error. Every result readable: no crash, no `undefined`/`NaN`/`[object Object]`, no stack trace |
+| F11 | Document preferences kept: `make-docx.mjs` the document `agent-out/<prefix>-kept.docx` that already has Zotero document preferences for `chicago` (spec below), then `inject_citations` on it with `style: "apa"` and `inject.mjs` (same `metadata.json`) to `agent-out/<prefix>-kept_skill.docx` with `apa` | `inject_citations`, inject.js | both inject 1 citation and warn that the document already has Zotero document preferences (kept as they are); both outputs keep the `chicago` preferences. Claim both with `compare_group: "prefs-kept"` and `document_prefs: "chicago"` |
 
 `make-docx.mjs` takes one or more output paths and the spec last (run from the repository root). A run
 is plain text, `{"zcite": {...}}` (own run), `{"zcite": {...}, "before": "…", "after": "…"}` (inline,
@@ -93,30 +102,20 @@ node test/live/agent/make-docx.mjs agent-out/<prefix>-edge.docx '[["Spaced ", {"
 node test/live/agent/make-docx.mjs agent-out/<prefix>-unknown.docx '[["Known ", {"zcite": {"keys": "ARTICLE"}}], ["Unknown ", {"zcite": {"keys": "ZZZZZZZZ"}}]]'
 node test/live/agent/make-docx.mjs agent-out/<prefix>-nozcite.docx '[["No citations here."]]'
 node test/live/agent/make-docx.mjs agent-out/<prefix>-badkey.docx '[["Bad ", {"zcite": {"keys": "../items"}}]]'
+# F11: an object spec, the same paragraphs in a document that already has Zotero document preferences
+node test/live/agent/make-docx.mjs agent-out/<prefix>-kept.docx '{"prefs": "chicago", "paragraphs": [["Kept ", {"zcite": {"keys": "ARTICLE"}}, "."]]}'
 ```
 
 ## Step 3 — Targeted path (files the change touches)
 
-Read `agent-out/diff.txt` (changed files and patch). For every row whose pattern matches a changed
-file, run its extra scenario once (IDs `T-…`). Skip rows that need permissions you do not have
-(`delete_collection` requires `unsafe_operations: all` and is never allowed in safe mode).
-
-| Changed files | ID | Extra scenario |
-|---|---|---|
-| `src/tools/search-library.ts` | T-search | `search_library` without query, each `sort` with `limit: 3`, `direction` asc/desc; empty query result is a message, not an error |
-| `src/tools/get-collections.ts`, `src/tools/get-collection-items.ts`, `src/utils/pagination.ts` | T-collections | `get_collections` with `include_trashed`; `get_collection_items` on the subcollection (empty → message) and with `excludeAttachments: false` (the linked attachment appears) |
-| `src/tools/get-items-details.ts`, `src/utils/item-formatter.ts` | T-details | `include_abstract: true`; unknown key mixed with known keys |
-| `src/tools/get-item-fulltext.ts`, `src/utils/zotero-fulltext.ts`, `src/utils/attachments.ts` | T-fulltext | `max_characters: 10` on an item with text; attachment key directly; unknown key → "Item not found" |
-| `src/tools/add-items.ts`, `src/utils/csl-to-zotero.ts`, `src/utils/zotero-item-types.ts`, `src/utils/write-results.ts` | T-add-items | `add_items` with `bookSection` (editor), `thesis`, `conferencePaper`; one invalid field for the type must be rejected with a readable message |
-| `src/tools/add-items-by-doi.ts`, `src/utils/doi-resolver.ts` | T-doi | one valid + one nonexistent DOI (`10.0000/<prefix>`) → partial success; DOI in `https://doi.org/…` form |
-| `src/tools/import-pdf-to-zotero.ts`, `src/utils/pdf-uploader.ts`, `src/utils/pdf-text-extractor.ts` | T-import | `import_pdf_to_zotero` of `https://journals.plos.org/ploscompbiol/article/file?id=10.1371/journal.pcbi.1003285&type=printable` as a child of the article; then `get_item_fulltext` returns text |
-| `src/tools/find-and-attach-pdfs.ts`, `src/utils/oa-pdf.ts`, `src/utils/unpaywall.ts` | T-find | `find_and_attach_pdfs` on the run collection with `dry_run: true`: `processed` equals the regular items in it |
-| `src/tools/add-linked-url-attachment.ts` | T-link | standalone linked attachment in both run collections |
-| `src/tools/delete-items.ts`, `src/tools/delete-collection.ts`, `src/utils/unsafe-operations.ts` | T-delete | `delete_items` with one own key + `ZZZZZZZZ` → `not_found`; if `unsafe_operations` is `all` and not safe mode: `delete_collection` on the subcollection |
-| `src/citation-injector/**`, `src/tools/inject-citations.ts` | T-inject | `ieee` on the author-date document (no `num`): both producers warn about the missing `num` and write `[?]`; claim them with `compare_group: "nonum-ieee"` |
-| `skills/zotero-skill-mcp-integrations/**` | T-skill | inject.js with the bare numeric user id instead of `users/<id>` on the apa document: same URIs; claim it, and the `inject_citations` apa document a second time, with `compare_group: "bare-id"` |
-| `src/utils/library-context.ts`, `src/server.ts`, `src/tools/index.ts` | T-library | per-call `library_type: "user"` + own `library_id` on two read tools; if `group_id`: repeat F7 reads |
-| `src/utils/timeouts.ts`, `src/utils/fetch-retry.ts` | T-network | run F1 and T-import (if not already run); every call must return (success or a clear error) |
+The table of targeted scenarios is `agent-out/scenarios.json` (a copy of `scenarios.json` of this skill): each row
+has an `id` (`T-…`), the `files` that select it (exact paths, or directories ending in `/**`) and the `scenario`.
+`context.targeted` lists the rows the changed files (`context.changed_files`, patch in `agent-out/diff.txt`) select,
+computed with the same table the verifier uses: read `agent-out/scenarios.json` and run the scenario of **every id in
+`context.targeted`** once, nothing else from the table. Report each as a scenario with its id: `passed`, `failed`, or
+`skipped` with the reason in `notes` when it needs permissions you do not have (`delete_collection` requires
+`unsafe_operations: all` and is never allowed in safe mode). The verifier requires every id of `context.targeted`.
+Claim what they create like everything else (T-doi: the item with `expect.publicationTitle`).
 
 ## Step 4 — Exploratory scenarios (max 5)
 
@@ -126,8 +125,8 @@ careless caller would send: `null`, missing or wrong-type values, empty strings 
 whitespace, very long strings, unicode, boundary numbers (0, negative, huge, fractional), duplicates,
 valid and invalid values mixed in one call. Example: the diff changes the input of
 `add_items_by_doi` → send `dois: ["", "  ", null]`, a 2000-character DOI, a DOI with unicode, a valid
-and an invalid DOI together. If the diff touches no tool (docs, CI only), pick the tools closest to it
-or run none and say so in the report.
+and an invalid DOI together. If the diff touches no tool (docs, CI or tests only), run **at least 1**
+scenario on the tools closest to it (those the changed workflow, script or test exercises) and say so in the report.
 
 - Same rules as everything else: only data this run creates (prefix and run tag on every title you
   write), respect `safe_mode` and `unsafe_operations`, never more than 5 scenarios.
@@ -168,7 +167,7 @@ the checklist document of the real corpus (`test/fixtures/corpus`) injected by t
 the case `proposed` (if Zotero opened its Document Preferences dialog, the user pressed OK on the style it
 proposed), and `lib-apa` (path A: the same items from the local library, the reference).
 Read `agent-render/index.json` first (document, style, path, page of each image, the dialog recorded at that
-step, the 12 corpus items with their cases, the known issues), then every PNG with the Read tool.
+step, the corpus items with their cases, the known issues), then every PNG with the Read tool.
 
 The pages are **WordCraft's rendering, not Word's**. Judge the **content** of the citations and of the
 bibliography, per style: which elements are there (authors, year, title, container, editors as "In … (Ed.)",
@@ -218,19 +217,22 @@ Write exactly this structure (JSON, no comments):
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "run_id": "<context.run_id>",
   "library_path": "users/123",
   "scenarios": [{ "id": "F1", "status": "passed|failed|skipped", "notes": "short reason, required for failed/skipped" }],
   "created": [
-    { "kind": "collection", "key": "ABCD1234", "library_path": "users/123", "expect": { "parent_collection": "WXYZ5678" } },
-    { "kind": "item", "key": "EFGH5678", "library_path": "users/123", "expect": { "title": "<exact title>", "collection": "ABCD1234", "doi": "10.1371/…", "has_pdf": true } },
-    { "kind": "attachment", "key": "IJKL9012", "library_path": "users/123", "expect": { "parent_item": "EFGH5678", "link_mode": "linked_url" } }
+    { "kind": "collection", "key": "ABCD2345", "library_path": "users/123", "call_no": 4, "expect": { "parent_collection": "WXYZ5678" } },
+    { "kind": "item", "key": "EFGH5678", "library_path": "users/123", "call_no": 6, "expect": { "collection": "ABCD2345", "doi": "10.1371/…", "has_pdf": true } },
+    { "kind": "item", "key": "QRST2345", "library_path": "users/123", "call_no": 31, "expect": { "publicationTitle": "Computers & Operations Research" } },
+    { "kind": "attachment", "key": "IJKL9234", "library_path": "users/123", "call_no": 9, "expect": { "parent_item": "EFGH5678", "link_mode": "linked_url" } }
   ],
-  "deleted": [{ "kind": "item", "key": "MNOP3456", "library_path": "users/123" }],
+  "deleted": [{ "kind": "item", "key": "MNPQ3456", "library_path": "users/123" }],
+  "metadata": [{ "path": "agent-out/metadata.json", "call_no": 14 }],
   "docx": [
     { "path": "agent-out/<prefix>-p-apa_cited.docx", "producer": "inject_citations", "style": "apa", "library_path": "users/123", "source": "agent-out/<prefix>-p-apa.docx", "compare_group": "parity-apa" },
-    { "path": "agent-out/<prefix>-p-apa_skill.docx", "producer": "inject.js", "style": "apa", "library_path": "users/123", "source": "agent-out/<prefix>-p-apa.docx", "compare_group": "parity-apa" }
+    { "path": "agent-out/<prefix>-p-apa_skill.docx", "producer": "inject.js", "style": "apa", "library_path": "users/123", "source": "agent-out/<prefix>-p-apa.docx", "compare_group": "parity-apa" },
+    { "path": "agent-out/<prefix>-kept_cited.docx", "producer": "inject_citations", "style": "apa", "library_path": "users/123", "source": "agent-out/<prefix>-kept.docx", "compare_group": "prefs-kept", "document_prefs": "chicago" }
   ],
   "exploratory": [
     { "id": "X1", "rationale": "one line tied to the diff", "calls": [{ "tool": "add_items_by_doi", "call_no": 42, "is_error": false }], "expected": "…", "observed": "…", "verdict": "ok|bug|unclear" }
@@ -241,13 +243,19 @@ Write exactly this structure (JSON, no comments):
 
 - `created`: every collection, item and attachment this run created that still exists (PDF
   attachments created by `add_items_by_doi` count: list them if the tool returned their key; otherwise
-  claim `has_pdf: true` on the parent). Only put `expect` fields you are sure of.
+  claim `has_pdf: true` on the parent), each with the `call_no` of the call that created it (the audit note of
+  that call). Do not copy titles: the verifier takes the title from the result of that call and compares it with
+  Zotero. A key the audit shows as created and claims.json does not list is reported. Only put `expect` fields you
+  are sure of (`publicationTitle` exactly as the item must have it, e.g. with a literal `&`).
 - `has_pdf: true` only if the tool reported the PDF as attached.
 - `deleted`: everything you deleted with `delete_items`/`delete_collection`.
-- `docx`: every document produced in F5, F6, F7, F9 and T-rows, each with its `source` (the
+- `metadata`: every metadata file you passed to `inject.mjs` (`agent-out/metadata.json`, `agent-out/group-metadata.json`),
+  each with the `call_no` of the `get_items_details` call whose result you wrote to it.
+- `docx`: every document produced in F5, F6, F7, F9, F11 and T-rows, each with its `source` (the
   `make-docx.mjs` output it was injected from) and `compare_group`. Ten parity entries (5 styles × 2
-  producers), two `parity-group` entries if F7 ran, two `edge` and two `nozcite` entries (never the
-  F0 probe document).
+  producers), two `parity-group` entries if F7 ran, two `edge`, two `nozcite` and two `prefs-kept` entries (never
+  the F0 probe document). `document_prefs` only on the `prefs-kept` entries (the style of the preferences the source
+  already had); every other document with citations must carry the preferences of its own `style`.
 - `exploratory`: the scenarios of step 4 (empty array if none).
 
 ## Step 7 — Cleanup and final report

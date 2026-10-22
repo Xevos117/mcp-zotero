@@ -238,9 +238,10 @@ function zoteroFromCsl(work, csl, context) {
     for (const n of csl[role] ?? []) creators.push(creator(zrole, n));
   }
   for (const n of context.container?.editor ?? []) creators.push(creator("editor", n));
-  const item = { itemType: type, title: fullTitle(csl), creators };
+  // registries send some strings HTML-escaped ("Arthropod Systematics &amp; Phylogeny"): a correct import has the text
+  const item = { itemType: type, title: decodeEntities(fullTitle(csl)), creators };
   const set = (field, value) => {
-    if (nonEmpty(value)) item[field] = String(value);
+    if (nonEmpty(value)) item[field] = decodeEntities(String(value));
   };
   if (csl.abstract) set("abstractNote", plainAbstract(csl.abstract));
   set("date", isoDate(csl.issued));

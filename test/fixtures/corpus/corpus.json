@@ -351,6 +351,32 @@
       },
       "pdf": null,
       "sameYearAs": "peroni2023a"
+    },
+    {
+      "id": "ament2025",
+      "key": "ASPHLGN5",
+      "itemType": "journalArticle",
+      "cases": [
+        "HTML entity in the journal name (Crossref: \"Arthropod Systematics &amp; Phylogeny\")",
+        "journal abbreviation (container-title-short ASP)",
+        "JATS abstract with a bold heading paragraph",
+        "diacritics (César)",
+        "two ISSNs"
+      ],
+      "collections": [],
+      "tags": [
+        "phylogenetics"
+      ],
+      "sources": {
+        "doi": "10.3897/asp.83.e146637"
+      },
+      "licence": {
+        "id": "CC-BY-4.0",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "verifiedAt": "https://arthropod-systematics.arphahub.com/article/146637/",
+        "statement": "Article page (full text, article_preview.php?id=146637): \"This is an open access article distributed under the terms of the Creative Commons Attribution License (CC BY 4.0)\" (link to CC BY 4.0); page metadata dc.rights and Crossref license: http://creativecommons.org/licenses/by/4.0/"
+      },
+      "pdf": null
     }
   ]
 }

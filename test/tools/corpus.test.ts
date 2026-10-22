@@ -19,33 +19,22 @@ import { corpusDois, corpusItem, corpusManifest, corpusPdf, corpusRoutes, corpus
 type Kind = "source" | "product";
 const CAUSES: Record<string, [Kind, string]> = {
   place: ["product", "publisher-location di Crossref ignorato (la CSL standard dice publisher-place): luogo perso"],
-  event: ["product", "event della CSL ignorato: conferenceName perso"],
-  short: ["product", "container-title-short ignorato: journalAbbreviation perso"],
   contributor: ["product", "contributor della CSL persi (relatori della tesi)"],
-  jats: ["product", "abstract con il markup JATS di Crossref (<jats:p>) invece del testo"],
-  subtitle: ["product", "sottotitolo della CSL perso nel titolo"],
-  article: ["product", "tipo CSL article (preprint) importato come journalArticle: repository perso"],
-  articleNumber: ["product", "article-number non usato come pagine (riviste senza pagine)"],
   chapterEditor: ["source", "il record Crossref del capitolo non ha i curatori (sono nel record del libro)"],
   chapterTitle: ["source", "Crossref mette il numero del capitolo nel titolo"],
   university: ["source", "l'università è solo nel record Zenodo, non nella CSL di DataCite (publisher Zenodo)"],
   reportType: ["source", "DataCite tipizza il report come article-journal"],
   particles: ["source", "DataCite mette le particelle nel nome (given \"Diego de las\", family \"Casas\")"],
-  arxivId: ["source", "l'identificativo arXiv non è nella CSL di DataCite"],
 };
 /** Known differences: work → field → cause. */
 const KNOWN: Record<string, Record<string, keyof typeof CAUSES>> = {
-  conneau2020: { place: "place", conferenceName: "event" },
-  ivanov2022: { journalAbbreviation: "short" },
-  edmond2020: { place: "place", abstractNote: "jats" },
-  eve2020: { creators: "chapterEditor", title: "chapterTitle", place: "place", abstractNote: "jats" },
-  kochan2017: { title: "subtitle", place: "place", abstractNote: "jats" },
+  conneau2020: { place: "place" },
+  edmond2020: { place: "place" },
+  eve2020: { creators: "chapterEditor", title: "chapterTitle", place: "place" },
+  kochan2017: { place: "place" },
   gualandi2022: { creators: "contributor", university: "university" },
   rda2020: { itemType: "reportType", publisher: "reportType", publicationTitle: "reportType", institution: "reportType" },
-  jiang2023: { itemType: "article", publisher: "article", repository: "article", creators: "particles", archiveID: "arxivId" },
-  eve2020b: { pages: "articleNumber" },
-  peroni2023a: { pages: "articleNumber", journalAbbreviation: "short" },
-  peroni2023b: { pages: "articleNumber", journalAbbreviation: "short", abstractNote: "jats" },
+  jiang2023: { creators: "particles" },
 };
 
 const IGNORED = new Set(["key", "collections", "tags", "relations"]);
@@ -148,7 +137,8 @@ describe("corpus reale: inject_citations sulla libreria curata", () => {
       para("Edited book, monograph ", zcite({ keys: `${K("edmond2020")},${K("kochan2017")}`, ...n("5,6") })) +
       para("Cyrillic ", zcite({ keys: K("ivanov2022"), ...n("7") })) +
       para("Preprint, thesis, report, web page ", zcite({ keys: ["jiang2023", "gualandi2022", "rda2020", "turingway"].map(K).join(","), ...n("8-11") })) +
-      para("Same single author and year ", zcite({ keys: `${K("eve2020")},${K("eve2020b")}`, ...n("4,12") }))
+      para("Same single author and year ", zcite({ keys: `${K("eve2020")},${K("eve2020b")}`, ...n("4,12") })) +
+      para("Ampersand in the journal name ", zcite({ keys: K("ament2025"), ...n("13") }))
     );
   };
 
@@ -157,16 +147,16 @@ describe("corpus reale: inject_citations sulla libreria curata", () => {
     const input = await dir.file(`corpus-${style}.docx`, await makeDocx(BODY(numbered)));
     const out = await h.call("inject_citations", { file_path: input, style });
     expect(out.isError, out.text).toBe(false);
-    expect(out.json).toMatchObject({ citations_found: 7, citations_injected: 7 });
+    expect(out.json).toMatchObject({ citations_found: 8, citations_injected: 8 });
     return expectValidDocx(await readFile(out.json.output_path), { style, libraryPath: `users/${USER_ID}` });
   }
 
   it.each<CitationStyle>(["apa", "harvard", "chicago", "ieee", "vancouver"])(
-    "CORPUS-IC-01 stile %s: tutte le voci del corpus, docx valido, 12 voci in bibliografia",
+    "CORPUS-IC-01 stile %s: tutte le voci del corpus, docx valido, 13 voci in bibliografia",
     async (style) => {
       const r = await inject(style);
-      expect(r.citations).toHaveLength(7);
-      expect(r.rendered!.bibliography).toHaveLength(12);
+      expect(r.citations).toHaveLength(8);
+      expect(r.rendered!.bibliography).toHaveLength(13);
     }
   );
 
@@ -179,6 +169,9 @@ describe("corpus reale: inject_citations sulla libreria curata", () => {
     expect(bib).toContain("de las Casas, D.");
     expect(bib).toContain("The Turing Way Community");
     expect(bib).toContain("Research Data Alliance FAIR Data Maturity Model Working Group");
+    // the journal name that Crossref sends HTML-escaped: a literal & in the bibliography, never the entity
+    expect(bib).toContain("Arthropod Systematics & Phylogeny");
+    expect(bib).not.toContain("&amp;");
     expect(r.rendered!.citations[2]).toContain("p. 110");
     // same author list and year: a/b suffixes (assigned in bibliography order, by title)
     expect(r.rendered!.citations[6]).toBe("(Eve, 2020b, 2020a)");

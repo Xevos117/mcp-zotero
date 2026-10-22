@@ -2255,8 +2255,8 @@ describe("delete_items", () => {
     const { mock, getStub, deleteStub } = createZoteroApiMock(itemsData);
     const error412 = new Error("Precondition failed") as Error & { response?: { status: number } };
     error412.response = { status: 412 };
-    // First get succeeds (returns items), then delete throws 412
-    deleteStub.mockRejectedValueOnce(error412);
+    // gets succeed (return items), every delete throws 412: one retry, then the conflict error
+    deleteStub.mockRejectedValue(error412);
 
     const result = await handleToolCall(
       "delete_items",
@@ -2269,6 +2269,8 @@ describe("delete_items", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.error).toContain("modified by another client");
     expect(parsed.status).toBe("version_conflict");
+    expect(parsed.http_status).toBe(412);
+    expect(deleteStub).toHaveBeenCalledTimes(2);
   });
 
   it("passes correct keys to delete API call", async () => {

@@ -130,6 +130,33 @@ const CSL_NAME_CREATOR_TYPES = [
   ["translator", "translator"],
 ] as const;
 
+/** Zotero field holding the CSL publisher, for the types that call it otherwise (Zotero's base field mappings). */
+const PUBLISHER_FIELD: Partial<Record<ZoteroItemType, string>> = {
+  thesis: "university",
+  report: "institution",
+  preprint: "repository",
+};
+
+/** Zotero field holding the CSL number (report number, standard or manuscript number). */
+const NUMBER_FIELD: Partial<Record<ZoteroItemType, string>> = {
+  report: "reportNumber",
+  standard: "number",
+  manuscript: "number",
+};
+
+/** arXiv DOIs (DataCite): the item is a preprint in the arXiv repository. */
+const ARXIV_DOI = /^10\.48550\/arxiv\.(.+)$/i;
+
+/** JATS abstract (Crossref: <jats:p>, <jats:italic>, …) → plain text, one line per paragraph, as Zotero's import does. */
+function plainAbstract(abstract: string): string {
+  if (!/<jats:/.test(abstract)) return abstract;
+  return abstract
+    .split(/<\/jats:p>/)
+    .map((p) => p.replace(/<\/?jats:[^>]*>/g, " ").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 type ZoteroCreatorOut = { firstName: string; lastName: string; creatorType: string } | { name: string; creatorType: string };
 
 export interface CslToZoteroOptions {
@@ -149,7 +176,8 @@ export function cslToZoteroItem(
   csl: CslItemData,
   options?: CslToZoteroOptions
 ): CslToZoteroResult {
-  const itemType = (CSL_TO_ZOTERO_TYPE[csl.type] ?? "journalArticle") as ZoteroItemType;
+  const arxiv = ARXIV_DOI.exec(csl.DOI ?? "");
+  const itemType = (arxiv ? "preprint" : (CSL_TO_ZOTERO_TYPE[csl.type] ?? "journalArticle")) as ZoteroItemType;
 
   // Authors always (as before); other roles only where the item type has them, or the API rejects the item.
   // A CSL `literal` (institution, consortium) is Zotero's single-field name
@@ -172,25 +200,37 @@ export function cslToZoteroItem(
 
   const tags = (options?.tags ?? []).map((t) => ({ tag: t }));
 
+  // Zotero joins the subtitle to the title; the article number is the item's number, or its pages when it has none
+  const subtitle = Array.isArray(csl.subtitle) ? csl.subtitle[0] : csl.subtitle;
+  const title = subtitle ? `${csl.title ?? ""}: ${subtitle}` : (csl.title ?? "");
+  const number = csl.number ?? csl["article-number"] ?? "";
+  const numberField = NUMBER_FIELD[itemType];
+
   // Build candidate fields (CSL → Zotero field names)
   const candidates: Record<string, string> = {
-    title: csl.title ?? "",
+    title,
     date,
     DOI: csl.DOI ?? "",
     volume: csl.volume ?? "",
     issue: csl.issue ?? "",
-    pages: csl.page ?? "",
+    pages: csl.page ?? (numberField ? "" : (csl["article-number"] ?? "")),
     publisher: csl.publisher ?? "",
     place: csl["publisher-place"] ?? "",
     url: csl.URL ?? "",
-    abstractNote: csl.abstract ?? "",
+    abstractNote: csl.abstract ? plainAbstract(csl.abstract) : "",
     ISBN: Array.isArray(csl.ISBN) ? csl.ISBN[0] : csl.ISBN ?? "",
     ISSN: Array.isArray(csl.ISSN) ? csl.ISSN[0] : csl.ISSN ?? "",
     edition: csl.edition ?? "",
     numPages: csl["number-of-pages"] ?? "",
     series: csl["collection-title"] ?? "",
     language: csl.language ?? "",
+    journalAbbreviation: csl["container-title-short"] ?? "",
+    conferenceName: csl["event-title"] ?? csl.event ?? "",
   };
+  if (numberField) candidates[numberField] = number;
+  const publisherField = PUBLISHER_FIELD[itemType];
+  if (publisherField) candidates[publisherField] = arxiv ? "arXiv" : (csl.publisher ?? "");
+  if (arxiv) candidates.archiveID = `arXiv:${arxiv[1]}`;
 
   // Map container-title to the correct field for this item type
   const containerTitleField = CONTAINER_TITLE_FIELD[itemType];
@@ -232,6 +272,16 @@ function containerTitle(item: ZoteroItemData): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
+/**
+ * CSL date of a Zotero date: "YYYY-MM-DD" (or a prefix of it) as date-parts; a date that does not start that way
+ * ("October 2023", "Spring 2023") as `raw`, which citeproc parses itself, instead of being dropped.
+ */
+export function cslDate(value: string | undefined): CslItemData["issued"] | undefined {
+  if (!value) return undefined;
+  const parts = value.split("-").map(Number).filter((n) => !isNaN(n));
+  return parts.length > 0 ? { "date-parts": [parts] } : { raw: value };
+}
+
 export function zoteroItemToCsl(item: ZoteroItemData): CslItemData {
   const names: Partial<Record<(typeof CSL_NAME_CREATOR_TYPES)[number][0], CslName[]>> = {};
   for (const [variable, creatorType] of CSL_NAME_CREATOR_TYPES) {
@@ -239,29 +289,34 @@ export function zoteroItemToCsl(item: ZoteroItemData): CslItemData {
     if (list.length > 0) names[variable] = list;
   }
 
-  let issued: CslItemData["issued"] | undefined;
-  if (item.date) {
-    const parts = item.date.split("-").map(Number).filter((n) => !isNaN(n));
-    if (parts.length > 0) {
-      issued = { "date-parts": [parts] };
-    }
-  }
-
   // The Zotero API returns every field of the item type, empty ones as "": keep them out of the field code
-  const text = (v: string | undefined) => (v ? v : undefined);
+  const fields = item as Record<string, unknown>;
+  const text = (...values: unknown[]) => values.find((v): v is string => typeof v === "string" && v !== "") ?? undefined;
+  // accessDate is "YYYY-MM-DD hh:mm:ss" or ISO: only the day
+  const accessDate = text(fields.accessDate)?.replace(/[T ].*$/, "");
   return {
     type: ZOTERO_TO_CSL_TYPE[item.itemType ?? ""] ?? "article-journal",
     title: text(item.title),
     ...names,
-    issued,
+    issued: cslDate(item.date),
     DOI: text(item.DOI),
     "container-title": containerTitle(item),
     volume: text(item.volume),
     issue: text(item.issue),
     page: text(item.pages),
-    publisher: text(item.publisher),
+    // Zotero's base fields: university (thesis), institution (report), repository (preprint) are the publisher;
+    // reportNumber and archiveID the number; thesisType and reportType the genre
+    publisher: text(item.publisher, fields.university, fields.institution, fields.repository),
     "publisher-place": text(item.place),
+    number: text(fields.reportNumber, fields.archiveID),
+    genre: text(fields.thesisType, fields.reportType),
     URL: text(item.url),
+    accessed: cslDate(accessDate),
+    ISBN: text(fields.ISBN),
+    ISSN: text(fields.ISSN),
+    edition: text(fields.edition),
+    language: text(fields.language),
+    "number-of-pages": text(fields.numPages),
     // abstract deliberately omitted: it bloats every field code (same choice as the skill's inject.js)
   };
 }

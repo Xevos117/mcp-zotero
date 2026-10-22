@@ -2,6 +2,7 @@
 // Prepares agent-out/ for the test-mcp-zotero skill (CI and local use the same files):
 //   agent-out/context.json   run id/tag/prefix, mode, safe mode, group, cleanup owner
 //   agent-out/diff.txt       changed files + patch against the base (truncated), for the targeted path
+//   agent-out/scenarios.json the targeted scenarios table of the skill (context.targeted: the rows the change selects)
 //   agent-audit/             context.json copy for the hooks of .claude/agent-smoke (outside agent-out/,
 //                            so the agent cannot edit it), then audit.jsonl / denials.jsonl written by the hooks
 // Both directories are emptied first, so nothing from an earlier run (or a stray checked-in file) is ever verified.
@@ -12,8 +13,9 @@
 // starts, unless the key belongs to that user and the library has the __mzt_disposable__ sentinel.
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { SCENARIOS_PATH, loadScenarios, targetedScenarios } from "./scenarios.mjs";
 
 const OUT = "agent-out";
 const AUDIT = "agent-audit";
@@ -90,6 +92,20 @@ const git = (...args) => {
   }
 };
 
+// changed files of the targeted path (null if git cannot diff against the base: verify-claims reports it)
+let changedFiles = null;
+try {
+  changedFiles = execFileSync("git", ["diff", "--name-only", `${base}...HEAD`], { encoding: "utf8", timeout: 30_000, maxBuffer: 20 * 1024 * 1024 })
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+} catch (e) {
+  console.warn(`git diff --name-only ${base}...HEAD failed: ${e.message.split("\n")[0]}`);
+}
+const scenarios = loadScenarios();
+// the tools the server registers (manifest.json is kept in sync with them by test/utils/release-metadata.test.ts)
+const toolCount = JSON.parse(readFileSync(new URL("../../../manifest.json", import.meta.url), "utf8")).tools.length;
+
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 const context = {
@@ -104,12 +120,16 @@ const context = {
   // in CI the deterministic verifier checks the claimed state, then the workflow deletes the run
   cleanup: mode === "ci" ? "verifier" : "agent",
   base,
+  tool_count: toolCount,
+  changed_files: changedFiles,
+  targeted: changedFiles ? targetedScenarios(changedFiles, scenarios) : [],
   created_at: new Date().toISOString(),
 };
 rmSync(AUDIT, { recursive: true, force: true });
 mkdirSync(AUDIT, { recursive: true });
 writeFileSync(join(OUT, "context.json"), JSON.stringify(context, null, 2) + "\n");
 writeFileSync(join(AUDIT, "context.json"), JSON.stringify(context, null, 2) + "\n");
+copyFileSync(SCENARIOS_PATH, join(OUT, "scenarios.json"));
 
 const names = git("diff", "--name-status", `${base}...HEAD`);
 let patch = git("diff", "--unified=2", `${base}...HEAD`);

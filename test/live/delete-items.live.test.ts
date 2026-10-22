@@ -60,9 +60,10 @@ describe.skipIf(!live.enabled)("delete_items (live)", () => {
 
   it("LIVE-DI-06 genitore con allegato figlio → cancellati entrambi", async () => {
     const r = await items.call("delete_items", { item_keys: [parent] });
-    expect(r.json.deleted_count).toBe(1);
-    expect(await rawItem(parent)).toBeNull();
-    expect(await rawItem(child)).toBeNull();
+    expect(r.isError, r.text).toBe(false);
+    expect(r.json.deleted_count, r.text).toBe(1);
+    expect(await rawItem(parent), r.text).toBeNull();
+    expect(await rawItem(child), r.text).toBeNull();
   });
 
   // Regressione del bug di perdita dati (corretto nella 2.0.1): con sole chiavi malformate la Web API ignora il

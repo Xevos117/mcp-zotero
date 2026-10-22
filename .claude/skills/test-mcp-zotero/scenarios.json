@@ -1,0 +1,90 @@
+{
+  "description": "Targeted scenarios of the test-mcp-zotero skill (step 3): a row is selected when a changed file matches one of its patterns (exact path, or a directory prefix ending in /**). Read by test/live/agent/prepare.mjs (context.targeted, copy in agent-out/scenarios.json) and by test/live/verify-claims.mjs (claims schema 3: every selected row must be reported).",
+  "rows": [
+    {
+      "id": "T-search",
+      "files": ["src/tools/search-library.ts"],
+      "scenario": "search_library without query, each sort with limit: 3, direction asc/desc; an empty query result is a message, not an error"
+    },
+    {
+      "id": "T-collections",
+      "files": ["src/tools/get-collections.ts", "src/tools/get-collection-items.ts", "src/utils/pagination.ts"],
+      "scenario": "get_collections with include_trashed; get_collection_items on the subcollection (empty: a message) and with excludeAttachments: false (the linked attachment appears)"
+    },
+    {
+      "id": "T-create",
+      "files": ["src/tools/create-collection.ts"],
+      "scenario": "create_collection with a unicode name (<prefix> Ünïcødé 学习 ✓) under the subcollection (parent_collection = the F2 subcollection) and with a name of only spaces (a readable error, nothing created); claim the new collection with expect.parent_collection"
+    },
+    {
+      "id": "T-details",
+      "files": ["src/tools/get-items-details.ts", "src/utils/item-formatter.ts"],
+      "scenario": "include_abstract: true; an unknown key mixed with known keys: the key → metadata map plus a not_found array, without isError; only unknown keys: an empty result (\"No items found for the given keys\"), without isError"
+    },
+    {
+      "id": "T-fulltext",
+      "files": ["src/tools/get-item-fulltext.ts", "src/utils/zotero-fulltext.ts", "src/utils/attachments.ts"],
+      "scenario": "max_characters: 10 on an item with text; the attachment key directly; unknown key ZZZZZZZZ: isError \"Item not found\""
+    },
+    {
+      "id": "T-add-items",
+      "files": ["src/tools/add-items.ts", "src/utils/csl-to-zotero.ts", "src/utils/zotero-item-types.ts", "src/utils/write-results.ts", "src/types/csl-types.ts"],
+      "scenario": "add_items with a bookSection (editor), a thesis (university, thesisType) and a conferencePaper; one field invalid for its type must be rejected with a readable message"
+    },
+    {
+      "id": "T-doi",
+      "files": ["src/tools/add-items-by-doi.ts", "src/utils/doi-resolver.ts", "src/utils/html-entities.ts", "src/utils/csl-to-zotero.ts", "src/types/csl-types.ts"],
+      "scenario": "add_items_by_doi with 10.1016/j.cor.2009.01.015 and the nonexistent 10.0000/<prefix> in one call: partial success; claim the item with expect.publicationTitle \"Computers & Operations Research\" (a literal &, never &amp;); then one DOI in https://doi.org/… form"
+    },
+    {
+      "id": "T-import",
+      "files": ["src/tools/import-pdf-to-zotero.ts", "src/utils/pdf-uploader.ts", "src/utils/pdf-text-extractor.ts"],
+      "scenario": "import_pdf_to_zotero of https://journals.plos.org/ploscompbiol/article/file?id=10.1371/journal.pcbi.1003285&type=printable as a child of the article; then get_item_fulltext returns text"
+    },
+    {
+      "id": "T-find",
+      "files": ["src/tools/find-and-attach-pdfs.ts", "src/utils/oa-pdf.ts", "src/utils/unpaywall.ts"],
+      "scenario": "find_and_attach_pdfs on the run collection with dry_run: true: processed equals the regular items in it"
+    },
+    {
+      "id": "T-link",
+      "files": ["src/tools/add-linked-url-attachment.ts"],
+      "scenario": "a standalone linked attachment in both run collections"
+    },
+    {
+      "id": "T-delete",
+      "files": ["src/tools/delete-items.ts", "src/tools/delete-collection.ts", "src/utils/unsafe-operations.ts"],
+      "scenario": "add_items one book <prefix> T-delete to delete, then delete_items with its key + ZZZZZZZZ: deleted_count 1 and ZZZZZZZZ in not_found; if unsafe_operations is all and not safe mode: create_collection <prefix> T-delete to delete and delete_collection on it. Claim both under deleted"
+    },
+    {
+      "id": "T-inject",
+      "files": ["src/citation-injector/**", "src/tools/inject-citations.ts"],
+      "scenario": "ieee on the author-date document (no num): both producers warn about the missing num and write [?]; claim them with compare_group \"nonum-ieee\""
+    },
+    {
+      "id": "T-skill",
+      "files": ["skills/zotero-skill-mcp-integrations/**"],
+      "scenario": "inject.js with the bare numeric user id instead of users/<id> on the apa document: same URIs; claim it, and the inject_citations apa document a second time, with compare_group \"bare-id\""
+    },
+    {
+      "id": "T-library",
+      "files": ["src/utils/library-context.ts", "src/server.ts", "src/tools/index.ts", "src/tools/get-user-id.ts", "src/types/zotero-types.ts"],
+      "scenario": "per-call library_type: \"user\" + own library_id on two read tools; get_user_id answers the same library_path; if group_id: repeat the F7 reads"
+    },
+    {
+      "id": "T-keys",
+      "files": ["src/utils/zotero-keys.ts"],
+      "scenario": "read tools only (never a write tool): get_items_details with item_keys [\"ABCD0123\"] (0 and 1), [\"ABCDEFGO\"] (O), [\"abcd2345\"] (lowercase), [\"ABCD234\"] (7 characters) and [\"../items\"]; get_item_fulltext with item_key \"../items\"; get_collection_items with collection_key \"abcd2345\": each a validation error with the message \"Invalid Zotero key: expected 8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ\" and nothing returned"
+    },
+    {
+      "id": "T-errors",
+      "files": ["src/utils/error-hints.ts", "src/utils/error-formatter.ts", "src/utils/logger.ts"],
+      "scenario": "get_item_fulltext on ZZZZZZZZ, get_collection_items on ZZZZZZZZ and add_items into collection_key ZZZZZZZZ (one book with the run prefix and tag): each an isError with a hint that names the next step (search_library, get_collections), no stack trace"
+    },
+    {
+      "id": "T-network",
+      "files": ["src/utils/timeouts.ts", "src/utils/fetch-retry.ts", "src/utils/concurrency.ts", "src/utils/json-response.ts"],
+      "scenario": "run F1 and T-import (if not already run); every call must return (a success or a clear error)"
+    }
+  ]
+}

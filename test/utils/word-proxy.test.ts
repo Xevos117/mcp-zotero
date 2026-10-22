@@ -185,8 +185,11 @@ describe("word-proxy: render.mjs (WP-R)", () => {
       "Research Data Alliance FAIR Data Maturity Model Working Group. (2020). FAIR Data Maturity Model: Specification and guidelines. Research Data Alliance. https://doi.org/10.15497/rda00050",
       "The Turing Way Community. (n.d.). Guide for Reproducible Research. The Turing Way. Retrieved October 21, 2026, from https://book.the-turing-way.org/reproducible-research/reproducible-research",
     ];
-    const entries = itemDataItems(expectJson.ab.differences, bibliography, read("test/fixtures/corpus/library.json"), read("test/fixtures/corpus/corpus.json"));
+    // the four differences expected before #50 (zoteroItemToCsl now maps those fields: expect.json lists none)
+    const differences = ["[University of Bologna]", "(arXiv:2310.06825). arXiv.", "Specification and guidelines. Research Data Alliance.", "Retrieved October 21, 2026, from"];
+    const entries = itemDataItems(differences, bibliography, read("test/fixtures/corpus/library.json"), read("test/fixtures/corpus/corpus.json"));
     expect(entries.map((e: { item: string }) => e.item)).toEqual(["gualandi2022", "jiang2023", "rda2020", "turingway"]);
+    expect(itemDataItems(expectJson.ab.differences, bibliography, read("test/fixtures/corpus/library.json"), read("test/fixtures/corpus/corpus.json"))).toEqual([]);
     expect(() => itemDataItems(["nowhere"], bibliography, read("test/fixtures/corpus/library.json"), read("test/fixtures/corpus/corpus.json"))).toThrow(/no corpus item/);
   });
 });

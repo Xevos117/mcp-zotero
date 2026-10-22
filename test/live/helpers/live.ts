@@ -5,6 +5,8 @@ import { inject, TestContext } from "vitest";
 import { startServerProcess, call as rawCall, Spawned } from "../../e2e/server-process.js";
 import { apiKey, scrub, track, recordSoftSkip, unpaywallEmail, LIVE_CALL_TIMEOUT_MS } from "./env.js";
 import { ZoteroWeb } from "./zotero-web.js";
+// @ts-expect-error plain .mjs module without type declarations
+import { externalReason } from "./external.mjs";
 
 /** Valori preparati da test/live/global-setup.ts e condivisi con i file di test. */
 export interface LiveFixtures {
@@ -147,18 +149,9 @@ export class ExternalServiceError extends Error {
   }
 }
 
-const EXTERNAL_PATTERNS = [
-  /DOI resolution failed for [^"\n]*?: (?:429|5\d\d)\b/,
-  /timed out after/i,
-  /fetch failed|ECONNRESET|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|socket hang up/i,
-  /Download failed for all \d+ URL/,
-  /(?:status|HTTP) (?:50[234]|429)\b/,
-];
-
-/** Motivo per cui il risultato di un tool indica un guasto esterno, o null. */
+/** Motivo per cui il risultato di un tool indica un guasto esterno, o null (pattern in helpers/external.mjs). */
 export function externalFailure(r: CallResult): string | null {
-  const hit = EXTERNAL_PATTERNS.find((re) => re.test(r.text));
-  return hit ? (r.text.match(hit)?.[0] ?? "external failure") : null;
+  return externalReason(r.text);
 }
 
 /** Da chiamare subito dopo il tool, prima delle asserzioni: un guasto esterno diventa ExternalServiceError. */

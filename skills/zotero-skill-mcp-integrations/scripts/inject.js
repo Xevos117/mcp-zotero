@@ -162,7 +162,8 @@ function parseAuthors(authorString) {
 }
 
 /**
- * Parse a date string (e.g. "2017", "2017-03", "2017-03-15") into a CslDate.
+ * Parse a date string (e.g. "2017", "2017-03", "2017-03-15") into a CslDate; a date that does not start that way
+ * ("October 2023") as `raw`, which citeproc parses itself (same rule as cslDate in src/utils/csl-to-zotero.ts).
  * @param {string} dateString
  * @returns {{[key: string]: unknown} | undefined}
  */
@@ -172,7 +173,7 @@ function parseDate(dateString) {
     .split("-")
     .map(Number)
     .filter((n) => !isNaN(n));
-  if (parts.length === 0) return undefined;
+  if (parts.length === 0) return { raw: dateString };
   return { "date-parts": [parts] };
 }
 
@@ -222,10 +223,23 @@ function metadataToCsl(meta) {
   if (meta.volume) csl.volume = meta.volume;
   if (meta.issue) csl.issue = meta.issue;
   if (meta.page || meta.pages) csl.page = meta.page || meta.pages;
-  if (meta.publisher) csl.publisher = meta.publisher;
+  // Zotero's base fields, as in zoteroItemToCsl: university, institution, repository are the publisher; reportNumber
+  // and archiveID the number; thesisType and reportType the genre
+  const publisher = meta.publisher || meta.university || meta.institution || meta.repository;
+  if (publisher) csl.publisher = publisher;
   // get_items_details returns Zotero's field name "place"; publisherPlace kept for older metadata files
   if (meta.publisherPlace || meta.place) csl["publisher-place"] = meta.publisherPlace || meta.place;
+  if (meta.reportNumber || meta.archiveID) csl.number = meta.reportNumber || meta.archiveID;
+  if (meta.thesisType || meta.reportType) csl.genre = meta.thesisType || meta.reportType;
   if (meta.URL || meta.url) csl.URL = meta.URL || meta.url;
+  // accessDate is "YYYY-MM-DD hh:mm:ss" or ISO: only the day
+  const accessed = typeof meta.accessDate === "string" ? parseDate(meta.accessDate.replace(/[T ].*$/, "")) : undefined;
+  if (accessed) csl.accessed = accessed;
+  if (meta.ISBN) csl.ISBN = meta.ISBN;
+  if (meta.ISSN) csl.ISSN = meta.ISSN;
+  if (meta.edition) csl.edition = meta.edition;
+  if (meta.language) csl.language = meta.language;
+  if (meta.numPages) csl["number-of-pages"] = meta.numPages;
 
   return csl;
 }

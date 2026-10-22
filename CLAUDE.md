@@ -112,8 +112,10 @@ need them, never at job level.
 Path filters are a `changes` job, not `on.paths` (a workflow filtered by `on.paths` would leave a
 required check pending). The required-name jobs (`live-tests`, `agent-smoke`) are never skipped, since
 a skipped required check counts as passed: they run with `!cancelled()`, fail when `changes` or the
-real jobs failed or timed out, and pass without testing only when nothing relevant changed (or for
-fork PRs and Dependabot, which get no secrets; the agent smoke test also skips runs started by anyone
+real jobs failed or timed out, and pass without testing only when nothing relevant changed, when an earlier run
+on the same PR head commit already passed every job in scope (`scripts/duplicate-run.mjs`: a force-push of the
+base of a stacked PR re-sends `synchronize`; the Job Summary links that run), or for
+fork PRs and Dependabot, which get no secrets (the agent smoke test also skips runs started by anyone
 other than the owner or `github-actions[bot]`, and its notice names the condition). Fork PRs need the owner's
 approval before any workflow runs (repository setting: approval for all external contributors). `test.yml` cancels a superseded run (cancelled,
 not red); `claude-agent-smoke.yml` never cancels a running run (a cancel mid-suite left

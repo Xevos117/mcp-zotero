@@ -18,6 +18,14 @@ import {
   auditGaps,
   auditNumberingProblems,
   guardrailFindings,
+  createdByCalls,
+  createdCallFindings,
+  undeclaredCreations,
+  deletionWarnings,
+  injectMetadataPath,
+  metadataFindings,
+  f1SkipEvidence,
+  targetedFindings,
   // @ts-expect-error plain .mjs script without type declarations
 } from "../../test/live/verify-claims.mjs";
 import { startHarness } from "../helpers/mcp-harness.js";
@@ -426,6 +434,41 @@ describe("verify-claims: documento di parità con i due produttori reali (VC-07,
     bib.bibliography = [];
     expect(firstDifference(base, bib)).toBe(".bibliography length 1 vs 0");
   });
+  it("VC-08c schema 3: preferenze del documento in ogni documento e nell'impronta; caso \"preferenze mantenute\" (F11) con i due produttori", async () => {
+    const make = join(ROOT, "test", "live", "agent", "make-docx.mjs");
+    const kept = JSON.stringify({ prefs: "chicago", paragraphs: [["Kept ", { zcite: { keys: "RTCLQQRR" } }, "."]] });
+    expect((await node(make, ["agent-out/kept.docx", kept], { cwd: dir.path })).code).toBe(0);
+    expect((await node(make, ["agent-out/bad-prefs.docx", JSON.stringify({ prefs: "mla", paragraphs: [["x"]] })], { cwd: dir.path })).code).toBe(2);
+    const h = await startHarness();
+    try {
+      h.net.on("GET", `${ZBASE}/items`, zLibraryQuery(ITEMS));
+      for (const it of ITEMS) h.net.on("GET", `${ZBASE}/items/${it.key}`, zSingle(it));
+      const tool = await h.call("inject_citations", { file_path: join(out, "kept.docx"), style: "apa" });
+      expect(tool.isError, tool.text).toBe(false);
+      expect(tool.json.warnings.join(" ")).toMatch(/already has Zotero document preferences/);
+      const skill = await node(join(ROOT, "test", "live", "agent", "inject.mjs"), ["agent-out/kept.docx", "agent-out/kept_skill.docx", "agent-out/meta-apa.json", `users/${USER_ID}`, "apa"], { cwd: dir.path });
+      expect(skill.code, skill.stderr).toBe(0);
+      expect(skill.stderr).toMatch(/already has Zotero document preferences/);
+      const opts = { style: "apa" as CitationStyle, requireDocumentPrefs: true, documentPrefsStyle: "chicago" as CitationStyle };
+      const a = await validateDocx(await readFile(tool.json.output_path), opts);
+      const b = await validateDocx(await readFile(join(out, "kept_skill.docx")), opts);
+      expect([...a.errors, ...b.errors]).toEqual([]);
+      expect(a.documentPrefs?.styleId).toBe("http://www.zotero.org/styles/chicago-author-date");
+      expect(firstDifference(docxFingerprint(a, { prefs: true }), docxFingerprint(b, { prefs: true }))).toBeNull();
+      // without documentPrefsStyle the kept preferences are another style: an error
+      expect((await validateDocx(await readFile(tool.json.output_path), { style: "apa" })).errors.join("\n")).toMatch(/ZOTERO_PREF: stile .*chicago-author-date invece di .*apa/);
+    } finally {
+      await h.close();
+    }
+    // every parity output has the preferences of its style; schema 2 fingerprints leave them out
+    const apa = await validateDocx(await readFile(join(out, "p-apa_skill.docx")), { style: "apa", requireDocumentPrefs: true });
+    expect(apa.errors).toEqual([]);
+    expect(docxFingerprint(apa, { prefs: true }).documentPrefs).toEqual({ styleId: "http://www.zotero.org/styles/apa", fieldType: "Field", chunks: 1 });
+    expect(docxFingerprint(apa)).not.toHaveProperty("documentPrefs");
+    const other = docxFingerprint(apa, { prefs: true });
+    other.documentPrefs = null;
+    expect(firstDifference(docxFingerprint(apa, { prefs: true }), other)).toBe(".documentPrefs");
+  });
 });
 
 describe("verify-claims: script completo senza rete (VC-09)", () => {
@@ -624,5 +667,200 @@ describe("verify-claims: evidenza dagli hook (VC-10)", () => {
       "F0: the chained Bash probe was not denied by the Bash hook",
       "F0: the delete of XXXXXXXX was not denied by the delete hook",
     ]);
+  });
+});
+
+describe("verify-claims: claims schema 3 (VC-13)", () => {
+  const entry = (n: number, tool: string, input: unknown, result: unknown, isError = false) => ({
+    run_id: "r1",
+    call_no: n,
+    tool_use_id: `t${n}`,
+    tool_name: tool === "Bash" ? "Bash" : `mcp__zotero__${tool}`,
+    tool_input: input,
+    is_error: isError,
+    text: typeof result === "string" ? result : JSON.stringify(result),
+  });
+  const calls = auditCalls([
+    entry(1, "create_collection", { name: "mzt-r1 agent" }, { collection_key: "CLLC2222", name: "mzt-r1 agent" }),
+    entry(2, "add_items", { items: [{ title: "mzt-r1 a" }, { title: "mzt-r1 to delete" }] }, { success: [{ index: 0, item_key: "ITEM2222", title: "mzt-r1 a" }, { index: 1, item_key: "DLTE2222", title: "mzt-r1 to delete" }] }),
+    entry(3, "add_items_by_doi", { dois: ["10.1/x"], library_type: "group", library_id: "777" }, { success: [{ doi: "10.1/x", item_key: "GRPI2222", title: "From DOI" }], pdf_results: [{ attachment_key: "PDFA2222" }] }),
+    entry(4, "delete_items", { item_keys: ["DLTE2222"] }, { deleted_keys: ["DLTE2222"], deleted_count: 1 }),
+    entry(5, "delete_items", { item_keys: ["ITEM2222"] }, { deleted_keys: ["ITEM2222"], deleted_count: 1 }),
+    entry(6, "get_items_details", { item_keys: ["ITEM2222"] }, { ITEM2222: { title: "mzt-r1 a" } }),
+    entry(7, "Bash", { command: "node test/live/agent/inject.mjs agent-out/a.docx agent-out/a_skill.docx agent-out/metadata.json users/1 apa" }, '{"found":1}'),
+    entry(8, "get_items_details", { item_keys: [] }, { error: "x" }, true),
+  ]);
+
+  it("VC-13a oggetti creati dall'audit con libreria, call_no e titolo riportato dal tool", () => {
+    const m = createdByCalls(calls, "users/1");
+    expect([...m.keys()]).toEqual(["CLLC2222", "ITEM2222", "DLTE2222", "GRPI2222", "PDFA2222"]);
+    expect(m.get("CLLC2222")).toEqual({ kind: "collection", library_path: "users/1", call_no: 1, tool: "create_collection", name: "mzt-r1 agent" });
+    expect(m.get("GRPI2222")).toMatchObject({ kind: "item", library_path: "groups/777", call_no: 3, name: "From DOI" });
+    expect(m.get("PDFA2222")).toMatchObject({ kind: "attachment", call_no: 3, name: undefined });
+  });
+
+  it("VC-13b created[].call_no: deve essere la chiamata che ha creato la chiave; il titolo atteso è quello del risultato", () => {
+    const res = createdCallFindings(
+      [
+        { kind: "item", key: "ITEM2222", call_no: 2, library_path: "users/1" },
+        { kind: "collection", key: "CLLC2222", call_no: 2, library_path: "users/1" },
+        { kind: "item", key: "GRPI2222", library_path: "groups/777" },
+        { kind: "item", key: "NONE2222", call_no: 9, library_path: "users/1" },
+        { kind: "item", key: "GRPI2222", call_no: 3, library_path: "users/1" },
+      ],
+      calls,
+      "users/1"
+    );
+    expect(res.problems).toEqual([
+      "collection CLLC2222: call_no 2 did not create it (call_no 1 did)",
+      "item GRPI2222: call_no of the call that created it missing (claims schema 3)",
+      "item NONE2222: call_no 9 did not create it (no audited call created it)",
+      "item GRPI2222: created in groups/777 by call_no 3, claimed in users/1",
+    ]);
+    expect(res.titles).toEqual(new Map([["ITEM2222", "mzt-r1 a"]]));
+  });
+
+  it("VC-13c chiavi create non dichiarate (né cancellate); cancellazioni fuori da F8 → avvisi", () => {
+    const undeclared = undeclaredCreations(calls, { created: [{ key: "CLLC2222" }], deleted: [] }, "users/1");
+    expect(undeclared.map((u: { key: string }) => u.key)).toEqual(["GRPI2222", "PDFA2222"]);
+    expect(deletionWarnings(calls, "users/1")).toEqual(['deletion outside F8: delete_items call_no 5 deleted ITEM2222, not created as "… to delete"']);
+  });
+
+  it("VC-13d metadata di inject.js: dichiarati con il call_no di un get_items_details riuscito e identici al suo risultato", () => {
+    expect(injectMetadataPath("node test/live/agent/inject.mjs agent-out/a.docx agent-out/b.docx agent-out/m.json users/1")).toBe("agent-out/m.json");
+    expect(injectMetadataPath("node test/live/agent/make-docx.mjs agent-out/a.docx '[]'")).toBeNull();
+    const files: Record<string, string> = { "agent-out/metadata.json": JSON.stringify({ ITEM2222: { title: "mzt-r1 a" } }, null, 2), "agent-out/other.json": '{"ITEM2222":{"title":"typed again"}}' };
+    const read = (p: string) => files[p] ?? null;
+    expect(metadataFindings([{ path: "agent-out/metadata.json", call_no: 6 }], calls, read)).toEqual({ problems: [], checks: ["metadata agent-out/metadata.json = get_items_details call_no 6"] });
+    expect(metadataFindings([], calls, read).problems).toEqual(["metadata agent-out/metadata.json: used by inject.js but not declared in claims.metadata with its call_no"]);
+    expect(
+      metadataFindings(
+        [
+          { path: "agent-out/metadata.json", call_no: 8 },
+          { path: "agent-out/other.json", call_no: 6 },
+          { path: "agent-out/gone.json", call_no: 6 },
+        ],
+        calls,
+        read
+      ).problems
+    ).toEqual([
+      "metadata agent-out/metadata.json: call_no 8 is not a successful get_items_details call of the audit",
+      "metadata agent-out/other.json: differs from the result of get_items_details call_no 6 (write it verbatim)",
+      "metadata agent-out/gone.json: missing or outside agent-out/",
+    ]);
+  });
+
+  it("VC-13e F1 saltato: serve un risultato di add_items_by_doi con un guasto esterno", () => {
+    expect(f1SkipEvidence(calls)).toBeNull();
+    const outage = auditCalls([entry(1, "add_items_by_doi", { dois: ["10.1/x"] }, { error: "All DOIs failed", failed: [{ doi: "10.1/x", error: "DOI resolution failed for 10.1/x: 503" }] }, true)]);
+    expect(f1SkipEvidence(outage)).toBe("DOI resolution failed for 10.1/x: 503");
+    const notFound = auditCalls([entry(1, "add_items_by_doi", { dois: ["10.1/x"] }, { error: "DOI resolution failed for 10.1/x: 404" }, true)]);
+    expect(f1SkipEvidence(notFound)).toBeNull();
+  });
+
+  it("VC-13f scenari T scelti dai file cambiati del contesto fidato: mancante o senza esito → problema, saltato con motivo → avviso", () => {
+    const table = { rows: [{ id: "T-search", files: ["src/tools/search-library.ts"], scenario: "s" }, { id: "T-inject", files: ["src/citation-injector/**"], scenario: "i" }, { id: "T-link", files: ["src/tools/add-linked-url-attachment.ts"], scenario: "l" }] };
+    const ctx = { changed_files: ["src/citation-injector/injector.ts", "src/tools/search-library.ts", "README.md"] };
+    const res = targetedFindings(new Map([["T-inject", { id: "T-inject", status: "skipped", notes: "permessi" }]]), ctx, table);
+    expect(res.required).toEqual(["T-search", "T-inject"]);
+    expect(res.problems).toEqual(["scenario T-search (selected by the changed files) not reported"]);
+    expect(res.warnings).toEqual(["scenario T-inject skipped: permessi"]);
+    const ok = targetedFindings(new Map([["T-search", { status: "passed" }], ["T-inject", { status: "failed" }]]), ctx, table);
+    expect(ok.problems).toEqual([]); // a failed scenario is reported with every failed scenario
+    expect(targetedFindings(new Map(), {}, table).problems).toEqual([expect.stringMatching(/^context\.changed_files missing/)]);
+  });
+
+  it("VC-13g F10 con schema 3: la riga vale se una qualsiasi chiamata corrispondente ha l'esito atteso (prima contava solo la prima)", () => {
+    const search = auditCalls([entry(1, "search_library", { query: "x", limit: 1 }, [{ key: "AAAA2222" }, { key: "BBBB2222" }]), entry(2, "search_library", { query: "x", limit: 1 }, [{ key: "AAAA2222" }])]);
+    const row = (p: string) => p.startsWith("F10: search_library with limit 1:");
+    expect(edgeCaseEvidence(search).problems.filter(row)).toEqual(["F10: search_library with limit 1: 2 results (expected at most 1)"]);
+    const v3 = edgeCaseEvidence(search, { anyCall: true });
+    expect(v3.problems.filter(row)).toEqual([]);
+    expect([...v3.evidence].map((c: { callNo: number }) => c.callNo)).toContain(2);
+  });
+});
+
+describe("verify-claims: claims schema 2 giudicati come prima (VC-14)", () => {
+  const SCRIPT = join(ROOT, "test", "live", "verify-claims.mjs");
+  const env = { ...process.env, ZOTERO_TEST_API_KEY: "not-a-real-key", GITHUB_STEP_SUMMARY: "" };
+  const ctx = { run_id: "r1", run_tag: "mzt-run:r1", prefix: "mzt-r1", cleanup: "verifier", safe_mode: false, group_id: null, changed_files: ["src/tools/search-library.ts"], targeted: ["T-search"] };
+  const e = (n: number, tool: string, input: unknown, result: unknown) => ({ run_id: "r1", call_no: n, tool_use_id: `t${n}`, tool_name: tool === "Bash" ? tool : `mcp__zotero__${tool}`, tool_input: input, is_error: false, text: typeof result === "string" ? result : JSON.stringify(result) });
+  // every schema 3 requirement has a trigger here: a T row selected by the diff, F1 skipped without evidence, a
+  // deletion outside F8, undeclared metadata, an F10 row met only by its second call, no F11
+  const audit = [
+    e(1, "add_items", { items: [{ itemType: "book", title: "mzt-r1 keep" }] }, { success: [{ index: 0, item_key: "ITEM2222", title: "mzt-r1 keep", item_type: "book" }] }),
+    e(2, "delete_items", { item_keys: ["ITEM2222"] }, { deleted_keys: ["ITEM2222"], deleted_count: 1 }),
+    e(3, "Bash", { command: "node test/live/agent/inject.mjs agent-out/a.docx agent-out/b.docx agent-out/metadata.json users/1 apa" }, '{"found":1,"injected":1}'),
+    e(4, "search_library", { query: "mzt-r1", limit: 1 }, [{ key: "AAAA2222" }, { key: "BBBB2222" }]),
+    e(5, "search_library", { query: "mzt-r1", limit: 1 }, [{ key: "AAAA2222" }]),
+  ];
+  // verdict of the verifier before schema 3 (main at 2.0.3) on this fixture with schema 2 claims
+  const BEFORE = {
+    problems: [
+      "F0: the chained Bash probe was not denied by the Bash hook",
+      "F0: the delete of XXXXXXXX was not denied by the delete hook",
+      ...["F0", "F2", "F3", "F4", "F5", "F6", "F8", "F9", "F10"].map((id) => `scenario ${id} not reported`),
+      'F9: no inject_citations call rejected a malformed <zcite> key ("Invalid Zotero item key(s) in <zcite>")',
+      "F9: no inject.js run rejected a malformed <zcite> key with the same message",
+      "F9: no inject_citations call failed on the unknown key",
+      "F9: no inject.js run failed on the unknown key",
+      "F9: no inject_citations call on a document without <zcite>",
+      "F9: no inject.js run on a document without <zcite>",
+      "F10: delete_items with item_keys [] not called",
+      "F10: delete_items with 50 fake keys (max) not called",
+      "F10: delete_items with 51 fake keys (max+1) not called",
+      "F10: add_items with items [] not called",
+      "F10: get_items_details with item_keys [] not called",
+      "F10: get_items_details with a whitespace-only key not called",
+      "F10: search_library with a whitespace-only query not called",
+      "F10: search_library with limit 1: 2 results (expected at most 1)",
+      "F10: search_library with limit 100 (max) not called",
+      "F10: search_library with limit 101 (max+1) not called",
+      ...["apa", "ieee", "vancouver", "harvard", "chicago"].map(
+        (style) =>
+          `parity ${style}: no verified compare_group on the parity document (multi-key, locator+prefix+suffix, inline, split${["ieee", "vancouver"].includes(style) ? ", num on every tag" : ""}; institutional, undated/authorless and non-ASCII items)`
+      ),
+      'F9: no verified compare_group on the edge document (keys "A, B", a duplicated key)',
+      "F9: no verified compare_group on a document without <zcite>",
+    ],
+    warnings: [],
+    checks: 4,
+  };
+
+  async function verdictFor(schema: number) {
+    const dir = await tempDir();
+    try {
+      await mkdir(join(dir.path, "out"));
+      await mkdir(join(dir.path, "audit"));
+      await writeFile(join(dir.path, "out", "context.json"), JSON.stringify(ctx));
+      await writeFile(join(dir.path, "audit", "audit-context.json"), JSON.stringify(ctx));
+      await writeFile(join(dir.path, "audit", "audit.jsonl"), audit.map((x) => JSON.stringify(x)).join("\n") + "\n");
+      const claims = { schema_version: schema, run_id: "r1", library_path: "users/1", scenarios: [{ id: "P0", status: "passed" }, { id: "F1", status: "skipped", notes: "doi.org non raggiungibile" }], created: [], deleted: [], docx: [] };
+      await writeFile(join(dir.path, "out", "claims.json"), JSON.stringify(claims));
+      const r = await node(SCRIPT, [join(dir.path, "out"), "--audit", join(dir.path, "audit", "audit.jsonl")], { env });
+      expect(r.code, r.stderr).toBe(1);
+      return JSON.parse(await readFile(join(dir.path, "out", "verdict.json"), "utf8"));
+    } finally {
+      await dir.cleanup();
+    }
+  }
+
+  it("VC-14 schema 2: stesso verdetto del verificatore precedente, nessun requisito dello schema 3", async () => {
+    const v = await verdictFor(2);
+    expect({ problems: v.problems, warnings: v.warnings, checks: v.checks }).toEqual(BEFORE);
+  });
+
+  it("VC-14b schema 3 sullo stesso audit: i requisiti nuovi si attivano", async () => {
+    const v = await verdictFor(3);
+    const added = v.problems.filter((p: string) => !BEFORE.problems.includes(p));
+    expect(added).toEqual([
+      "scenario F1 skipped without an audited add_items_by_doi result that reports an external failure: doi.org non raggiungibile",
+      "scenario F11 not reported",
+      "scenario T-search (selected by the changed files) not reported",
+      "metadata agent-out/metadata.json: used by inject.js but not declared in claims.metadata with its call_no",
+      "F11: no verified compare_group on a document that already had Zotero document preferences of another style, kept by both producers",
+    ]);
+    expect(BEFORE.problems.filter((p) => !v.problems.includes(p))).toEqual(["F10: search_library with limit 1: 2 results (expected at most 1)"]);
+    expect(v.warnings).toEqual(['deletion outside F8: delete_items call_no 2 deleted ITEM2222, not created as "… to delete"']);
   });
 });
