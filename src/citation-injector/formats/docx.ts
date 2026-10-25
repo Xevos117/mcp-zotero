@@ -15,15 +15,17 @@ const REGENERATE_DOCX =
   "The file is not a Word document or is corrupted: create it again as .docx (e.g. with the docx npm package) and call again.";
 
 /**
- * Sostituisce il tag <zcite> (escapato) con il field code Word. Involucro invariato del comportamento di
- * oggi: caso A (il tag è l'unico contenuto di un <w:r>), caso B (il tag è inline con altro testo).
+ * Sostituisce il tag <zcite> (escapato) con il field code Word. Caso A (il tag è l'unico contenuto di un
+ * <w:r>), caso B (il tag è inline con altro testo). La `<w:r>` iniziale può avere attributi
+ * (`<w:r w:rsidR="…">`, scritti da Word quando tiene traccia delle revisioni): `<w:r[^>]*>` li tollera.
+ * Prima venivano saltati in silenzio (found ma non injected); i documenti senza attributi non cambiano.
  */
 function replaceZciteInXml(xml: string, escapedZciteTag: string, fieldCodeXml: string): string {
   // Case A (preferred): tag is the sole content of a <w:r>
   // Use [^<]*(?:<(?!/w:rPr>)[^<]*)* instead of .*? inside <w:rPr> to prevent
   // matching across element boundaries in minified (single-line) XML.
   const soloRunRegex = new RegExp(
-    `<w:r>(?:<w:rPr>[^<]*(?:<(?!/w:rPr>)[^<]*)*</w:rPr>)?<w:t[^>]*>${regexEscape(escapedZciteTag)}</w:t></w:r>`
+    `<w:r[^>]*>(?:<w:rPr>[^<]*(?:<(?!/w:rPr>)[^<]*)*</w:rPr>)?<w:t[^>]*>${regexEscape(escapedZciteTag)}</w:t></w:r>`
   );
 
   if (soloRunRegex.test(xml)) {
@@ -32,7 +34,7 @@ function replaceZciteInXml(xml: string, escapedZciteTag: string, fieldCodeXml: s
 
   // Case B (fallback): tag is inline with other text
   const inlineRegex = new RegExp(
-    `(<w:r>(?:<w:rPr>([^<]*(?:<(?!/w:rPr>)[^<]*)*)</w:rPr>)?<w:t[^>]*>)([^<]*)${regexEscape(escapedZciteTag)}([^<]*)(</w:t></w:r>)`
+    `(<w:r[^>]*>(?:<w:rPr>([^<]*(?:<(?!/w:rPr>)[^<]*)*)</w:rPr>)?<w:t[^>]*>)([^<]*)${regexEscape(escapedZciteTag)}([^<]*)(</w:t></w:r>)`
   );
 
   const inlineMatch = xml.match(inlineRegex);

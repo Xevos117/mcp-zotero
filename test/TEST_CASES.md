@@ -357,8 +357,9 @@ test normali. Non restano `it.fails` nella suite.
 | IC-22 | `keys=" A, B ,"` con spazi | chiavi ripulite, URI senza spazi, nessuna richiesta fuori route |
 | IC-24 | chiave `<zcite>` non valida per Zotero (`../tags`, `AB?C`, mista a una valida, con 0/1/O, minuscole, 9 caratteri) | isError "Invalid Zotero item key(s) in <zcite>: <solo le chiavi errate> (a key is 8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ)" con "No file was written" e da dove prendere le chiavi, nessuna richiesta, nessun output (come SK-10) |
 | IC-23 | itemData | volume/issue/page/publisher/publisher-place inclusi, abstract escluso, cognome multiparola intatto |
+| IC-25a/b | `<zcite>` in una run con attributi (`<w:r w:rsidR="…">`): tag unico nella run (A) e inline con altro testo (B) | iniettata (prima `found` senza `injected`); nel caso B "Before "/" after" conservati; docx valido |
 
-Gli output di IC-01/02/03/04/07/19/23 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
+Gli output di IC-01/02/03/04/07/19/23/25 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
 
 ### Validazione docx (IC-V)
 | ID | Scenario | Atteso |
