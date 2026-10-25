@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error plain .mjs hook library without type declarations
-import { bashDecision, deleteDecision, createdKeys, responseText } from "../../.claude/agent-smoke/hooks/lib.mjs";
+import { bashDecision, deleteDecision, writeDecision, createdKeys, responseText } from "../../.claude/agent-smoke/hooks/lib.mjs";
 import { tempDir, TempDir } from "../helpers/fixtures.js";
 
 /**
@@ -41,6 +41,11 @@ describe("hook Bash: solo i due wrapper nella forma esatta (AH-01)", () => {
     `${INJECT} agent-out/a.docx agent-out/a_skill.docx agent-out/metadata.json users/424242 apa`,
     `${INJECT} agent-out/a.docx agent-out/a_skill.docx agent-out/group-metadata.json groups/777 vancouver`,
     `${INJECT} agent-out/a.docx agent-out/a_skill.docx agent-out/metadata.json 424242`,
+    // LibreOffice: make-docx con --odt, output .odt e inject con --format
+    `${MAKE} --odt agent-out/a.odt ${SPEC}`,
+    `${MAKE} agent-out/a.docx agent-out/b.odt ${SPEC}`,
+    `${INJECT} agent-out/a.odt agent-out/a_cited.odt agent-out/metadata.json users/424242 apa --format odt`,
+    `${INJECT} agent-out/a.docx agent-out/a_cited.docx agent-out/metadata.json users/424242 --format docx`,
   ])("AH-01a ammesso: %s", (command) => {
     expect(bashDecision({ command, description: "x" })).toBeNull();
   });
@@ -128,6 +133,32 @@ describe("hook delete: solo chiavi create dalla run (AH-02)", () => {
     expect(responseText({ content: [{ type: "text", text: "c" }] })).toBe("c");
     expect(responseText({ stdout: "out", stderr: "err" })).toBe("out\nerr");
   });
+
+  it("AH-02e create_note registra la chiave della nota tra quelle create (campo tollerante)", () => {
+    expect([...createdKeys([{ tool_name: "mcp__zotero__create_note", is_error: false, text: '{"note_key":"NQTE2222"}' }])]).toEqual(["NQTE2222"]);
+    expect([...createdKeys([{ tool_name: "mcp__zotero__create_note", is_error: false, text: '{"item_key":"NQTE3333"}' }])]).toEqual(["NQTE3333"]);
+  });
+});
+
+describe("hook write: update_item/create_note solo su oggetti creati dalla run (AH-05)", () => {
+  const created = new Set(["ITEM2222"]);
+  it.each<[string, string, unknown, string | null]>([
+    ["update_item su voce creata", "mcp__zotero__update_item", { item_key: "ITEM2222", version: 1, fields: {} }, null],
+    ["create_note sotto una voce creata", "mcp__zotero__create_note", { parent_item_key: "ITEM2222", note: "x" }, null],
+    ["update_item su voce non creata", "mcp__zotero__update_item", { item_key: "XXXXXXXX", version: 1 }, "XXXXXXXX was not created by this run"],
+    ["create_note sotto una voce non creata", "mcp__zotero__create_note", { parent_item_key: "XXXXXXXX", note: "x" }, "XXXXXXXX was not created by this run"],
+    ["chiave malformata", "mcp__zotero__update_item", { item_key: "zzzz" }, "malformed item_key: never pass one to a write tool"],
+    ["chiave finta non ammessa per le scritture", "mcp__zotero__update_item", { item_key: "ZZZZZZZZ" }, "ZZZZZZZZ was not created by this run"],
+  ])("AH-05a %s", (_label, tool, input, expected) => {
+    expect(writeDecision(tool, input, { safe_mode: true, group_id: null }, created)).toBe(expected);
+  });
+
+  it("AH-05b gruppo: solo quello di test e fuori safe mode; senza contesto tutto negato", () => {
+    expect(writeDecision("mcp__zotero__update_item", { item_key: "ITEM2222", library_type: "group", library_id: "7" }, { safe_mode: false, group_id: "7" }, created)).toBeNull();
+    expect(writeDecision("mcp__zotero__update_item", { item_key: "ITEM2222", library_type: "group", library_id: "7" }, { safe_mode: true, group_id: "7" }, created)).toBe("writes only in the test library");
+    expect(writeDecision("mcp__zotero__create_note", { parent_item_key: "ITEM2222", library_type: "group", library_id: "8" }, { safe_mode: false, group_id: "7" }, created)).toBe("writes only in the test library");
+    expect(writeDecision("mcp__zotero__update_item", { item_key: "ITEM2222" }, null, created)).toMatch(/run context missing/);
+  });
 });
 
 describe("script degli hook come processi (AH-03)", () => {
@@ -180,6 +211,14 @@ describe("script degli hook come processi (AH-03)", () => {
     expect(read.stdout).toBe("");
     expect((await hook("delete-guard.mjs", { tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["ITEM2222"] } }, dir.path)).stdout).toBe("");
     const denied = await hook("delete-guard.mjs", { tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["XXXXXXXX"] } }, dir.path);
+    expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecisionReason).toMatch(/XXXXXXXX was not created by this run/);
+  });
+
+  it("AH-03h write-guard: update_item/create_note sulla voce creata ammessi, su altre negati", async () => {
+    await hook("audit.mjs", { hook_event_name: "PostToolUse", tool_name: "mcp__zotero__add_items", tool_use_id: "w1", tool_input: { items: [] }, tool_response: [{ type: "text", text: '{"success":[{"item_key":"ITEM2222"}]}' }] }, dir.path);
+    expect((await hook("write-guard.mjs", { tool_name: "mcp__zotero__update_item", tool_input: { item_key: "ITEM2222", version: 1, fields: {} } }, dir.path)).stdout).toBe("");
+    expect((await hook("write-guard.mjs", { tool_name: "mcp__zotero__create_note", tool_input: { parent_item_key: "ITEM2222", note: "x" } }, dir.path)).stdout).toBe("");
+    const denied = await hook("write-guard.mjs", { tool_name: "mcp__zotero__update_item", tool_input: { item_key: "XXXXXXXX", version: 1 } }, dir.path);
     expect(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecisionReason).toMatch(/XXXXXXXX was not created by this run/);
   });
 
@@ -279,6 +318,7 @@ describe("script degli hook come processi (AH-03)", () => {
     const cmd = (event: string, matcher: string) => settings.hooks[event].find((h: { matcher: string }) => h.matcher === matcher)?.hooks[0];
     expect(cmd("PreToolUse", "Bash").command).toBe('node "$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/bash-guard.mjs"');
     expect(cmd("PreToolUse", "mcp__zotero__delete_items|mcp__zotero__delete_collection").command).toMatch(/delete-guard\.mjs"$/);
+    expect(cmd("PreToolUse", "mcp__zotero__update_item|mcp__zotero__create_note").command).toMatch(/write-guard\.mjs"$/);
     for (const event of ["PostToolUse", "PostToolUseFailure"]) expect(cmd(event, "mcp__zotero__.*|Bash|Read").command).toMatch(/audit\.mjs"$/);
     expect(settings.hooks.Stop[0].hooks[0].command).toBe('node "$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/visual-gate.mjs"');
     for (const event of Object.values(settings.hooks) as Array<Array<{ hooks: Array<{ timeout: number }> }>>) for (const h of event) expect(h.hooks[0].timeout).toBeGreaterThan(0);

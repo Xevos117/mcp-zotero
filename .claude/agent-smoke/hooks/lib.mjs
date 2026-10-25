@@ -127,6 +127,10 @@ export function createdKeys(entries) {
       case "find_and_attach_pdfs":
         for (const x of json.results ?? []) add(x?.attachment_key);
         break;
+      case "create_note":
+        // the note is a child item this run created: track its key (field name tolerated)
+        add(json.note_key ?? json.item_key ?? json.key);
+        break;
     }
   }
   return created;
@@ -161,18 +165,20 @@ export function unreadPages(pages, reads, run) {
 // --- Bash allowlist (bash-guard.mjs) ---
 
 const FILE = (ext) => `agent-out/[A-Za-z0-9._-]+\\.${ext}`;
+// a document the wrappers read or write: .docx (Word) or .odt (LibreOffice)
+const DOC = FILE("(?:docx|odt)");
 // single-quoted JSON spec: no quote, backslash, newline or shell metacharacter inside either
 const SPEC = "'[^'\\\\\\n\\r$`;&|<>]*'";
 const STYLE = "(?:apa|ieee|vancouver|harvard|chicago)";
 const LIBRARY = "(?:(?:users|groups)/[0-9]+|[0-9]+)";
 const ALLOWED = [
-  new RegExp(`^node test/live/agent/make-docx\\.mjs(?: ${FILE("docx")})+ ${SPEC}$`),
-  new RegExp(`^node test/live/agent/inject\\.mjs ${FILE("docx")} ${FILE("docx")} ${FILE("json")} ${LIBRARY}(?: ${STYLE})?$`),
+  new RegExp(`^node test/live/agent/make-docx\\.mjs(?: --odt)?(?: ${DOC})+ ${SPEC}$`),
+  new RegExp(`^node test/live/agent/inject\\.mjs ${DOC} ${DOC} ${FILE("json")} ${LIBRARY}(?: ${STYLE})?(?: --format (?:docx|odt))?$`),
 ];
 export const BASH_USAGE =
   "Only these Bash commands are allowed, exactly in this form, one per call: " +
-  "node test/live/agent/make-docx.mjs agent-out/<name>.docx [agent-out/<name>.docx ...] '<json spec>' | " +
-  "node test/live/agent/inject.mjs agent-out/<in>.docx agent-out/<out>.docx agent-out/<metadata>.json <users/ID|groups/ID> [style]. " +
+  "node test/live/agent/make-docx.mjs [--odt] agent-out/<name>.(docx|odt) [agent-out/<name>.(docx|odt) ...] '<json spec>' | " +
+  "node test/live/agent/inject.mjs agent-out/<in>.(docx|odt) agent-out/<out>.(docx|odt) agent-out/<metadata>.json <users/ID|groups/ID> [style] [--format docx|odt]. " +
   "No other programs, options, variables, quotes, chaining, pipes or redirections.";
 
 export function bashDecision(toolInput) {
@@ -197,5 +203,25 @@ export function deleteDecision(toolName, toolInput, context, created) {
     if (typeof k !== "string" || !ZOTERO_KEY.test(k)) return "malformed key: never pass one to a delete tool";
     if (!created.has(k) && !FAKE_KEYS.has(k)) return `${k} was not created by this run`;
   }
+  return null;
+}
+
+// --- Write policy (write-guard.mjs): update_item / create_note only on objects this run created ---
+
+/** Key argument that must be created by this run, per write tool. */
+const WRITE_KEY_ARG = { update_item: "item_key", create_note: "parent_item_key" };
+
+export function writeDecision(toolName, toolInput, context, created) {
+  if (!/^mcp__zotero__(update_item|create_note)$/.test(String(toolName))) return "not a write tool";
+  if (!context) return "run context missing (agent-audit/context.json): writes are not allowed";
+  if (toolInput?.library_type === "group" && (context.safe_mode || String(toolInput.library_id) !== String(context.group_id))) {
+    return "writes only in the test library";
+  }
+  const tool = String(toolName).replace(/^mcp__zotero__/, "");
+  const arg = WRITE_KEY_ARG[tool];
+  const key = toolInput?.[arg];
+  // unlike delete, a write never targets a fake key: it must modify an item this run created
+  if (typeof key !== "string" || !ZOTERO_KEY.test(key)) return `malformed ${arg}: never pass one to a write tool`;
+  if (!created.has(key)) return `${key} was not created by this run`;
   return null;
 }

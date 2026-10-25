@@ -267,6 +267,9 @@ function callEffects(call) {
     case "find_and_attach_pdfs":
       for (const x of json.results ?? []) add(created, x?.attachment_key);
       break;
+    case "create_note":
+      add(created, json.note_key ?? json.item_key ?? json.key);
+      break;
   }
   return { created, deleted };
 }
@@ -386,6 +389,8 @@ const WRITE_KEY_ARGS = {
   create_collection: ["parent_collection"],
   delete_items: ["item_keys"],
   delete_collection: ["collection_key"],
+  update_item: ["item_key"],
+  create_note: ["parent_item_key"],
 };
 
 /**

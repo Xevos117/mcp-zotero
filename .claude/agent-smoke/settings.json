@@ -2,7 +2,8 @@
   "hooks": {
     "PreToolUse": [
       { "matcher": "Bash", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/bash-guard.mjs\"", "timeout": 10 }] },
-      { "matcher": "mcp__zotero__delete_items|mcp__zotero__delete_collection", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/delete-guard.mjs\"", "timeout": 10 }] }
+      { "matcher": "mcp__zotero__delete_items|mcp__zotero__delete_collection", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/delete-guard.mjs\"", "timeout": 10 }] },
+      { "matcher": "mcp__zotero__update_item|mcp__zotero__create_note", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/write-guard.mjs\"", "timeout": 10 }] }
     ],
     "PostToolUse": [
       { "matcher": "mcp__zotero__.*|Bash|Read", "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/agent-smoke/hooks/audit.mjs\"", "timeout": 10 }] }
