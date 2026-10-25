@@ -64,7 +64,7 @@
     {
       "id": "T-odt",
       "files": ["src/citation-injector/formats/odt.ts", "src/citation-injector/odt-normalizer.ts"],
-      "scenario": "inject_citations on a .odt (LibreOffice) in apa (make-docx --odt, then inject with --format odt): reference marks instead of Word fields, bibliography as a text:section, preferences in meta.xml with fieldType ReferenceMark; claim it with compare_group \"odt-apa\" against the docx apa document"
+      "scenario": "a .odt (LibreOffice) document in apa: make-docx --odt an .odt source with <zcite>, then both producers on it — inject_citations (format from the .odt extension) and inject.js via inject.mjs — so content.xml gets reference marks instead of Word fields, the bibliography a text:section, and meta.xml the preferences with fieldType ReferenceMark; claim both with compare_group \"odt-apa\" (tool vs script, same odt source), which verify-claims fingerprints with its odt branch"
     },
     {
       "id": "T-skill",

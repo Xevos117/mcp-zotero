@@ -1,16 +1,16 @@
 import JSZip from "jszip";
 import { XMLValidator } from "fast-xml-parser";
 import {
-  CitationStyle,
-  CitationField,
-  DocxReport,
-  ValidateOptions,
+  type CitationStyle,
+  type CitationField,
+  type DocxReport,
+  type ValidateOptions,
   checkCitation,
   renderWithCiteproc,
   decodeXml,
   styleId,
   expectValidDocx,
-} from "./docx-validate.js";
+} from "./docx-validate.ts";
 
 /**
  * Validazione comune a Word e LibreOffice. Per docx si usa docx-validate (expectValidDocx); qui vive il
@@ -43,6 +43,10 @@ function decodeName(escaped: string): string {
 }
 
 export interface OdtReport {
+  /** content.xml (per l'impronta: testo dei paragrafi e nome della sezione ZOTERO_BIBL). */
+  contentXml: string;
+  /** Sempre vuoto: l'odt non ha i w:fldChar del docx; presente per compatibilità con chi legge report.fields. */
+  fields: never[];
   citations: CitationField[];
   bibliography: Record<string, unknown> | null;
   rendered: { citations: string[]; bibliography: string[] } | null;
@@ -55,7 +59,7 @@ export interface OdtReport {
 export async function validateOdt(odt: Buffer | Uint8Array, opts: ValidateOptions = {}): Promise<OdtReport> {
   const style = (opts.style ?? "apa") as CitationStyle;
   const errors: string[] = [];
-  const report: OdtReport = { citations: [], bibliography: null, rendered: null, errors, mismatches: [], documentPrefs: null };
+  const report: OdtReport = { contentXml: "", fields: [], citations: [], bibliography: null, rendered: null, errors, mismatches: [], documentPrefs: null };
 
   checkMimetype(odt, errors);
 
@@ -73,6 +77,7 @@ export async function validateOdt(odt: Buffer | Uint8Array, opts: ValidateOption
   const content = zip.file("content.xml");
   if (!content) return report;
   const xml = await content.async("string");
+  report.contentXml = xml;
   if (XMLValidator.validate(xml) !== true) errors.push("content.xml non è XML ben formato");
   if (/&lt;zcite\b/.test(xml)) errors.push("segnaposto <zcite> rimasti nel documento");
 
