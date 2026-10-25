@@ -41,4 +41,6 @@ export interface FormatWriter {
   finalize?(zip: JSZip): Promise<void>;
   /** Opzioni per JSZip.generateAsync specifiche del formato (odt: niente compressione globale forzata). */
   readonly generateOptions?: Record<string, unknown>;
+  /** Pacchetto vuoto e valido su cui costruire un documento da zero (create_cited_document, PR G). */
+  skeleton?(): Promise<JSZip>;
 }

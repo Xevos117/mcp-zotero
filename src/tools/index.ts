@@ -8,6 +8,7 @@ import { handleSearchLibrary, toolConfig as searchConfig } from "./search-librar
 import { handleCreateCollection, toolConfig as createCollectionConfig } from "./create-collection.js";
 import { handleAddItemsByDoi, toolConfig as addItemsByDoiConfig } from "./add-items-by-doi.js";
 import { handleInjectCitations, toolConfig as injectCitationsConfig } from "./inject-citations.js";
+import { handleCreateCitedDocument, toolConfig as createCitedDocumentConfig } from "./create-cited-document.js";
 import { handleGetItemFulltext, toolConfig as getItemFulltextConfig } from "./get-item-fulltext.js";
 import { handleGetUserId, toolConfig as getUserIdConfig } from "./get-user-id.js";
 import { handleAddLinkedUrlAttachment, toolConfig as addLinkedUrlAttachmentConfig } from "./add-linked-url-attachment.js";
@@ -37,6 +38,7 @@ const tools: Array<{ config: { name: string; description: string; inputSchema: Z
   { config: createCollectionConfig, handler: handleCreateCollection },
   { config: addItemsByDoiConfig, handler: handleAddItemsByDoi },
   { config: injectCitationsConfig, handler: handleInjectCitations },
+  { config: createCitedDocumentConfig, handler: handleCreateCitedDocument },
   { config: getItemFulltextConfig, handler: handleGetItemFulltext },
   { config: getUserIdConfig, handler: handleGetUserId },
   { config: addLinkedUrlAttachmentConfig, handler: handleAddLinkedUrlAttachment },

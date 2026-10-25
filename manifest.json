@@ -65,6 +65,10 @@
       "description": "Turn <zcite> placeholders in a .docx or .odt file into live Zotero citations."
     },
     {
+      "name": "create_cited_document",
+      "description": "Create a .docx or .odt from Markdown with live Zotero citations and a bibliography."
+    },
+    {
       "name": "get_item_fulltext",
       "description": "Read the full text Zotero has indexed for an item's PDF."
     },

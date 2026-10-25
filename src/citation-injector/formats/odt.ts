@@ -128,4 +128,31 @@ export const odtWriter: FormatWriter = {
     if (mimetype) zip.file("mimetype", await mimetype.async("uint8array"), { compression: "STORE" });
   },
   generateOptions: { compression: "DEFLATE" },
+  async skeleton() {
+    const NS =
+      'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" ' +
+      'xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0" ' +
+      'xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0"';
+    const zip = new JSZip();
+    zip.file("mimetype", ODT_MIME, { compression: "STORE" });
+    zip.file(
+      "META-INF/manifest.xml",
+      '<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.3">' +
+        `<manifest:file-entry manifest:full-path="/" manifest:version="1.3" manifest:media-type="${ODT_MIME}"/>` +
+        '<manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>' +
+        '<manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>' +
+        '<manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/></manifest:manifest>'
+    );
+    zip.file(
+      "content.xml",
+      `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${NS}>` +
+        '<office:automatic-styles>' +
+        '<style:style style:name="T_Bold" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style>' +
+        '<style:style style:name="T_Italic" style:family="text"><style:text-properties fo:font-style="italic"/></style:style>' +
+        '</office:automatic-styles><office:body><office:text></office:text></office:body></office:document-content>'
+    );
+    zip.file("styles.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${NS}><office:styles/></office:document-styles>`);
+    zip.file("meta.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-meta ${NS}><office:meta/></office:document-meta>`);
+    return zip;
+  },
 };
