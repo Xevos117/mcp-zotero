@@ -1,7 +1,7 @@
 {
   "name": "@xevos117/mcp-zotero",
   "type": "module",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "mcpName": "io.github.Xevos117/mcp-zotero",
   "description": "Unofficial MCP server for Zotero integration with citation management",
   "repository": {

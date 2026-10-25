@@ -9,13 +9,13 @@
     "id": "1152178663"
   },
   "websiteUrl": "https://github.com/Xevos117/mcp-zotero#readme",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@xevos117/mcp-zotero",
-      "version": "2.0.3",
+      "version": "2.0.4",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
