@@ -10,25 +10,23 @@ import { ResolvedBlock, ResolvedInline } from "./model.js";
 
 // ─── docx ───────────────────────────────────────────────────────
 
-const HEADING_SZ: Record<number, number> = { 1: 36, 2: 32, 3: 28, 4: 26, 5: 24, 6: 22 }; // half-points
-
-function docxRun(text: string, { bold, italic, headingLevel }: { bold?: boolean; italic?: boolean; headingLevel?: number }): string {
+function docxRun(text: string, { bold, italic }: { bold?: boolean; italic?: boolean }): string {
   const props: string[] = [];
-  if (bold || headingLevel) props.push("<w:b/>");
+  if (bold) props.push("<w:b/>");
   if (italic) props.push("<w:i/>");
-  if (headingLevel) props.push(`<w:sz w:val="${HEADING_SZ[headingLevel] ?? 22}"/>`);
   const rPr = props.length ? `<w:rPr>${props.join("")}</w:rPr>` : "";
   return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
 }
 
-function docxInlines(inlines: ResolvedInline[], writer: FormatWriter, headingLevel?: number): string {
-  return inlines.map((i) => (i.kind === "text" ? docxRun(i.text, { bold: i.bold, italic: i.italic, headingLevel }) : writer.citationXml(i.prepared))).join("");
+function docxInlines(inlines: ResolvedInline[], writer: FormatWriter): string {
+  return inlines.map((i) => (i.kind === "text" ? docxRun(i.text, { bold: i.bold, italic: i.italic }) : writer.citationXml(i.prepared))).join("");
 }
 
 export function renderDocxBlocks(blocks: ResolvedBlock[], writer: FormatWriter): string {
   return blocks
     .map((b) => {
-      if (b.type === "heading") return `<w:p>${docxInlines(b.inlines, writer, b.level ?? 1)}</w:p>`;
+      // titoli con lo stile Heading<n> (outlineLvl): pannello di navigazione e sommario di Word
+      if (b.type === "heading") return `<w:p><w:pPr><w:pStyle w:val="Heading${Math.min(b.level ?? 1, 6)}"/></w:pPr>${docxInlines(b.inlines, writer)}</w:p>`;
       if (b.type === "list-item") return `<w:p>${docxRun("•\t", {})}${docxInlines(b.inlines, writer)}</w:p>`;
       return `<w:p>${docxInlines(b.inlines, writer)}</w:p>`;
     })
@@ -47,7 +45,10 @@ export function renderOdtBlocks(blocks: ResolvedBlock[], writer: FormatWriter): 
   return blocks
     .map((b) => {
       const inner = b.inlines.map((i) => odtInline(i, writer)).join("");
-      if (b.type === "heading") return `<text:h text:outline-level="${b.level ?? 1}">${inner}</text:h>`;
+      if (b.type === "heading") {
+        const level = Math.min(b.level ?? 1, 6);
+        return `<text:h text:style-name="Heading_20_${level}" text:outline-level="${level}">${inner}</text:h>`;
+      }
       if (b.type === "list-item") return `<text:p>• ${inner}</text:p>`;
       return `<text:p>${inner}</text:p>`;
     })

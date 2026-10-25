@@ -117,6 +117,7 @@ function buildCitationItems(request, cslData, libraryType, userId) {
     if (request.locator) item.locator = request.locator;
     if (request.prefix) item.prefix = request.prefix;
     if (request.suffix) item.suffix = request.suffix;
+    if (request.suppressAuthor) item["suppress-author"] = true;
     return item;
   });
 }
@@ -177,6 +178,7 @@ function formatCitationText(items, style, opts = {}) {
     const authors = item.author;
     const name = (a) => a.family ?? a.literal ?? "Unknown";
     const year = item.issued?.["date-parts"]?.[0]?.[0]?.toString() ?? "n.d.";
+    if (opts.suppressAuthor) return `${prefix}${year}${locator}${suffix}`;
     let authorText;
     if (!authors || authors.length === 0) {
       const title = item.title;
@@ -547,18 +549,31 @@ var docxWriter = {
     return [];
   },
   async skeleton() {
+    const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     const zip = new jszip_default();
     zip.file(
       "[Content_Types].xml",
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>'
     );
     zip.file(
       "_rels/.rels",
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'
     );
     zip.file(
+      "word/_rels/document.xml.rels",
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'
+    );
+    const sizes = [36, 32, 28, 26, 24, 22];
+    const headings = sizes.map(
+      (sz, i) => `<w:style w:type="paragraph" w:styleId="Heading${i + 1}"><w:name w:val="heading ${i + 1}"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="${i}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${sz}"/></w:rPr></w:style>`
+    ).join("");
+    zip.file(
+      "word/styles.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="${W}"><w:style w:type="paragraph" w:styleId="Normal" w:default="1"><w:name w:val="Normal"/></w:style>${headings}</w:styles>`
+    );
+    zip.file(
       "word/document.xml",
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:sectPr/></w:body></w:document>'
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}"><w:body><w:sectPr/></w:body></w:document>`
     );
     return zip;
   }
@@ -793,7 +808,11 @@ var odtWriter = {
       "content.xml",
       `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${NS}><office:automatic-styles><style:style style:name="T_Bold" style:family="text"><style:text-properties fo:font-weight="bold"/></style:style><style:style style:name="T_Italic" style:family="text"><style:text-properties fo:font-style="italic"/></style:style></office:automatic-styles><office:body><office:text></office:text></office:body></office:document-content>`
     );
-    zip.file("styles.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${NS}><office:styles/></office:document-styles>`);
+    const headingSizes = ["18pt", "16pt", "14pt", "13pt", "12pt", "11pt"];
+    const headings = headingSizes.map(
+      (sz, i) => `<style:style style:name="Heading_20_${i + 1}" style:display-name="Heading ${i + 1}" style:family="paragraph" style:default-outline-level="${i + 1}" style:class="text"><style:text-properties fo:font-weight="bold" fo:font-size="${sz}"/></style:style>`
+    ).join("");
+    zip.file("styles.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${NS}><office:styles>${headings}</office:styles></office:document-styles>`);
     zip.file("meta.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-meta ${NS}><office:meta/></office:document-meta>`);
     return zip;
   }

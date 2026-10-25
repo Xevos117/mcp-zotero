@@ -324,7 +324,7 @@ export function renderWithCiteproc(report: DocxReport, style: CitationStyle): vo
         items.set(idOf(uri), { ...ci.itemData, id: idOf(uri) });
       }
       const entry: Record<string, unknown> = { id: idOf(uri) };
-      for (const k of ["locator", "label", "prefix", "suffix"]) if (ci[k] !== undefined) entry[k] = ci[k];
+      for (const k of ["locator", "label", "prefix", "suffix", "suppress-author"]) if (ci[k] !== undefined) entry[k] = ci[k];
       full.push(entry);
     }
     clusters.push(full);
@@ -368,8 +368,10 @@ function compareKeyParts(report: DocxReport, style: CitationStyle, c: CitationFi
   for (const ci of c.json.citationItems ?? []) {
     const family = firstFamily(ci.itemData ?? {});
     const y = year(ci.itemData ?? {});
-    if (family && !c.visible.includes(family)) report.mismatches.push(`${where}: cognome "${family}" assente dal testo visibile`);
-    if (family && !rendered.includes(family)) report.mismatches.push(`${where}: cognome "${family}" assente dal rendering CSL`);
+    // suppress-author (pandoc -@K): l'autore è volutamente assente dal testo e dal rendering, si controlla solo l'anno
+    const suppressed = ci["suppress-author"] === true;
+    if (!suppressed && family && !c.visible.includes(family)) report.mismatches.push(`${where}: cognome "${family}" assente dal testo visibile`);
+    if (!suppressed && family && !rendered.includes(family)) report.mismatches.push(`${where}: cognome "${family}" assente dal rendering CSL`);
     if (y && !c.visible.includes(y)) report.mismatches.push(`${where}: anno ${y} assente dal testo visibile`);
     if (y && !rendered.includes(y)) report.mismatches.push(`${where}: anno ${y} assente dal rendering CSL`);
     if (!y && !c.visible.includes("n.d.")) report.mismatches.push(`${where}: voce senza anno ma "n.d." assente`);

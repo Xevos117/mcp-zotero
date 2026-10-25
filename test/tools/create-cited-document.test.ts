@@ -41,6 +41,7 @@ describe("create_cited_document (CCD)", () => {
     const xml = await readDocumentXml(await readFile(out));
     expect(xml).toContain("ADDIN ZOTERO_ITEM CSL_CITATION");
     expect(xml).toContain("ADDIN ZOTERO_BIBL");
+    expect(xml).toContain('<w:pStyle w:val="Heading1"/>'); // titolo con stile vero
     expect(xml).toContain("<w:b/>");
     expect(xml).toContain("<w:i/>");
     expect(xml).toContain("•"); // elenco
@@ -54,7 +55,7 @@ describe("create_cited_document (CCD)", () => {
     expect(res.isError, res.text).toBe(false);
     const xml = await readContentXml(await readFile(out));
     expect(xml).toContain("text:reference-mark-start");
-    expect(xml).toContain("text:h");
+    expect(xml).toContain('text:style-name="Heading_20_1"'); // titolo con stile vero
     expect(xml).toContain('text:style-name="T_Bold"');
     await expectValidOdt(await readFile(out), { libraryPath: `users/${USER_ID}` });
   });
@@ -102,6 +103,20 @@ describe("create_cited_document (CCD)", () => {
   it("CCD-07 format in contrasto con l'estensione → errore", async () => {
     const res = await h.call("create_cited_document", { markdown: "x", output_path: join(dir.path, "a.docx"), format: "odt" });
     expectErrorJson(res, "does not match the output extension");
+  });
+
+  it("CCD-09 -@K (suppress-author): solo l'anno nel testo e in citeproc, suppress-author nel field JSON", async () => {
+    serveItems(h, { SMITH222: SMITH });
+    const out = join(dir.path, "suppress.docx");
+    const res = await h.call("create_cited_document", { markdown: "As shown [-@SMITH222], it works.", output_path: out });
+    expect(res.isError, res.text).toBe(false);
+    const cs = citations(await readDocumentXml(await readFile(out)));
+    expect(cs[0].citationItems[0]["suppress-author"]).toBe(true);
+    expect(cs[0].properties.formattedCitation).toBe("(2023)");
+    // citeproc con suppress-author rende "(2023)" (senza "Smith"): nessuna differenza
+    const r = await expectValidDocx(await readFile(out), { style: "apa" });
+    expect(r.rendered!.citations[0]).not.toContain("Smith");
+    expect(r.rendered!.citations[0]).toContain("2023");
   });
 
   it("CCD-08 nessuna citazione → documento creato senza bibliografia", async () => {

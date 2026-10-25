@@ -383,8 +383,9 @@ Crea un documento `.docx`/`.odt` da markdown con citazioni pandoc (`src/cited-do
 
 | ID | Scenario | Atteso |
 |---|---|---|
-| CCD-01 | markdown (titolo, grassetto/corsivo, elenco, 3 citazioni) → `.docx` | field code, `ZOTERO_BIBL`, `<w:b/>`/`<w:i/>`, punto elenco; docx valido |
-| CCD-02 | lo stesso → `.odt` | reference mark, `text:h`, `text:style-name="T_Bold"`; odt valido |
+| CCD-01 | markdown (titolo, grassetto/corsivo, elenco, 3 citazioni) → `.docx` | field code, `ZOTERO_BIBL`, titolo con `pStyle Heading1`, `<w:b/>`/`<w:i/>`, punto elenco; docx valido |
+| CCD-02 | lo stesso → `.odt` | reference mark, `text:h` con `Heading_20_N`, `text:style-name="T_Bold"`; odt valido |
+| CCD-09 | `-@K` (suppress-author) | solo l'anno nel testo ("(2023)"), `suppress-author: true` nel field JSON; citeproc rende "(2023)" senza il cognome |
 | CCD-03 | stile apa e ieee | valido; ieee: numeri nell'ordine di prima citazione ([1] SMITH, [2] PAIR) |
 | CCD-04 | output già esistente | errore "already exists", file originale intatto (mai sovrascritto) |
 | CCD-05 | chiave non valida per Zotero | stesso errore di inject_citations, nessun output |

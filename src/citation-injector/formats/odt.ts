@@ -151,7 +151,14 @@ export const odtWriter: FormatWriter = {
         '<style:style style:name="T_Italic" style:family="text"><style:text-properties fo:font-style="italic"/></style:style>' +
         '</office:automatic-styles><office:body><office:text></office:text></office:body></office:document-content>'
     );
-    zip.file("styles.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${NS}><office:styles/></office:document-styles>`);
+    const headingSizes = ["18pt", "16pt", "14pt", "13pt", "12pt", "11pt"];
+    const headings = headingSizes
+      .map(
+        (sz, i) =>
+          `<style:style style:name="Heading_20_${i + 1}" style:display-name="Heading ${i + 1}" style:family="paragraph" style:default-outline-level="${i + 1}" style:class="text"><style:text-properties fo:font-weight="bold" fo:font-size="${sz}"/></style:style>`
+      )
+      .join("");
+    zip.file("styles.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${NS}><office:styles>${headings}</office:styles></office:document-styles>`);
     zip.file("meta.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-meta ${NS}><office:meta/></office:document-meta>`);
     return zip;
   },
