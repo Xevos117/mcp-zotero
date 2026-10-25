@@ -409,6 +409,15 @@ Garantisce la regola del proprietario: Word non si tocca, l'output resta identic
 | AW-04 | `overwrite:false` su file assente | creato |
 | AW-05 | cartella non scrivibile | errore `EACCES`, nessun temporaneo (il tool mappa anche `EBUSY` → "chiudi il file in Word") |
 
+## Skill inject.js — generazione dal sorgente (`test/skills/inject-bundle.test.ts`, `test/skills/inject-golden.test.ts`)
+
+`inject.js` è generato da `scripts/skill/inject-cli.ts` con `npm run build:skill` (bundle esbuild del nucleo comune `src/citation-injector`); solo `metadataToCsl` resta nella CLI.
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| BUNDLE-01 | ricostruzione in memoria vs file committato | identici (fallisce se sorgente o `inject.js` modificati senza rigenerare); intestazione GENERATED e shebang |
+| SKGOLD-* | i 5 stili + gruppo, con metadati di vari tipi (articolo, libro, capitolo, report istituzionale, senza autore, tesi con data non numerica) | `word/document.xml` e `docProps/custom.xml` dello script generato identici allo snapshot dello script scritto a mano (normalizzando citationID e id di sessione) |
+
 ## Skill inject.js (`test/skills/inject-script.test.ts`, processo node reale)
 | ID | Scenario | Atteso |
 |---|---|---|

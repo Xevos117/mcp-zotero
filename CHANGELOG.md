@@ -7,7 +7,8 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - **Shared citation core split from the per-format writers** (internal refactor, no change to the Word output): the format-neutral logic (parsing `<zcite>` tags, building the citation CSL JSON, resolving keys against an `ItemSource`) now lives in `src/citation-injector/{model,zcite,citation-json,pipeline}.ts`, while the docx path is a thin wrapper in `formats/docx.ts` over today's functions (normalizer, field codes, preferences). A golden test checks that `inject_citations` produces byte-identical `word/document.xml` and `docProps/custom.xml` on every fixture (apart from the citationID and the session id). Groundwork for LibreOffice without touching Word.
-- **Atomic output write** (`src/utils/atomic-write.ts`): the `_cited.docx` is written to a temporary file with `fsync` and then `rename`, so a reader sees either the old file or the complete new one. A locked output (e.g. open in Word) gives an `EBUSY` error with a hint to close it.
+- **Atomic output write** (`src/utils/atomic-write.ts`): the `_cited.docx` is written to a temporary file with `fsync` and then `rename`, so a reader sees either the old file or the complete new one. A locked output (e.g. open in Word) gives an `EBUSY` error with a hint to close it. The skill's script also refuses an output equal to the input.
+- **The skill's script is generated from source** (`skills/.../inject.js` from `scripts/skill/inject-cli.ts` via `npm run build:skill`, an esbuild bundle): it is no longer copied by hand, so the injection logic (normalizer, field codes, preferences) stays a single codebase shared with the server. The docx it produces is byte-identical to the previous hand-written script (golden test), the `inject-bundle` test fails if the committed file is out of sync, and jszip/fast-xml-parser keep their resilient runtime loading. The CLI takes an optional `--format` (docx for now; odt coming).
 
 ### Fixed
 
