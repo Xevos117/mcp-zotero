@@ -21,13 +21,14 @@ import { formatCitationText } from "../../src/citation-injector/citation-formatt
 import { PreparedCitation } from "../../src/citation-injector/model.js";
 import { FormatWriter } from "../../src/citation-injector/formats/types.js";
 import { docxWriter } from "../../src/citation-injector/formats/docx.js";
+import { odtWriter } from "../../src/citation-injector/formats/odt.js";
 import { CslItemData } from "../../src/types/csl-types.js";
 
 // Same rule as ZOTERO_KEY in src/utils/zotero-keys.ts (inlined to keep zod out of the skill bundle)
 const ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
 
-/** Scrittori per formato. D aggiunge odt. */
-const WRITERS: Record<string, FormatWriter> = { docx: docxWriter };
+/** Scrittori per formato: Word (docx) e LibreOffice (odt). */
+const WRITERS: Record<string, FormatWriter> = { docx: docxWriter, odt: odtWriter };
 
 // ---------------------------------------------------------------------------
 // Zotero itemType → CSL mapping (same tables as src/utils/csl-to-zotero.ts)
@@ -254,6 +255,7 @@ async function main() {
   const fileBuffer = await readFile(inputPath);
   const zip = await JSZip.loadAsync(fileBuffer);
 
+  writer.sniff?.(zip); // mismatch di formato (docx vs odt): messaggio chiaro
   const bodyEntry = zip.file(writer.bodyPart);
   if (!bodyEntry) throw new Error(`Invalid ${format === "odt" ? ".odt" : ".docx"} file: ${writer.bodyPart} not found`);
 
@@ -264,7 +266,8 @@ async function main() {
 
   const requests = parseZciteTags(body);
   if (requests.length === 0) {
-    const buffer = await zip.generateAsync({ type: "nodebuffer" });
+    if (writer.finalize) await writer.finalize(zip);
+    const buffer = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
     await writeFileAtomic(outputPath, buffer);
     console.log(JSON.stringify({ output: outputPath, found: 0, injected: 0 }));
     return;
@@ -309,7 +312,8 @@ async function main() {
   const prefs = await writer.writePrefs(zip, style);
   for (const w of writer.prefsWarnings(prefs)) console.error(`WARNING: ${w}`);
 
-  const buffer = await zip.generateAsync({ type: "nodebuffer" });
+  if (writer.finalize) await writer.finalize(zip);
+  const buffer = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
   await writeFileAtomic(outputPath, buffer);
 
   console.log(JSON.stringify({ output: outputPath, found: requests.length, injected }));

@@ -3,9 +3,15 @@ import { CslItemData } from "../types/csl-types.js";
 import { zoteroItemToCsl } from "../utils/csl-to-zotero.js";
 import { LibraryType } from "../utils/library-context.js";
 import { ItemSource, InjectionResult, injectFile } from "./pipeline.js";
+import { FormatWriter } from "./formats/types.js";
 import { docxWriter } from "./formats/docx.js";
+import { odtWriter } from "./formats/odt.js";
+import { DocumentFormat } from "./model.js";
 
 export type { InjectionResult } from "./pipeline.js";
+
+/** Scrittori per formato: Word (docx) e LibreOffice (odt). */
+const WRITERS: Record<DocumentFormat, FormatWriter> = { docx: docxWriter, odt: odtWriter };
 
 /**
  * ItemSource per il server: una GET per chiave dall'API Zotero; una chiave con 404 viene raccolta come
@@ -30,17 +36,19 @@ function zoteroItemSource(zoteroApi: ZoteroApiInterface, libraryType: LibraryTyp
 }
 
 /**
- * Sostituisce i segnaposto <zcite> di un .docx con i field code di Zotero for Word e aggiunge la
- * bibliografia. Involucro del nucleo comune (pipeline + scrittore docx): il percorso Word non cambia.
+ * Sostituisce i segnaposto <zcite> di un documento con le citazioni native di Zotero (field code Word per
+ * docx, reference mark LibreOffice per odt) e aggiunge la bibliografia. Involucro del nucleo comune
+ * (pipeline + scrittore di formato). `format` di default docx: il percorso Word non cambia.
  */
 export async function injectCitations(
   filePath: string,
   zoteroApi: ZoteroApiInterface,
   libraryType: LibraryType,
   userId: string,
-  style: string
+  style: string,
+  format: DocumentFormat = "docx"
 ): Promise<InjectionResult> {
-  return injectFile(filePath, docxWriter, zoteroItemSource(zoteroApi, libraryType, userId), {
+  return injectFile(filePath, WRITERS[format] ?? docxWriter, zoteroItemSource(zoteroApi, libraryType, userId), {
     libraryType,
     userId,
     style,

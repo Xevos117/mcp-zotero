@@ -361,6 +361,22 @@ test normali. Non restano `it.fails` nella suite.
 
 Gli output di IC-01/02/03/04/07/19/23/25 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
 
+### LibreOffice ODT (`test/tools/inject-citations-odt.test.ts`, validatore `test/helpers/citation-validate.ts`)
+
+`inject_citations` su `.odt`: reference mark al posto dei field code, bibliografia in una `text:section`, preferenze in `meta.xml` (fieldType ReferenceMark). `validateOdt`/`expectValidOdt` controllano struttura ODF, mimetype primo e STORED, schema CSL, URI e rendering citeproc (la stessa macchina di docx-validate).
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| ICO-01 | un `<zcite>` in un `.odt` | `*_cited.odt` con reference mark (nome `ZOTERO_ITEM CSL_CITATION {json} RND<10>`, senza plainCitation), `ZOTERO_BIBL`, originale intatto, odt valido |
+| ICO-V01 | i 5 stili sulla matrice IC-V (singola, coppia+molti, locator/prefix/suffix, unicode/senza autore/istituzionale, ripetuta) | odt valido, citeproc 5 citazioni + 7 voci, preferenze `fieldType` ReferenceMark |
+| ICO-V02 | libreria di gruppo per chiamata | URI `groups/<id>` validi |
+| ICO-02 | `<zcite>` spezzato tra più `text:span` | normalizzato e iniettato, testo intorno conservato |
+| ICO-03 | nessuno `<zcite>` | found 0, output `.odt` scritto, nessuna chiamata |
+| ICO-04 | `format: "docx"` su un file `.odt` | errore di estensione, nessun output |
+| ICO-05/06 | `.docx` rinominato `.odt` / `.odt` rinominato `.docx` | errore di contenuto (sniff), nessun output |
+| ICO-07 | estensione non supportata (`.rtf`) | errore "File must be a .docx (Word) or .odt (LibreOffice) file" |
+| SK-ODT-01/02 | script della skill su `.odt` nei 5 stili e in un gruppo | stessi itemData/testo/URI di `inject_citations`, odt valido |
+
 ### Validazione docx (IC-V)
 | ID | Scenario | Atteso |
 |---|---|---|

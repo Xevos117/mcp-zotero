@@ -1313,7 +1313,7 @@ describe("inject_citations", () => {
     );
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("File must be a .docx file");
+    expect(parsed.error).toBe("File must be a .docx (Word) or .odt (LibreOffice) file");
   });
 
   it("calls injectCitations and returns result", async () => {

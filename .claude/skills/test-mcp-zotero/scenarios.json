@@ -62,6 +62,11 @@
       "scenario": "ieee on the author-date document (no num): both producers warn about the missing num and write [?]; claim them with compare_group \"nonum-ieee\""
     },
     {
+      "id": "T-odt",
+      "files": ["src/citation-injector/formats/odt.ts", "src/citation-injector/odt-normalizer.ts"],
+      "scenario": "inject_citations on a .odt (LibreOffice) in apa (make-docx --odt, then inject with --format odt): reference marks instead of Word fields, bibliography as a text:section, preferences in meta.xml with fieldType ReferenceMark; claim it with compare_group \"odt-apa\" against the docx apa document"
+    },
+    {
       "id": "T-skill",
       "files": ["skills/zotero-skill-mcp-integrations/**"],
       "scenario": "inject.js with the bare numeric user id instead of users/<id> on the apa document: same URIs; claim it, and the inject_citations apa document a second time, with compare_group \"bare-id\""

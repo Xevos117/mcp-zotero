@@ -60,6 +60,47 @@ async function makeDocx(dir) {
   return path;
 }
 
+async function makeOdt(dir) {
+  const NS =
+    'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" ' +
+    'xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0"';
+  const MIME = "application/vnd.oasis.opendocument.text";
+  const zip = new JSZip();
+  zip.file("mimetype", MIME, { compression: "STORE" });
+  zip.file(
+    "META-INF/manifest.xml",
+    '<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.3">' +
+      `<manifest:file-entry manifest:full-path="/" manifest:version="1.3" manifest:media-type="${MIME}"/>` +
+      '<manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>' +
+      '<manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>' +
+      '<manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/></manifest:manifest>'
+  );
+  zip.file("content.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${NS}><office:body><office:text><text:p>Claim &lt;zcite keys="SMKITEM2"/&gt;</text:p></office:text></office:body></office:document-content>`);
+  zip.file("styles.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${NS}><office:styles/></office:document-styles>`);
+  zip.file("meta.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-meta ${NS}><office:meta/></office:document-meta>`);
+  const path = join(dir, "smoke.odt");
+  await writeFile(path, await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" }));
+  return path;
+}
+
+/** Controllo strutturale leggero dell'odt iniettato (il validatore completo è test/helpers/citation-validate.ts). */
+async function checkOdt(buffer, expectedUri) {
+  const b = Buffer.from(buffer);
+  if (b.readUInt32LE(0) !== 0x04034b50 || b.toString("latin1", 30, 38) !== "mimetype" || b.readUInt16LE(8) !== 0) {
+    throw new Error("odt: mimetype must be the first, STORED entry");
+  }
+  const zip = await JSZip.loadAsync(buffer);
+  const xml = await zip.file("content.xml")?.async("string");
+  if (!xml) throw new Error("odt part missing: content.xml");
+  if (XMLValidator.validate(xml) !== true) throw new Error("content.xml is not well-formed");
+  if (/&lt;zcite\b/.test(xml)) throw new Error("<zcite> placeholder left in the odt");
+  if (!xml.includes("text:reference-mark-start")) throw new Error("odt: no reference mark injected");
+  if (!/ZOTERO_BIBL [\s\S]*CSL_BIBLIOGRAPHY/.test(decodeXml(xml))) throw new Error("odt: no ZOTERO_BIBL section");
+  if (!decodeXml(xml).includes(expectedUri)) throw new Error(`odt: expected URI ${expectedUri} not found`);
+  const meta = decodeXml((await zip.file("meta.xml")?.async("string")) ?? "");
+  if (!/ZOTERO_PREF_1[\s\S]*fieldType" value="ReferenceMark"/.test(meta)) throw new Error("odt: ZOTERO_PREF with ReferenceMark not in meta.xml");
+}
+
 const decodeXml = (s) =>
   s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
@@ -143,7 +184,7 @@ async function serverLaunch({ env }, bundle) {
   return { args: config.args, cwd: bundle.dir, env: config.env };
 }
 
-function runScenario({ name, prefix }, launch, docxPath) {
+function runScenario({ name, prefix }, launch, docxPath, odtPath) {
   return new Promise((resolveScenario, rejectScenario) => {
     const child = spawn(process.execPath, ["--import", stub, ...launch.args], {
       cwd: launch.cwd,
@@ -225,6 +266,12 @@ function runScenario({ name, prefix }, launch, docxPath) {
       const { output_path } = JSON.parse(injectedText);
       await checkDocx(await readFile(output_path), `http://zotero.org${prefix}/items/SMKITEM2`);
 
+      // LibreOffice (.odt): stesso percorso, reference mark invece dei field code
+      const injectedOdt = await request("tools/call", { name: "inject_citations", arguments: { file_path: odtPath } });
+      const injectedOdtText = injectedOdt.content?.[0]?.text ?? "";
+      if (injectedOdt.isError) throw new Error(`inject_citations (odt) failed: ${injectedOdtText.slice(0, 300)}`);
+      await checkOdt(await readFile(JSON.parse(injectedOdtText).output_path), `http://zotero.org${prefix}/items/SMKITEM2`);
+
       return { init, tools };
     })().then(
       (value) => finish(null, value),
@@ -255,7 +302,8 @@ try {
   const bundle = bundleFile ? await unpackBundle(bundleFile, workDir) : undefined;
   for (const scenario of SCENARIOS) {
     const docxPath = await makeDocx(workDir);
-    const { init, tools } = await runScenario(scenario, await serverLaunch(scenario, bundle), docxPath);
+    const odtPath = await makeOdt(workDir);
+    const { init, tools } = await runScenario(scenario, await serverLaunch(scenario, bundle), docxPath, odtPath);
     if (bundle) {
       const listed = tools.map((t) => t.name).sort().join(",");
       const declared = bundle.manifest.tools.map((t) => t.name).sort().join(",");
@@ -267,7 +315,7 @@ try {
     }
     console.log(
       `smoke OK [${bundle ? "bundle " : ""}${scenario.name}]: protocol ${init.protocolVersion}, ${tools.length} tools, ` +
-        `get_collections + inject_citations via ${scenario.prefix}`
+        `get_collections + inject_citations (docx + odt) via ${scenario.prefix}`
     );
   }
 } catch (err) {

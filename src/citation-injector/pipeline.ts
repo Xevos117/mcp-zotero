@@ -150,14 +150,15 @@ export async function injectFile(
     throw new InjectionError("invalid_package", writer.invalidPackageMessage(err instanceof Error ? err.message : String(err)));
   }
 
+  writer.sniff?.(zip); // mismatch di formato (docx vs odt): messaggio chiaro prima del controllo del corpo
   if (!zip.file(writer.bodyPart)) {
     throw new InjectionError("no_document", writer.bodyMissingMessage);
   }
-  writer.sniff?.(zip);
 
   const { found, injected, warnings } = await injectPackage(zip, writer, itemSource, opts);
 
-  const buffer = await zip.generateAsync({ type: "nodebuffer" });
+  if (writer.finalize) await writer.finalize(zip);
+  const buffer = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
   await writeFileAtomic(outputPath, buffer);
 
   return { outputPath, found, injected, warnings };

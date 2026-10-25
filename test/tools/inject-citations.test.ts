@@ -295,15 +295,15 @@ describe("inject_citations (MCP)", () => {
     await expectValidDocx(await readFile(out.json.output_path));
   });
 
-  it("IC-08 file non .docx → errore strutturato senza rete", async () => {
-    const json = expectErrorJson(await h.call("inject_citations", { file_path: "/tmp/document.pdf" }), "File must be a .docx file");
+  it("IC-08 file non .docx/.odt → errore strutturato senza rete", async () => {
+    const json = expectErrorJson(await h.call("inject_citations", { file_path: "/tmp/document.pdf" }), "File must be a .docx (Word) or .odt (LibreOffice) file");
     expect(json.file_path).toBe("/tmp/document.pdf");
-    expect(json.hint).toMatch(/lowercase \.docx: convert \.doc, \.odt or \.rtf/);
+    expect(json.hint).toMatch(/lowercase \.docx or \.odt: convert \.doc or \.rtf/);
     expect(h.net.calls).toHaveLength(0);
   });
 
   it("IC-09 estensione maiuscola .DOCX → rifiutata (controllo case-sensitive)", async () => {
-    expectErrorJson(await h.call("inject_citations", { file_path: "/tmp/PAPER.DOCX" }), "File must be a .docx file");
+    expectErrorJson(await h.call("inject_citations", { file_path: "/tmp/PAPER.DOCX" }), "File must be a .docx (Word) or .odt (LibreOffice) file");
   });
 
   it("IC-10 file inesistente → isError che indica la skill e dove scaricarla", async () => {

@@ -31,7 +31,7 @@ const EXPECTED: Record<string, { required: string[]; properties: string[] }> = {
     required: [],
     properties: ["item_keys", "collection_key", "skip_if_attachment_exists", "dry_run"],
   },
-  inject_citations: { required: ["file_path"], properties: ["file_path", "style"] },
+  inject_citations: { required: ["file_path"], properties: ["file_path", "style", "format"] },
 };
 
 const LIBRARY_ARGS = ["library_type", "library_id"];
@@ -70,6 +70,7 @@ describe("tools/list (MCP)", () => {
     expect(props("search_library").limit.default).toBe(25);
     expect([...props("inject_citations").style.enum].sort()).toEqual(["apa", "chicago", "harvard", "ieee", "vancouver"]);
     expect(props("inject_citations").style.default).toBe("apa");
+    expect([...props("inject_citations").format.enum].sort()).toEqual(["docx", "odt"]);
     expect(props("add_items_by_doi").auto_attach_pdf.default).toBe(true);
     expect(props("get_item_fulltext").max_characters.default).toBe(50000);
     expect(props("find_and_attach_pdfs").dry_run.default).toBe(false);
