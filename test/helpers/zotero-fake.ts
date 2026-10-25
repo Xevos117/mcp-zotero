@@ -132,6 +132,24 @@ export function zDeleted(version = 300): Response {
   return statusResponse(204, "", { "Last-Modified-Version": String(version) });
 }
 
+/**
+ * Handler PATCH per l'aggiornamento di un singolo item (update_item). Controlla
+ * `If-Unmodified-Since-Version` contro la versione corrente: se non combacia risponde 412 con
+ * `Last-Modified-Version` = versione corrente (come il server reale), altrimenti 204 con la versione
+ * incrementata. `getData()` del client userà il body inviato più la nuova versione.
+ */
+export function zPatch(opts: { version?: number; newVersion?: number } = {}): FakeHandler {
+  const current = opts.version ?? 7;
+  const next = opts.newVersion ?? current + 1;
+  return (req: FakeRequest) => {
+    const sent = req.headers.get("If-Unmodified-Since-Version");
+    if (sent !== null && Number(sent) !== current) {
+      return statusResponse(412, "Precondition Failed", { "Last-Modified-Version": String(current) });
+    }
+    return statusResponse(204, "", { "Last-Modified-Version": String(next) });
+  };
+}
+
 // ─── Fixture ────────────────────────────────────────────────────
 
 export function article(key: string, extra: Record<string, unknown> = {}): ZItem {

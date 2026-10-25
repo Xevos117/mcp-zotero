@@ -102,6 +102,12 @@ export interface ZoteroDeleteResponse {
   getVersion(): number;
 }
 
+/** Response to a single-object PATCH/PUT write. getData() is the updated fields plus the new version. */
+export interface ZoteroSingleWriteResponse {
+  getData(): ZoteroItemData;
+  getVersion(): number | null;
+}
+
 export interface ZoteroApiInterface {
   library(type: string, id: number | string): ZoteroApiInterface;
   collections(key?: string): ZoteroApiInterface;
@@ -112,6 +118,7 @@ export interface ZoteroApiInterface {
   version(version: number): ZoteroApiInterface;
   get(config?: Record<string, unknown>): Promise<ZoteroResponse>;
   post(data: unknown[], opts?: Record<string, unknown>): Promise<ZoteroWriteResponse>;
+  patch(data: Record<string, unknown>, opts?: Record<string, unknown>): Promise<ZoteroSingleWriteResponse>;
   delete(keysToDelete?: string[]): Promise<ZoteroDeleteResponse>;
 }
 

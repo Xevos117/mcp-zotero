@@ -72,9 +72,11 @@ describe("get_items_details (MCP)", () => {
     );
     const out = await h.call("get_items_details", { item_keys: ["AAAARRRR"] });
     const entry = out.json.AAAARRRR;
-    for (const f of ["key", "version", "dateAdded", "dateModified", "collections", "tags", "relations", "extra", "series", "archive"]) {
+    for (const f of ["key", "dateAdded", "dateModified", "collections", "tags", "relations", "extra", "series", "archive"]) {
       expect(entry).not.toHaveProperty(f);
     }
+    // version is exposed (update_item needs it); it is a number, not a bibliographic field
+    expect(entry.version).toBe(1);
   });
 
   it("GID-15 creators strutturati accanto ad authors (cognomi multiparola, nome istituzionale)", async () => {
@@ -134,7 +136,7 @@ describe("get_items_details (MCP)", () => {
   it("GID-07 fallback per item senza tipo/titolo", async () => {
     h.net.on("GET", ITEMS, zList([{ key: "MINQQQQR" }]));
     const out = await h.call("get_items_details", { item_keys: ["MINQQQQR"] });
-    expect(out.json.MINQQQQR).toEqual({ itemType: "document", title: "Untitled", authors: "No authors listed" });
+    expect(out.json.MINQQQQR).toEqual({ itemType: "document", title: "Untitled", authors: "No authors listed", version: 1 });
   });
 
   it("GID-08 unicode preservato", async () => {

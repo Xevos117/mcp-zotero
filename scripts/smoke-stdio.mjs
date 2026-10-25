@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { XMLValidator } from "fast-xml-parser";
 
-const EXPECTED_TOOLS = 16;
+const EXPECTED_TOOLS = 18;
 const TIMEOUT_MS = 20_000;
 const root = fileURLToPath(new URL("..", import.meta.url));
 const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));

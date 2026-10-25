@@ -5,7 +5,7 @@
 A Model Context Protocol server for Zotero integration. It gives any LLM full access to your Zotero library: search, organize, add papers by DOI, import PDFs, read full-text content, and inject live citations into Word documents.
 
 > Originally based on [mcp-zotero](https://github.com/kaliaboi/mcp-zotero) by Abhishek Kalia.
-> This project has since been extensively rewritten with a new architecture, 15 tools (up from 5), citation injection, PDF management, and Claude skill support.
+> This project has since been extensively rewritten with a new architecture, 18 tools (up from 5), citation injection, PDF management, and Claude skill support.
 
 ## How it works
 
@@ -17,7 +17,7 @@ For advanced use cases (PDF upload policy, citation style guidance, source trans
 
 | Scenario | MCP server | Skill needed? |
 |---|---|---|
-| LLM with filesystem access (Claude Code, LM Studio, etc.) | All 15 tools | No |
+| LLM with filesystem access (Claude Code, LM Studio, etc.) | All 18 tools | No |
 | LLM without filesystem access (Claude.ai Projects, Claude Desktop) | API tools (search, add, metadata) | Yes, for citation injection |
 
 LLMs with filesystem access can use all tools directly, including `inject_citations` which reads and writes `.docx` (Word) and `.odt` (LibreOffice) files on disk.
@@ -224,7 +224,7 @@ available in every project (the default `local` scope covers only the current pr
 | `get_collections` | List all collections (folders) with keys, names, and parent relationships |
 | `get_collection_items` | Get items in a specific collection with keys, titles, authors, dates |
 | `search_library` | Search by query, or list items sorted by field (date, title, etc.) |
-| `get_items_details` | Batch metadata retrieval for multiple items — returns all type-specific fields (bookTitle, proceedingsTitle, university, etc.), the `authors` string and the structured `creators`; keys not in the library are listed in `not_found` |
+| `get_items_details` | Batch metadata retrieval for multiple items — returns all type-specific fields (bookTitle, proceedingsTitle, university, etc.), the `authors` string, the structured `creators` and each item's current `version` (needed by `update_item`); keys not in the library are listed in `not_found` |
 | `get_item_fulltext` | Get full-text content of a PDF attachment via Zotero's fulltext index |
 
 ### Adding content
@@ -237,6 +237,13 @@ available in every project (the default `local` scope covers only the current pr
 | `import_pdf_to_zotero` | Download a PDF from URL, upload to Zotero storage, auto-index full text |
 | `find_and_attach_pdfs` | Batch OA PDF lookup and auto-attach via Unpaywall (by item keys or collection) |
 | `add_linked_url_attachment` | Attach a URL to an existing item or create a standalone link |
+
+### Editing content
+
+| Tool | Description |
+|---|---|
+| `update_item` | Edit an existing item's fields and/or creators. Needs the item's current `version` (from `get_items_details`); a stale version returns `version_conflict` instead of overwriting |
+| `create_note` | Attach a plain-text child note to an existing regular item (blank lines become paragraphs) |
 
 ### Deleting content
 
@@ -351,7 +358,7 @@ Other owner settings:
    and record the results in its log.
 4. Before the first release that ships the Claude Desktop extension (and whenever `manifest.json` or the Node.js
    requirement changes): build it with `npm run bundle`, install `dist/mcp-zotero.mcpb` once in a real Claude
-   Desktop (macOS or Windows), fill in a test key and user ID, and check that the 15 tools appear and
+   Desktop (macOS or Windows), fill in a test key and user ID, and check that the 18 tools appear and
    `get_collections` answers.
 5. Publish the GitHub release: the [release workflow](.github/workflows/release.yml) runs the tests, publishes
    to npm, publishes `server.json` to the [MCP Registry](https://registry.modelcontextprotocol.io) and attaches

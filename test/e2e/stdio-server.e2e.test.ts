@@ -12,6 +12,7 @@ import {
   zList,
   zSingle,
   zWrite,
+  zPatch,
   zDeleted,
   zLibraryQuery,
   article,
@@ -61,9 +62,9 @@ describe("e2e: build/server.js su stdio", () => {
     expect(s.client.getInstructions()).toMatch(/Errors carry a hint.*tell the user instead of retrying/);
   });
 
-  it("E2E-02 tools/list: 16 tool, ognuno con inputSchema object", async () => {
+  it("E2E-02 tools/list: 18 tool, ognuno con inputSchema object", async () => {
     const { tools } = await s.client.listTools(undefined, { timeout: CALL_TIMEOUT_MS });
-    expect(tools).toHaveLength(16);
+    expect(tools).toHaveLength(18);
     for (const t of tools) {
       expect(t.inputSchema.type).toBe("object");
       expect(t.description).toBeTruthy();
@@ -76,6 +77,8 @@ describe("e2e: build/server.js su stdio", () => {
       ["get_items_details", {}, "item_keys"],
       ["get_item_fulltext", {}, "item_key"],
       ["add_items", { items: [] }, "items"],
+      ["update_item", {}, "item_key"],
+      ["create_note", { parent_item_key: "AAAARRRR" }, "note"],
       ["add_items_by_doi", {}, "dois"],
       ["add_linked_url_attachment", { url: "nope" }, "url"],
       ["create_collection", {}, "name"],
@@ -217,6 +220,36 @@ describe("e2e: build/server.js su stdio", () => {
     expect(xml).toContain("ADDIN ZOTERO_ITEM CSL_CITATION");
     expect(xml).toContain("ADDIN ZOTERO_BIBL");
     expect(xml).toContain("Title");
+  });
+
+  it("E2E-24 update_item: patch con version corretta → nuova versione", async () => {
+    fake.net.on("GET", `${ZBASE}/items/AAAARRRR`, zSingle(article("AAAARRRR"), 7));
+    fake.net.on("PATCH", `${ZBASE}/items/AAAARRRR`, zPatch({ version: 7, newVersion: 8 }));
+    const out = await call(s, "update_item", { item_key: "AAAARRRR", version: 7, fields: { title: "Nuovo titolo" } });
+    expect(out.isError).toBe(false);
+    expect(out.json).toMatchObject({ item_key: "AAAARRRR", version: 8, updated_fields: ["title"] });
+    const patch = fake.net.requests("PATCH", `${ZBASE}/items/AAAARRRR`).at(-1)!;
+    expect(patch.headers.get("if-unmodified-since-version")).toBe("7");
+    expect(patch.json()).toEqual({ title: "Nuovo titolo" });
+  });
+
+  it("E2E-25 update_item: version non combacia → version_conflict senza patch", async () => {
+    fake.net.on("GET", `${ZBASE}/items/BBBB2222`, zSingle(article("BBBB2222"), 9));
+    const before = fake.net.requests("PATCH", `${ZBASE}/items/BBBB2222`).length;
+    const out = await call(s, "update_item", { item_key: "BBBB2222", version: 3, fields: { title: "x" } });
+    expect(out.isError).toBe(true);
+    expect(out.json).toMatchObject({ code: "version_conflict", expected_version: 3, current_version: 9 });
+    expect(fake.net.requests("PATCH", `${ZBASE}/items/BBBB2222`).length).toBe(before);
+  });
+
+  it("E2E-26 create_note: nota figlia di un item regolare", async () => {
+    fake.net.on("GET", `${ZBASE}/items/AAAARRRR`, zSingle(article("AAAARRRR"), 7));
+    fake.net.on("POST", ITEMS, zWrite({ keys: ["NOTEQQQR"] }));
+    const out = await call(s, "create_note", { parent_item_key: "AAAARRRR", note: "Riga 1\n\nRiga 2" });
+    expect(out.isError).toBe(false);
+    expect(out.json).toEqual({ item_key: "NOTEQQQR", parent_item_key: "AAAARRRR" });
+    const posted = fake.net.requests("POST", ITEMS).at(-1)!.json<Array<Record<string, unknown>>>()[0];
+    expect(posted).toMatchObject({ itemType: "note", parentItem: "AAAARRRR", note: "<p>Riga 1</p><p>Riga 2</p>" });
   });
 
   it("E2E-19 errore API Zotero (403) → isError al client", async () => {

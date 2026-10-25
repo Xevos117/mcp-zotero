@@ -232,6 +232,35 @@ test normali. Non restano `it.fails` nella suite.
 | ALU-07 | url mancante/non valido/numero, tags, collections | isError |
 | ALU-08/09 | HTTP 4xx/5xx, rete | isError |
 
+## update_item (`update-item.test.ts`)
+| ID | Scenario | Atteso |
+|---|---|---|
+| UI-01 | version corretta | GET poi PATCH con `If-Unmodified-Since-Version`, body = soli campi, nuova versione restituita in `version`, `updated_fields` |
+| UI-02 | version non combacia (pre-check sul GET) | errore `version_conflict` con `expected_version`/`current_version` e `hint` a get_items_details, nessuna PATCH |
+| UI-03 | 412 dal server (gara dopo il pre-check) | errore `version_conflict` con `current_version` dall'header, una sola PATCH (nessun retry) |
+| UI-04 | campo protetto (itemType/version/collections/parentItem/relations/dateAdded/dateModified/key) | errore "cannot be set" col nome del campo, nessuna chiamata |
+| UI-05 | campo non valido per il tipo | errore "Invalid fields" dopo il GET, nessuna PATCH |
+| UI-06 | creators sostituiti | mappati nella forma Zotero (name istituzionale o first/last), `creators_replaced` |
+| UI-07 | title su un tipo con nome di campo diverso (case) | rimappato a `caseName` nel body |
+| UI-08 | item inesistente (404) | errore "not found", nessuna PATCH |
+| UI-09 | fields vuoto e nessun creators | errore "Nothing to update", nessuna chiamata |
+| UI-10 | item_key malformato / version mancante | errore di validazione, nessuna chiamata |
+| UI-11 | creatorType non valido per il tipo | errore "Invalid fields" dopo il GET |
+| UI-12/13 | GET HTTP 4xx/5xx (≠404/412), rete | errore API con `http_status`/`hint` |
+
+## create_note (`create-note.test.ts`)
+| ID | Scenario | Atteso |
+|---|---|---|
+| CN-01 | nota figlia di un item regolare | GET del parent poi POST `itemType: note`, `parentItem`, HTML `<p>…</p>`, ritorna `{item_key, parent_item_key}` |
+| CN-02 | testo in paragrafi e righe | blank line → `<p>` separati, newline singolo → `<br/>`, XML escapato (`&amp;`, `&lt;`) |
+| CN-03 | tags | applicati come `[{tag}]` |
+| CN-04 | parent inesistente (404) | errore "not found" con `hint`, nessuna scrittura |
+| CN-05 | parent nota/allegato | errore "regular item", nessuna scrittura |
+| CN-06 | scrittura `failed` | errore strutturato "Failed to create note" con `details` |
+| CN-07 | parent_item_key malformato | errore di validazione, nessuna chiamata |
+| CN-08 | note vuota | errore di validazione, nessuna chiamata |
+| CN-09/10 | GET del parent HTTP 4xx/5xx (≠404), rete | errore API |
+
 ## delete_collection (`delete-collection.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
@@ -584,7 +613,7 @@ Import da DOI (`cslToZoteroItem`) e itemData incorporati nei codici di campo (`z
 | RM-02 | versione, `name`, pacchetto npm | `version` e `packages[0].version` = versione di `package.json`, `name` = `mcpName`, `identifier` = nome npm, `mcpName` con prefisso `io.github.<owner>/` col maiuscolo/minuscolo esatto del repository |
 | RM-03 | `environmentVariables` | stessi nomi delle `process.env.X` lette in `src/` (test esclusi); solo `ZOTERO_API_KEY` segreta (e obbligatoria); `choices`/`default` di `UNSAFE_OPERATIONS` e `ZOTERO_LIBRARY_TYPE` |
 | RM-04 | `manifest.json` (estensione Claude Desktop) contro lo schema MCPB della sua `manifest_version` (0.3, dal pacchetto `@anthropic-ai/mcpb`) | valido; `version` = package.json, `entry_point` = `main`, args `${__dirname}/build/server.js`, Node minimo = `engines` |
-| RM-05 | `tools` del manifest | nomi e ordine dei 16 tool registrati, ciascuno con un riassunto proprio di una riga (10-100 caratteri, non confrontato col codice: riformulare una descrizione in `src/` non tocca il manifest), `tools_generated: false` |
+| RM-05 | `tools` del manifest | nomi e ordine dei tool registrati, ciascuno con un riassunto proprio di una riga (10-100 caratteri, non confrontato col codice: riformulare una descrizione in `src/` non tocca il manifest), `tools_generated: false` |
 | RM-06 | `mcp_config.env` e `user_config` | stesse variabili di `server.json`; obbligatorie e sensibili coincidono con `isRequired`/`isSecret`; ogni opzione facoltativa ha un default (stringa vuota o il default di `server.json`), altrimenti al server arriverebbe il letterale `${user_config.<chiave>}`; `unsafe_operations` facoltativa con default `none` |
 
 Smoke del bundle (`npm run smoke -- --bundle dist/mcp-zotero.mcpb`, in `test.yml` e `release.yml`): il .mcpb viene spacchettato
@@ -596,9 +625,11 @@ poi gli stessi scenari utente e gruppo di `npm run smoke`; inoltre: nessuna vari
 ## E2E (`test/e2e/stdio-server.e2e.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni (UNPAYWALL_EMAIL, regola UNSAFE_OPERATIONS, hint negli errori), 16 tool con schema object |
-| E2E-03 | argomenti non validi su 14 tool | isError con il campo, nessuna chiamata HTTP |
-| E2E-04..18 | una tools/call per ciascuno dei 16 tool (deletes con UNSAFE_OPERATIONS=all) | risultato atteso, richieste corrette alla FakeNet |
+| E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni (UNPAYWALL_EMAIL, regola UNSAFE_OPERATIONS, hint negli errori), 18 tool con schema object |
+| E2E-03 | argomenti non validi su ogni tool con campi obbligatori | isError con il campo, nessuna chiamata HTTP |
+| E2E-04..18 | una tools/call per ciascuno dei tool di lettura/scrittura, create_cited_document compreso (deletes con UNSAFE_OPERATIONS=all) | risultato atteso, richieste corrette alla FakeNet |
+| E2E-24/25 | update_item: version corretta → PATCH con If-Unmodified-Since-Version; version errata → version_conflict senza PATCH | nuova versione / `code: version_conflict` |
+| E2E-26 | create_note | POST `itemType: note` sotto il parent, HTML `<p>…</p>` |
 | E2E-19 | 403 Zotero | isError al client |
 | E2E-20 | rete | nessuna richiesta del processo figlio senza route |
 | E2E-21/22 | UNSAFE_OPERATIONS assente / " ITEMS " | delete bloccati senza chiamate HTTP, con `hint` per l'utente / solo delete_items abilitato |
@@ -751,7 +782,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 
 | File | Casi |
 |---|---|
-| `get-user-id` | LIVE-GUI-01 libreria della chiave; 02 senza arguments / argomenti in più; 03 16 tool |
+| `get-user-id` | LIVE-GUI-01 libreria della chiave; 02 senza arguments / argomenti in più; 03 18 tool |
 | `search-library` | LIVE-SL-01 query sul titolo → solo quella voce; 02 sort title asc sul prefisso della run; 03 5 sort × 2 direzioni; 04 limit 500 → min(100, totale); 05 dateAdded desc ordinato; 06 nessun risultato senza isError; 07 argomenti non validi; 08 override utente, gruppo senza id, gruppo inesistente |
 | `get-collections` | LIVE-GC-01 collezione e sottocollezione con genitore; 02 include_trashed; 03 override e tipo sbagliato |
 | `get-collection-items` | LIVE-GCI-01 collezione con 3 voci note + inclusione delle fixture; 02 sottocollezione; 03 105 voci (paginazione >100); 04 allegato standalone escluso/incluso; 05 vuota; 06 inesistente / chiave mancante; 07 override |
@@ -761,6 +792,8 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 | `add-items` | LIVE-AI-01 8 tipi con collezione e tag, campi verificati via API; 02 55 voci in due POST; 03 tipo/campo/creatorType non validi, lista vuota; 04 collezione inesistente leggibile |
 | `add-items-by-doi` (soft) | LIVE-AID-01 metadati Crossref, nessun allegato; 02 DOI inesistente; 03 parziale; 04 forma URL `https://doi.org/…` risolta da doi.org, campo DOI senza prefisso; 05 DOI OA → PDF allegato; 06 lista vuota |
 | `add-linked-url-attachment` | LIVE-ALU-01 figlio con content_type e tag; 02 standalone in due collezioni; 03 override; 04 URL non valido, genitore inesistente |
+| `update-item` | LIVE-UI-01 campi + creators con la versione da get_items_details → salvati, versione aumentata; 02 versione stantia → version_conflict, item invariato; 03 title rimappato per tipo (case→caseName), campo non valido e campo protetto rifiutati |
+| `create-note` | LIVE-CN-01 nota figlia in testo semplice → `<p>`/`<br/>`, sotto il genitore col tag della run (verifica via rawChildren); 02 override library_id; 03 genitore inesistente, nota vuota, genitore allegato |
 | `import-pdf-to-zotero` | LIVE-IP-01 PDF figlio: size, md5, fulltext, verificati via API; 02 standalone con filename/titolo/collezioni; 03 nome da Content-Disposition; 04 HTML come PDF → not_pdf, nessun allegato; 05 text/html (LIVE-STALE-5); 06 404; 07 genitore inesistente, URL non valido; 08 override |
 | `find-and-attach-pdfs` (soft per 04/05) | LIVE-FA-01 entrambi/nessuno; 02 chiave sconosciuta e senza DOI; 03 skipped e skip_if_attachment_exists false; 04 collezione dry_run → processed = voci regolari create (LIVE-STALE-2); 05 collezione reale (LIVE-STALE-4); 06 override |
 | `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci cancellate definitivamente (non nel cestino); 03 solo sconosciute (LIVE-STALE-1); 04 mista; 05 51/0 chiavi; 06 genitore → anche il figlio (ogni asserzione riporta il testo del risultato); 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione |

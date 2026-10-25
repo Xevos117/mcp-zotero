@@ -21,7 +21,7 @@ describe.skipIf(!live.enabled)("get_user_id (live)", () => {
     expect((await s.call("get_user_id", { foo: 1 })).json?.user_id).toBe(live.userId);
   });
 
-  it("LIVE-GUI-03 tools/list: 16 tool", async () => {
-    expect((await s.listTools()).length).toBe(16);
+  it("LIVE-GUI-03 tools/list: 18 tool", async () => {
+    expect((await s.listTools()).length).toBe(18);
   });
 });

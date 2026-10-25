@@ -15,6 +15,8 @@ const EXPECTED: Record<string, { required: string[]; properties: string[] }> = {
   get_item_fulltext: { required: ["item_key"], properties: ["item_key", "max_characters"] },
   get_user_id: { required: [], properties: [] },
   add_items: { required: ["items"], properties: ["items", "collection_key", "tags"] },
+  update_item: { required: ["item_key", "version", "fields"], properties: ["item_key", "version", "fields", "creators"] },
+  create_note: { required: ["parent_item_key", "note"], properties: ["parent_item_key", "note", "tags"] },
   add_items_by_doi: { required: ["dois"], properties: ["dois", "collection_key", "tags", "auto_attach_pdf"] },
   add_linked_url_attachment: {
     required: ["url"],
@@ -49,7 +51,7 @@ describe("tools/list (MCP)", () => {
     await h.close();
   });
 
-  it("TL-01 espone esattamente i 16 tool attesi", () => {
+  it("TL-01 espone esattamente i tool attesi", () => {
     expect(tools.map((t) => t.name).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 

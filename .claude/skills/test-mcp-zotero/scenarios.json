@@ -32,6 +32,11 @@
       "scenario": "add_items with a bookSection (editor), a thesis (university, thesisType) and a conferencePaper; one field invalid for its type must be rejected with a readable message"
     },
     {
+      "id": "T-edit",
+      "files": ["src/tools/update-item.ts", "src/tools/create-note.ts", "src/utils/item-fields.ts"],
+      "scenario": "add_items one journalArticle (run prefix + tag) to edit, get_items_details to read its version, then update_item with that version changing title and pages: re-read shows the new values and a higher version; update_item again with the stale version: isError with code version_conflict and nothing changed; update_item with itemType in fields: rejected before any write; create_note on the same item with two plain-text paragraphs separated by a blank line: it is created as a child. Only ever edit or annotate items this run created"
+    },
+    {
       "id": "T-doi",
       "files": ["src/tools/add-items-by-doi.ts", "src/utils/doi-resolver.ts", "src/utils/html-entities.ts", "src/utils/csl-to-zotero.ts", "src/types/csl-types.ts"],
       "scenario": "add_items_by_doi with 10.1016/j.cor.2009.01.015 and the nonexistent 10.0000/<prefix> in one call: partial success; claim the item with expect.publicationTitle \"Computers & Operations Research\" (a literal &, never &amp;); then one DOI in https://doi.org/… form"
