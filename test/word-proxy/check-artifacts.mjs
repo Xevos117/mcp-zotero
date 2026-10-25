@@ -8,7 +8,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 import JSZip from "jszip";
 
-const ALLOWED = new Set([".docx", ".trace", ".json", ".jsonl", ".png", ".md", ".txt"]);
+const ALLOWED = new Set([".docx", ".odt", ".trace", ".driver", ".json", ".jsonl", ".png", ".pdf", ".md", ".txt"]);
 const LIBRARY_URI = /zotero\.org\/(users|groups)\/(\d+)/g;
 const PLACEHOLDER = { users: "000000", groups: "777" };
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/;
@@ -41,14 +41,14 @@ export function textProblems(text, secrets) {
   return out;
 }
 
-/** Text parts of a file: every part of a docx, PNG text chunks, the file itself otherwise. */
+/** Text parts of a file: every part of a docx/odt (ZIP), PNG/PDF bytes as latin1, the file itself otherwise. */
 async function texts(path) {
   const buf = readFileSync(path);
-  if (path.endsWith(".docx")) {
+  if (path.endsWith(".docx") || path.endsWith(".odt")) {
     const zip = await JSZip.loadAsync(buf);
     return Promise.all(Object.values(zip.files).filter((f) => !f.dir).map((f) => f.async("string")));
   }
-  if (path.endsWith(".png")) return [buf.toString("latin1")];
+  if (path.endsWith(".png") || path.endsWith(".pdf")) return [buf.toString("latin1")];
   return [buf.toString("utf8")];
 }
 

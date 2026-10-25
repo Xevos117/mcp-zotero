@@ -84,15 +84,25 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           SCOPE: ${{ inputs.scope }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -uo pipefail
           if [ "$EVENT" = "pull_request" ]; then
-            git diff --name-only "$BASE_SHA...$HEAD_SHA" | tee "$RUNNER_TEMP/changed.txt"
+            # Stacked PRs: the base branch is force-pushed while the run is pending, so the event's base.sha can be
+            # gone from the fetch (git diff then fails with exit 128). Diff against the freshly-fetched base BRANCH;
+            # if even that fails, fail safe to running the live suite and the agent (a scope job must never go red).
+            if git fetch --no-tags origin "$BASE_REF" >/dev/null 2>&1 &&
+               git diff --name-only "origin/$BASE_REF...${HEAD_SHA:-HEAD}" > "$RUNNER_TEMP/changed.txt" 2>/dev/null; then
+              node scripts/live-scope.mjs < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
+            else
+              echo "::warning::scope: cannot diff against origin/$BASE_REF; running live + agent (fail-safe)"
+              printf 'live=true\nagent=true\n' | tee -a "$GITHUB_OUTPUT"
+            fi
           else
             : > "$RUNNER_TEMP/changed.txt"
+            node scripts/live-scope.mjs < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
           fi
-          node scripts/live-scope.mjs < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
       # Stacked PRs: a force-push of the base branch sends another `synchronize` for the same head commit. If an
       # earlier run on this commit already passed every part this run would run, the live suite and the agent are
       # skipped and the verdicts pass with a link to it; a failed, cancelled or running earlier run does not count.
