@@ -6,6 +6,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { createRequire } from "module";
 import { ZoteroApiInterface } from "./types/zotero-types.js";
 import { registerAllTools } from "./tools/index.js";
+import { registerAllPrompts } from "./prompts/index.js";
 import { logger } from "./utils/logger.js";
 import { parseUnsafeOperations, UnsafeOperationsMode } from "./utils/unsafe-operations.js";
 import { getDefaultLibrary } from "./utils/library-context.js";
@@ -34,7 +35,7 @@ class ZoteroServer {
     this.server = new McpServer(
       { name: "zotero", version: SERVER_VERSION },
       {
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, prompts: {} },
         instructions: [
           "Zotero library management and citation injection for Word documents.",
           "",
@@ -84,6 +85,7 @@ class ZoteroServer {
 
   private setupHandlers() {
     registerAllTools(this.server, this.zoteroApi, this.userId, this.unsafeOps);
+    registerAllPrompts(this.server);
   }
 
   async start() {

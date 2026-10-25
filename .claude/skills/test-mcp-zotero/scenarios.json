@@ -82,6 +82,11 @@
       "scenario": "inject.js with the bare numeric user id instead of users/<id> on the apa document: same URIs; claim it, and the inject_citations apa document a second time, with compare_group \"bare-id\""
     },
     {
+      "id": "T-prompts",
+      "files": ["src/prompts/index.ts"],
+      "scenario": "prompts/list returns cite_word_document, write_cited_document, import_references and note_from_item with their arguments; prompts/get on note_from_item with the run's article key renders a message that names get_items_details and create_note and contains the key (no leftover ${arguments.…})"
+    },
+    {
       "id": "T-library",
       "files": ["src/utils/library-context.ts", "src/server.ts", "src/tools/index.ts", "src/tools/get-user-id.ts", "src/types/zotero-types.ts"],
       "scenario": "per-call library_type: \"user\" + own library_id on two read tools; get_user_id answers the same library_path; if group_id: repeat the F7 reads"

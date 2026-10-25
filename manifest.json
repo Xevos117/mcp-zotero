@@ -110,6 +110,45 @@
     }
   ],
   "tools_generated": false,
+  "prompts": [
+    {
+      "name": "cite_word_document",
+      "description": "Turn the <zcite> placeholders in an existing .docx (or .odt) into live Zotero citations and a bibliography.",
+      "arguments": [
+        "file_path",
+        "style"
+      ],
+      "text": "I have a Word document at ${arguments.file_path} and I want to add Zotero citations to it.\n\nPlease:\n1. Make sure each place a citation should appear contains a <zcite keys=\"ITEMKEY\"/> placeholder in its own text run (keys are Zotero item keys from search_library, add_items or add_items_by_doi). For a numbered style (ieee/vancouver) every <zcite> also needs a num attribute, numbered in order of first appearance.\n2. Call inject_citations with file_path \"${arguments.file_path}\" and style \"${arguments.style}\". It fetches the metadata from Zotero and writes a new <name>_cited file next to the original.\n3. Tell me to open the result in Word with the Zotero plugin and run Zotero → Refresh, so the citations become editable."
+    },
+    {
+      "name": "write_cited_document",
+      "description": "Draft a document on a topic with inline Zotero citations and a bibliography, saved as .docx or .odt.",
+      "arguments": [
+        "topic",
+        "output_path",
+        "format",
+        "style"
+      ],
+      "text": "Write a well-structured document about \"${arguments.topic}\" with Zotero citations, and save it to ${arguments.output_path} as ${arguments.format}.\n\nPlease:\n1. Gather the references in Zotero first: add_items_by_doi for items with a DOI, add_items for the rest, or search_library to reuse items already in the library. Keep track of each item key.\n2. Write the body as Markdown and cite sources inline with pandoc-style keys: [@ITEMKEY] for one source, [@KEY1; @KEY2] for several, [see @ITEMKEY, p. 12] with a locator, and -@ITEMKEY to suppress the author.\n3. Call create_cited_document with that Markdown as the markdown argument, output_path \"${arguments.output_path}\", format \"${arguments.format}\" and style \"${arguments.style}\". It resolves the citations against Zotero, numbers them in order of first appearance and appends the bibliography.\n4. Tell me the citations are live Zotero fields: open the result in Word or LibreOffice with the Zotero plugin and run Refresh to edit them."
+    },
+    {
+      "name": "import_references",
+      "description": "Add one or more references to Zotero from their DOIs, attaching open-access PDFs when available.",
+      "arguments": [
+        "dois"
+      ],
+      "text": "Import these references into Zotero by DOI: ${arguments.dois}\n\nPlease call add_items_by_doi with the list of DOIs (strip any surrounding text, keep only the bare DOIs). It resolves the metadata automatically and attaches an open-access PDF when one is found. Report which DOIs were added and which failed, and suggest add_items for anything without a usable DOI."
+    },
+    {
+      "name": "note_from_item",
+      "description": "Read an existing Zotero item and attach a concise summary as a child note.",
+      "arguments": [
+        "item_key"
+      ],
+      "text": "Read the Zotero item ${arguments.item_key} and attach a short summary note to it.\n\nPlease:\n1. Fetch the item with get_items_details (item_keys [\"${arguments.item_key}\"], include_abstract true); if it has a PDF, get_item_fulltext for more detail.\n2. Write a concise plain-text summary (key points, method, findings) and attach it with create_note (parent_item_key \"${arguments.item_key}\"). Use blank lines between paragraphs; no HTML or Markdown."
+    }
+  ],
+  "prompts_generated": false,
   "keywords": [
     "zotero",
     "citation",
