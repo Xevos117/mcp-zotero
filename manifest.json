@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "mcp-zotero",
   "display_name": "MCP Zotero",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Unofficial Zotero integration: search your library, add papers by DOI, import PDFs, read full text and inject live Zotero citations into Word documents.",
   "long_description": "Gives Claude access to your Zotero library through the Zotero Web API: search and browse collections, add items by DOI (with open-access PDFs found via Unpaywall) or from metadata, import PDFs, read the full text indexed by Zotero, and turn `<zcite>` placeholders in a .docx file into native Zotero citations that Zotero for Word can refresh.\n\nYou need a Zotero API key (zotero.org/settings/keys, with library read/write and file access) and your numeric user ID, shown on the same page. Deletions are disabled unless you change *Deletions allowed*. To work on a group library, set *Library type* to `group` and *Group library ID*.\n\nThis is an unofficial community project, not affiliated with or endorsed by the Zotero team or the Corporation for Digital Scholarship. \"Zotero\" is a registered trademark of the Corporation for Digital Scholarship.",
   "author": {

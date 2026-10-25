@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-10-25
+
 ### Changed
 
 - **More complete embedded item data** (`itemData` in the field codes, used by Zotero when the item is not in the local library): `inject_citations` and the skill's `inject.js` now carry the university of a thesis, the institution of a report and the repository of a preprint as the CSL publisher, the report number and the preprint's archive ID as `number`, the thesis or report type as `genre`, the access date (`accessed`, e.g. APA's "Retrieved … from"), ISBN, ISSN, edition, language and number of pages. A date that is not year-month-day ("October 2023") is passed as `raw` for citeproc to parse instead of being dropped.
