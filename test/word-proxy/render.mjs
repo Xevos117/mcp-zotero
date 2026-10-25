@@ -92,10 +92,12 @@ if (process.argv[1] && process.argv[1].endsWith("render.mjs")) {
       images.push({
         image,
         document: step,
+        app: "word",
         path: session === "library" ? "A (library items)" : "B (itemData embedded by the product)",
         style,
         page,
         pages,
+        description: `Word (WordCraft): ${step}, pagina ${page}/${pages}${style ? `, stile ${style}` : ""}`,
         dialog: dialogOf(evts, step),
         knownBug: expect[step]?.knownBug ?? null,
       });

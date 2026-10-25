@@ -167,9 +167,14 @@ the checklist document of the real corpus (`test/fixtures/corpus`) injected by t
 the case `proposed` (if Zotero opened its Document Preferences dialog, the user pressed OK on the style it
 proposed), and `lib-apa` (path A: the same items from the local library, the reference).
 Read `agent-render/index.json` first (document, style, path, page of each image, the dialog recorded at that
-step, the corpus items with their cases, the known issues), then every PNG with the Read tool.
+step, the corpus items with their cases, the known issues), then every PNG with the Read tool. Each image has an
+`app`: most are `"word"` (WordCraft), and a few are `"libreoffice"` — the same corpus refreshed by LibreOffice and
+the Zotero plugin (documents `lo-apa`, `lo-ieee`, `lo-group`, path B embedded itemData). Review the LibreOffice pages
+the same way, per style, and compare each with its Word counterpart (`lo-apa` vs `apa`, etc.): the citation and
+bibliography **content** should match (the rendering is Zotero's in both). A content difference on an lo page is a
+`## Problema` like any other (Documento: `lo-apa`…); a known issue of index.json may be cited on an lo page too.
 
-The pages are **WordCraft's rendering, not Word's**. Judge the **content** of the citations and of the
+The pages are the word processor's **rendering, not Word's**. Judge the **content** of the citations and of the
 bibliography, per style: which elements are there (authors, year, title, container, editors as "In … (Ed.)",
 publisher, pages, DOI), their order, italics where the style wants them, numbering in numeric styles
 (`ieee`, `vancouver`), locators and prefixes ("see", "p. 110"), disambiguation (co-authors, 2020a/2020b),
@@ -193,10 +198,15 @@ Write `agent-out/visual-review.md` (Write tool) exactly in this format. One sect
 
 ## Da verificare in Word
 - <layout remark> (<image>)
+
+## Da verificare in LibreOffice
+- <layout remark on an lo page> (<image>)
 ```
 
 If nothing in the content is wrong, write only `# Revisione visiva` and the line
-`Nessun problema di contenuto.` (plus the "Da verificare in Word" list, if any).
+`Nessun problema di contenuto.` (plus the "Da verificare in Word" / "Da verificare in LibreOffice" lists, if any).
+The "Da verificare in LibreOffice" list is layout only (like the Word one) and never fails the run; omit the heading
+if there is nothing to note.
 
 Read **every** page listed in index.json: the harness records each Read of `agent-render/*.png`, and if a page is
 missing when you finish, it stops you once or twice with the list (read those pages, update the review), then
