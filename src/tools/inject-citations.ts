@@ -81,6 +81,12 @@ export async function handleInjectCitations(
     // A path from a sandbox or cloud workspace (Claude.ai, Claude Desktop code execution) does not exist here:
     // say so and point to the skill instead of a bare ENOENT.
     const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EBUSY") {
+      return formatErrorResponse("Cannot write the _cited copy: the output file is locked (EBUSY).", {
+        file_path,
+        hint: "Close the _cited file if it is open in Word (or another program) and call again.",
+      });
+    }
     if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
       return formatErrorResponse(`Cannot read the file or write the _cited copy next to it (${code}).`, {
         file_path,

@@ -390,6 +390,24 @@ assenti dal client) le decide il job `word-proxy` (sezione sotto) con Zotero des
 | SK-V01 (esteso) | inject.js nei 5 stili | stesse preferenze di `inject_citations` |
 | SK-V03 | inject.js con preferenze già presenti; radice con prefisso; parte non unibile | mantenute con WARNING; unite conservando le proprietà dell'utente; non scritte, parte intatta, WARNING |
 
+### Golden del percorso Word (`test/citation-injector/golden.test.ts`, snapshot `test/fixtures/golden/`)
+
+Garantisce la regola del proprietario: Word non si tocca, l'output resta identico byte per byte dopo il refactor del nucleo comune. Gli snapshot sono stati generati dal codice precedente al refactor; `UPDATE_GOLDEN=1` li rigenera (solo di proposito).
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| GOLD-* | ogni fixture IC (singola, multi, chiavi ripetute, locator/prefix/suffix, i 5 stili, unicode, record completo, capitolo, metadati ostili, gruppo) più preferenze non unibili/già presenti e un campione del corpus reale | `word/document.xml` e `docProps/custom.xml` di `inject_citations` identici allo snapshot, normalizzando solo citationID e id di sessione |
+
+### Salvataggio atomico (`src/utils/atomic-write.test.ts`)
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| AW-01 | scrittura | contenuto scritto, nessun file temporaneo residuo |
+| AW-02 | `overwrite:true` (default) su file esistente | sostituito |
+| AW-03 | `overwrite:false` su file esistente | errore `EEXIST`, file originale intatto, nessun temporaneo |
+| AW-04 | `overwrite:false` su file assente | creato |
+| AW-05 | cartella non scrivibile | errore `EACCES`, nessun temporaneo (il tool mappa anche `EBUSY` → "chiudi il file in Word") |
+
 ## Skill inject.js (`test/skills/inject-script.test.ts`, processo node reale)
 | ID | Scenario | Atteso |
 |---|---|---|
