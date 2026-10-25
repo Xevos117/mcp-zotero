@@ -544,6 +544,40 @@
         }
       ],
       "relations": {}
+    },
+    {
+      "key": "ASPHLGN5",
+      "itemType": "journalArticle",
+      "title": "Is additive coding useful for morphological phylogenetic analyses? An empirical evaluation",
+      "creators": [
+        {
+          "creatorType": "author",
+          "firstName": "Danilo César",
+          "lastName": "Ament"
+        },
+        {
+          "creatorType": "author",
+          "firstName": "Eduardo A.B.",
+          "lastName": "Almeida"
+        }
+      ],
+      "abstractNote": "Abstract\nWe address an old but still controversial question of morphological phylogenetics: whether additive (or ordered) coding is beneficial to properly extracting phylogenetic information from phenotypical variation. To empirically evaluate the value of the additive coding, we compared the impact of multistate additive, non-additive, and binary codings for 14 quantitative characters in a phylogenetic analysis of a genus of phorid flies (Diptera). First, we compared which of these morphological codings were most effective for the morphological matrix to approximate the results of a molecular data set. We then compared which morphological coding strategies yielded the best Bayesian posterior probabilities when concatenated to molecular data. We also calculated consistency and retention indices for each binary element of the additive characters and contrasted these results to a measure of phylogenetic signal. Overall, these indices were lower for additive characters than for the others but still indicate reasonable accommodation in the tree. Additive coding outperformed the multistate non-additive coding by recovering higher Bayesian posterior probabilities in the concatenated dataset. Additive coding was also among the best coding strategies for the morphological matrix to approximate the phylogenetic signal from an independent source of evidence—i.e., molecular results. Therefore, quantitative information coded as additive had reasonable phylogenetic congruence with other data and improved the phylogenetic results of morphological data in most cases. These results support the use of additive coding for phylogenetic analysis and encourage other similar empirical evaluations aiming to explore the generality of the benefits of this coding method.",
+      "date": "2025-09-03",
+      "DOI": "10.3897/asp.83.e146637",
+      "url": "http://dx.doi.org/10.3897/asp.83.e146637",
+      "publicationTitle": "Arthropod Systematics & Phylogeny",
+      "journalAbbreviation": "ASP",
+      "publisher": "Pensoft Publishers",
+      "volume": "83",
+      "pages": "447-461",
+      "ISSN": "1864-8312",
+      "collections": [],
+      "tags": [
+        {
+          "tag": "phylogenetics"
+        }
+      ],
+      "relations": {}
     }
   ]
 }

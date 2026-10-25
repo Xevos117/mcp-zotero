@@ -42,6 +42,18 @@ jobs:
       has_patch: ${{ steps.patch.outputs.has_patch }}
       has_issue: ${{ steps.issue.outputs.has_issue }}
     steps:
+      # The federation ids are variables, not secrets: masked before anything can print them
+      - name: Mask the Anthropic federation ids
+        timeout-minutes: 1
+        env:
+          FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
+        run: |
+          for v in "$FEDERATION_RULE_ID" "$ORGANIZATION_ID" "$SERVICE_ACCOUNT_ID" "$WORKSPACE_ID"; do
+            if [ -n "$v" ]; then echo "::add-mask::$v"; fi
+          done
       - name: Skip if a deps/* PR is already open
         id: open
         timeout-minutes: 2

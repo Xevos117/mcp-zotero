@@ -5,7 +5,7 @@ import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
 import { fetchItemsByKeys } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
-import { ITEM_KEY_HINT, unsafeOperationsHint } from "../utils/error-hints.js";
+import { ITEM_KEY_HINT, unsafeOperationsHint, zoteroStatusHint } from "../utils/error-hints.js";
 
 export const toolConfig = {
   name: "delete_items",
@@ -47,61 +47,76 @@ export async function handleDeleteItems(
   }
 
   try {
-    const { items, version: libraryVersion } = await fetchItemsByKeys(
-      (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
-      item_keys
-    );
+    const notFoundKeys: string[] = [];
+    let pending = item_keys;
+    for (let attempt = 1; ; attempt++) {
+      const { items, version: libraryVersion } = await fetchItemsByKeys(
+        (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
+        pending
+      );
 
-    const foundKeys = new Set(items.map((item) => item.key).filter(Boolean));
-    const notFoundKeys = item_keys.filter((k) => !foundKeys.has(k));
+      const foundKeys = new Set(items.map((item) => item.key).filter(Boolean));
+      notFoundKeys.push(...pending.filter((k) => !foundKeys.has(k)));
 
-    if (foundKeys.size === 0) {
-      return formatErrorResponse("No items found for the given keys", {
-        item_keys,
-        status: "not_found",
-        hint: `Nothing was deleted: none of these keys exists in this library (already deleted, or in another library). ${ITEM_KEY_HINT}`,
-      });
-    }
-
-    // Use library version from response header (Last-Modified-Version),
-    // not individual item versions — required for multi-object DELETE
-    if (libraryVersion === null) {
-      return formatErrorResponse("Could not determine library version", {
-        item_keys,
-        hint: "Nothing was deleted. Retry the same call once.",
-      });
-    }
-
-    // only keys the caller asked for, whatever the API returned
-    const keysToDelete = item_keys.filter((k) => foundKeys.has(k));
-
-    await zoteroApi
-      .library(libraryType, libraryId)
-      .items()
-      .version(libraryVersion)
-      .delete(keysToDelete);
-
-    const result: Record<string, unknown> = {
-      deleted_keys: keysToDelete,
-      deleted_count: keysToDelete.length,
-    };
-
-    if (notFoundKeys.length > 0) {
-      result.not_found = notFoundKeys;
-    }
-
-    return formatJsonResult(result);
-  } catch (err) {
-    if (isZoteroApiError(err)) {
-      if (err.response.status === 412) {
-        return formatErrorResponse(
-          "Items were modified by another client, so nothing was deleted. Retry the same call.",
-          {
-            item_keys,
-            status: "version_conflict",
-          }
-        );
+      if (foundKeys.size === 0) {
+        return formatErrorResponse("No items found for the given keys", {
+          item_keys,
+          status: "not_found",
+          hint: `Nothing was deleted: none of these keys exists in this library (already deleted, or in another library). ${ITEM_KEY_HINT}`,
+        });
       }
+
+      // Use library version from response header (Last-Modified-Version),
+      // not individual item versions — required for multi-object DELETE
+      if (libraryVersion === null) {
+        return formatErrorResponse("Could not determine library version", {
+          item_keys,
+          hint: "Nothing was deleted. Retry the same call once.",
+        });
+      }
+
+      // only keys the caller asked for, whatever the API returned
+      const keysToDelete = pending.filter((k) => foundKeys.has(k));
+
+      try {
+        await zoteroApi
+          .library(libraryType, libraryId)
+          .items()
+          .version(libraryVersion)
+          .delete(keysToDelete);
+      } catch (err) {
+        // 412: the library changed between the GET and the DELETE (another client, a sync). Read the new
+        // version and the keys that still exist, and retry once with those.
+        if (attempt === 1 && isZoteroApiError(err) && err.response.status === 412) {
+          pending = keysToDelete;
+          continue;
+        }
+        throw err;
+      }
+
+      const result: Record<string, unknown> = {
+        deleted_keys: keysToDelete,
+        deleted_count: keysToDelete.length,
+      };
+
+      if (notFoundKeys.length > 0) {
+        result.not_found = notFoundKeys;
+      }
+
+      return formatJsonResult(result);
+    }
+  } catch (err) {
+    if (isZoteroApiError(err) && err.response.status === 412) {
+      const { hint } = zoteroStatusHint(412);
+      return formatErrorResponse(
+        "Items were modified by another client (HTTP 412 Precondition Failed), also on a second try with the new library version, so nothing was deleted.",
+        {
+          item_keys,
+          status: "version_conflict",
+          http_status: 412,
+          hint,
+        }
+      );
     }
     throw err;
   }

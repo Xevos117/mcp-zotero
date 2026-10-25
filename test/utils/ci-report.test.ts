@@ -134,11 +134,12 @@ describe("riepilogo dell'agente smoke (test/live/agent/summary.mjs, CR-03)", () 
   };
   const report = { summary: "All good", scenarios: [], friction: [{ tool: "get_item_fulltext", note: "max_characters 0 is unclear" }] };
 
-  it("CR-03a verdetto, problemi, avvisi, tabella scenari, esplorativi, friction, turni/durata/costo, marcatore in testa", () => {
+  it("CR-03a verdetto, problemi, avvisi, tabella scenari, esplorativi, friction, turni/durata senza costo, marcatore in testa", () => {
     const text = buildSummary({ verdict, report, claims, stats: { turns: 87, durationMs: 23 * 60_000, costUsd: 1.844, subtype: "success" }, headSha: "abcdef1234567" });
     expect(text.split("\n")[0]).toBe(MARKER);
     expect(text).toContain("### Agent smoke: claims NOT verified");
-    expect(text).toContain("head abcdef1 · 41 checks passed · 1 problems · 1 warnings · 87 turns · 23 min · $1.84");
+    expect(text).toContain("head abcdef1 · 41 checks passed · 1 problems · 1 warnings · 87 turns · 23 min");
+    expect(text).not.toMatch(/\$\d/);
     expect(text).toContain("- X1: call 1 (search_library): call_no 9 not in the audit");
     expect(text).toContain("| F1 | skipped | doi.org \\| down retry |");
     expect(text).toContain("| ID | Verdict | Rationale | Audited calls | Observed |");
@@ -155,7 +156,7 @@ describe("riepilogo dell'agente smoke (test/live/agent/summary.mjs, CR-03)", () 
   });
 
   it("CR-03c runStats: ultimo messaggio result della trascrizione", () => {
-    expect(runStats([{ type: "assistant" }, { type: "result", subtype: "success", num_turns: 3, duration_ms: 120000, total_cost_usd: 0.5 }])).toEqual({ turns: 3, durationMs: 120000, costUsd: 0.5, subtype: "success" });
+    expect(runStats([{ type: "assistant" }, { type: "result", subtype: "success", num_turns: 3, duration_ms: 120000, total_cost_usd: 0.5 }])).toEqual({ turns: 3, durationMs: 120000, subtype: "success" });
     expect(runStats([])).toBeNull();
     expect(runStats(null)).toBeNull();
   });
@@ -188,7 +189,7 @@ describe("riepilogo dell'agente smoke (test/live/agent/summary.mjs, CR-03)", () 
       await writeFile(join(dir.path, "a", "execution.json"), JSON.stringify([{ type: "result", num_turns: 2, duration_ms: 60000, total_cost_usd: 0.1 }]));
       const ok = await node("test/live/agent/summary.mjs", ["a", "--out", "s.md"], ENV, dir.path);
       expect(ok.code).toBe(0);
-      expect(await readFile(join(dir.path, "s.md"), "utf8")).toMatch(/2 turns · 1 min · \$0\.10/);
+      expect(await readFile(join(dir.path, "s.md"), "utf8")).toMatch(/2 turns · 1 min\n/);
       await writeFile(join(dir.path, "a", "verdict.json"), JSON.stringify({ ...verdict, problems: [`created entry users/${ENV.ZOTERO_TEST_USER_ID}`] }));
       const leak = await node("test/live/agent/summary.mjs", ["a", "--out", "leak.md"], ENV, dir.path);
       expect(leak.code).toBe(1);

@@ -42,7 +42,8 @@ async function api(key, method, path, body, extraHeaders = {}) {
       await sleep(1000 * attempt);
       continue;
     }
-    if ([429, 502, 503, 504].includes(res.status) && attempt < 5) {
+    // 429/503 with Retry-After; 500/502/504 are transient errors of the Zotero servers
+    if ([429, 500, 502, 503, 504].includes(res.status) && attempt < 5) {
       await sleep(Math.min(Number(res.headers.get("retry-after") ?? attempt * 2), 60) * 1000);
       continue;
     }
@@ -106,7 +107,8 @@ export async function acquireLock({ key, lib, runId, waitMs = DEFAULT_LOCK_WAIT_
     const locks = await listLocks(key, lib);
     if (!Number.isFinite(lockVersion)) lockVersion = locks.find((l) => l.key === lockKey)?.version;
     if (!Number.isFinite(lockVersion)) throw new Error("lock collection without a version");
-    const others = locks.filter((l) => l.key !== lockKey);
+    // a retried POST (5xx after the write) can leave a second lock of this run: never wait for it
+    const others = locks.filter((l) => l.key !== lockKey && l.runId !== runId);
     const stale = others.filter((o) => Date.now() - runIdTime(o.runId) > LOCK_STALE_MS);
     if (stale.length) {
       log(`[lock] removing expired lock(s) of run(s) ${stale.map((s) => s.runId).join(", ")}`);

@@ -260,5 +260,12 @@ describe("validatore docx (test/helpers/docx-validate.ts)", () => {
         "_rels/.rels senza la relazione custom-properties verso docProps/custom.xml",
       ])
     );
+    // requireDocumentPrefs: absent preferences are an error; documentPrefsStyle: kept preferences of another style
+    const none = await validateDocx(await makeDocx(goodBody()), { requireDocumentPrefs: true });
+    expect(none.errors).toContain("preferenze del documento assenti (nessun ZOTERO_PREF_* in docProps/custom.xml): il primo Refresh apre Document Preferences");
+    expect((await validateDocx(await makeDocx(goodBody()))).errors).toEqual([]);
+    const kept = await validateDocx(await prefsDoc(prop(1, data("http://www.zotero.org/styles/ieee"))), { style: "apa", documentPrefsStyle: "ieee", requireDocumentPrefs: true });
+    expect(kept.errors).toEqual([]);
+    expect(kept.documentPrefs?.styleId).toBe("http://www.zotero.org/styles/ieee");
   });
 });

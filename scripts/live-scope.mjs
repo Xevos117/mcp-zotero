@@ -11,11 +11,11 @@ import { fileURLToPath } from "node:url";
 
 /** Files that change what the live suite exercises. */
 export const LIVE_PATHS =
-  /^(src\/|skills\/zotero-skill-mcp-integrations\/|test\/live\/|test\/helpers\/|test\/e2e\/server-process\.ts|test\/fixtures\/|package(-lock)?\.json|tsconfig\.json|vitest\.live\.config\.ts|scripts\/live-scope\.mjs|\.github\/workflows\/claude-agent-smoke\.yml)/;
+  /^(src\/|skills\/zotero-skill-mcp-integrations\/|test\/live\/|test\/helpers\/|test\/e2e\/server-process\.ts|test\/fixtures\/|package(-lock)?\.json|tsconfig\.json|vitest\.live\.config\.ts|scripts\/live-scope\.mjs|scripts\/duplicate-run\.mjs|\.github\/workflows\/claude-agent-smoke\.yml)/;
 
 /** Files that change what the agent smoke test exercises, or how it runs (word-render pages included). */
 export const AGENT_PATHS =
-  /^(src\/|skills\/zotero-skill-mcp-integrations\/|\.claude\/skills\/test-mcp-zotero\/|\.claude\/agent-smoke\/|test\/live\/agent\/|test\/live\/verify-claims\.mjs|test\/live\/lock\.mjs|test\/live\/cleanup\.mjs|test\/live\/global-setup\.ts|test\/live\/scrub-report\.mjs|test\/live\/mask-group-name\.mjs|test\/live\/helpers\/|test\/fixtures\/csl\/|test\/fixtures\/corpus\/|test\/word-proxy\/|\.github\/actions\/word-tools\/|test\/e2e\/server-process\.ts|vitest\.live\.config\.ts|test\/helpers\/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|scripts\/run-agent\.mjs|scripts\/live-scope\.mjs|\.github\/agents\/agent-smoke\.json|\.github\/workflows\/claude-agent-smoke\.yml)/;
+  /^(src\/|skills\/zotero-skill-mcp-integrations\/|\.claude\/skills\/test-mcp-zotero\/|\.claude\/agent-smoke\/|test\/live\/agent\/|test\/live\/verify-claims\.mjs|test\/live\/lock\.mjs|test\/live\/cleanup\.mjs|test\/live\/global-setup\.ts|test\/live\/scrub-report\.mjs|test\/live\/mask-group-name\.mjs|test\/live\/helpers\/|test\/fixtures\/csl\/|test\/fixtures\/corpus\/|test\/word-proxy\/|\.github\/actions\/word-tools\/|test\/e2e\/server-process\.ts|vitest\.live\.config\.ts|test\/helpers\/docx-validate\.ts|package(-lock)?\.json|tsconfig\.json|scripts\/run-agent\.mjs|scripts\/live-scope\.mjs|scripts\/duplicate-run\.mjs|\.github\/agents\/agent-smoke\.json|\.github\/workflows\/claude-agent-smoke\.yml)/;
 
 export const SCOPES = ["live+agent", "live"];
 

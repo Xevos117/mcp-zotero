@@ -3,7 +3,7 @@
 // (live tests + agent smoke):
 // verdict, problems and warnings (verdict.json, from verify-claims), scenario table, exploratory X1..X5 and friction
 // (claims.json, agent-report.json), the "Problemi visivi" section (visual-review.md: the agent's review of the pages
-// rendered by word-render), turns, duration and cost (the result message of execution.json).
+// rendered by word-render), turns and duration (the result message of execution.json; the cost stays out of public text).
 // Input: the SCRUBBED copy of agent-out (test/live/scrub-report.mjs output). Fails closed (exit 1, nothing
 // written) if the text still contains a secret or identifier of the test account from the environment (same
 // variables as scrub-report.mjs, group name included) or any users/<id> or groups/<id> other than the redaction
@@ -45,12 +45,12 @@ export function escapedInline(value, max = MAX_CELL) {
 
 export const inline = escapedInline;
 
-/** num_turns, duration_ms and total_cost_usd of the SDK result message, if the transcript has one. */
+/** num_turns and duration_ms of the SDK result message, if the transcript has one. */
 export function runStats(messages) {
   const list = Array.isArray(messages) ? messages : [];
   const result = [...list].reverse().find((m) => m?.type === "result");
   if (!result) return null;
-  return { turns: result.num_turns, durationMs: result.duration_ms, costUsd: result.total_cost_usd, subtype: result.subtype };
+  return { turns: result.num_turns, durationMs: result.duration_ms, subtype: result.subtype };
 }
 
 function table(head, rows) {
@@ -76,7 +76,6 @@ export function buildSummary({ verdict, report, claims, stats, headSha, visual }
   if (stats) {
     if (Number.isFinite(stats.turns)) facts.push(`${stats.turns} turns`);
     if (Number.isFinite(stats.durationMs)) facts.push(`${Math.round(stats.durationMs / 60_000)} min`);
-    if (Number.isFinite(stats.costUsd)) facts.push(`$${stats.costUsd.toFixed(2)}`);
     if (stats.subtype && stats.subtype !== "success") facts.push(`agent ended with ${inline(stats.subtype)}`);
   }
   if (facts.length) lines.push(facts.join(" · "), "");

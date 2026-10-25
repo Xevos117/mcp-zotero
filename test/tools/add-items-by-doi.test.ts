@@ -87,13 +87,16 @@ describe("add_items_by_doi (MCP)", () => {
       expect(doiReq.headers.get("Accept")).toBe("application/vnd.citationstyles.csl+json");
       expect(decodeURIComponent(doiReq.url.pathname.slice(1))).toBe("10.48550/arXiv.1706.03762");
       const body = h.net.requests("POST", ITEMS)[0].json<Array<Record<string, unknown>>>();
+      // an arXiv DOI is a preprint in the arXiv repository (#50), whatever the container of the CSL
       expect(body[0]).toMatchObject({
-        itemType: "journalArticle",
+        itemType: "preprint",
         title: "Attention Is All You Need",
         DOI: "10.48550/arXiv.1706.03762",
-        publicationTitle: "NeurIPS",
+        repository: "arXiv",
+        archiveID: "arXiv:1706.03762",
         creators: [{ creatorType: "author", firstName: "Ashish", lastName: "Vaswani" }],
       });
+      expect(body[0]).not.toHaveProperty("publicationTitle");
     });
 
     it("AID-02 senza email Unpaywall: pdf_results riporta il warning, nessuna chiamata a Unpaywall", async () => {

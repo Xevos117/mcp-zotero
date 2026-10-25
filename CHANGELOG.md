@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **More complete embedded item data** (`itemData` in the field codes, used by Zotero when the item is not in the local library): `inject_citations` and the skill's `inject.js` now carry the university of a thesis, the institution of a report and the repository of a preprint as the CSL publisher, the report number and the preprint's archive ID as `number`, the thesis or report type as `genre`, the access date (`accessed`, e.g. APA's "Retrieved … from"), ISBN, ISSN, edition, language and number of pages. A date that is not year-month-day ("October 2023") is passed as `raw` for citeproc to parse instead of being dropped.
+
+### Fixed
+
+- **`delete_items` and `delete_collection` on HTTP 412** (the library changed between the version read and the `DELETE`, e.g. a sync or another client): the tool now reads the version again, together with the keys that still exist, and retries the deletion once; keys that disappeared in the meantime are listed in `not_found`. Before, the first 412 returned `version_conflict` and nothing was deleted. A second 412 still returns `status: "version_conflict"`, now with `http_status: 412` and a `hint` to retry the call.
+- **`add_items_by_doi` keeps more of the registry metadata**: the short journal title (`container-title-short` → `journalAbbreviation`), the conference name (`event-title` / `event` → `conferenceName`), the subtitle (joined to the title with ": ", as Zotero does), the article number (a report's `reportNumber`; the pages of an article that has none, as Zotero's import does) and the publisher of theses, reports and preprints (`university`, `institution`, `repository`, which those types have instead of `publisher`). Abstracts with Crossref's JATS markup (`<jats:p>`, `<jats:italic>`, …) are stored as plain text, one line per paragraph. arXiv DOIs (`10.48550/arXiv.*`) are imported as a `preprint` in the `arXiv` repository with the `archiveID` `arXiv:<id>`, instead of a journal article.
+
 ## [2.0.3] - 2026-10-21
 
 ### Added

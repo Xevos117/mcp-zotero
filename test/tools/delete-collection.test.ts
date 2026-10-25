@@ -89,16 +89,36 @@ describe("delete_collection (MCP)", () => {
       expectErrorJson(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), "Collection not found");
     });
 
-    it("DC-08 412 sulla DELETE → errore strutturato version_conflict", async () => {
+    it("DC-08 412 ripetuto sulla DELETE → errore version_conflict con http_status e hint, al massimo 2 DELETE", async () => {
       h = await startHarness({ unsafeOps: "all" });
       h.net.on("GET", COLL, zSingle(collection("CPLQQQQR", "X"), 3));
       h.net.on("DELETE", COLL, zError(412, "Library has been modified since specified version"));
-      const json = expectErrorJson(
-        await h.call("delete_collection", { collection_key: "CPLQQQQR" }),
-        "modified by another client"
-      );
-      expect(json.error).toMatch(/so it was not deleted\. Retry the same call\./);
+      const json = expectApiError(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), 412);
+      expect(json.error).toMatch(/modified by another client .*also on a second try.*so it was not deleted\./);
       expect(json.status).toBe("version_conflict");
+      expect(json.hint).toBe("Retry the same call once.");
+      expect(h.net.calls.map((c) => c.method)).toEqual(["GET", "DELETE", "GET", "DELETE"]);
+    });
+
+    it("DC-08b 412 poi successo → nuova GET, seconda DELETE con la nuova versione", async () => {
+      h = await startHarness({ unsafeOps: "all" });
+      h.net.on("GET", COLL, (_req, hit) => zSingle(collection("CPLQQQQR", "Old stuff"), hit === 1 ? 3 : 4));
+      h.net.on("DELETE", COLL, (_req, hit) => (hit === 1 ? zError(412) : zDeleted()));
+      const out = await h.call("delete_collection", { collection_key: "CPLQQQQR" });
+      expect(out.isError).toBe(false);
+      expect(out.json).toEqual({ deleted: true, collection_key: "CPLQQQQR", name: "Old stuff" });
+      const dels = h.net.requests("DELETE", COLL);
+      expect(dels.map((d) => d.headers.get("If-Unmodified-Since-Version"))).toEqual(["3", "4"]);
+      expect(h.net.requests("GET", COLL)).toHaveLength(2);
+    });
+
+    it("DC-08c 412, nel frattempo la collezione è sparita → errore not_found", async () => {
+      h = await startHarness({ unsafeOps: "all" });
+      h.net.on("GET", COLL, (_req, hit) => (hit === 1 ? zSingle(collection("CPLQQQQR", "X"), 3) : zError(404)));
+      h.net.on("DELETE", COLL, zError(412));
+      const json = expectErrorJson(await h.call("delete_collection", { collection_key: "CPLQQQQR" }), "Collection not found");
+      expect(json.status).toBe("not_found");
+      expect(h.net.requests("DELETE", COLL)).toHaveLength(1);
     });
 
     it("DC-09 versione non determinabile (nessun header) → errore strutturato, nessuna DELETE", async () => {

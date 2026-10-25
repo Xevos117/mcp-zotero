@@ -17,6 +17,12 @@
 // their documents, corpus items and known issues of index.json; a content problem is a finding (a problem, or a
 // warning when the agent marks it as a known issue that concerns that document); layout remarks never fail.
 // `--visual-review optional` (a pull request whose base branch's skill has no visual review yet) accepts a missing file.
+// Claims schema 3 (written only by the skill that introduced it; on a pull request the agent follows the base branch's
+// skill, so a schema 2 file is judged exactly as before) adds: the targeted scenarios the changed files select
+// (.claude/skills/test-mcp-zotero/scenarios.json, from the trusted context), every created key declared or deleted,
+// created objects and metadata files referenced by call_no, document preferences in every document with citations and
+// in the parity fingerprint, the "preferences kept" case (F11), F10 rows met by any matching call, a skipped F1 only
+// with an audited external failure, and a warning for every deletion outside F8.
 // Exit 0 = verified, 1 = claims not verified, 2 = setup error. Writes <dir>/verdict.json; the Job Summary and the
 // PR comment are written from its scrubbed copy by test/live/agent/summary.mjs. No secret or library content is
 // printed.
@@ -26,6 +32,8 @@ import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { validateDocx } from "../helpers/docx-validate.ts";
 import { VISUAL_REVIEW, parseVisualReview, visualReviewFindings, visualReviewProblems } from "./agent/visual-review.mjs";
+import { loadScenarios, targetedScenarios } from "./agent/scenarios.mjs";
+import { externalReason } from "./helpers/external.mjs";
 
 const args = process.argv.slice(2);
 const option = (name) => (args.indexOf(name) >= 0 ? args[args.indexOf(name) + 1] : undefined);
@@ -37,8 +45,11 @@ const DIR = resolve(args.find((a, i) => !a.startsWith("--") && !["--transcript",
 const ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
 const KEY = process.env.ZOTERO_TEST_API_KEY ?? "";
 const REQUEST_TIMEOUT_MS = 30_000;
-const SCHEMA_VERSION = 2;
+/** Claims schemas accepted: 2 (skills before schema 3, judged as before) and 3. */
+const SCHEMA_VERSIONS = [2, 3];
 const REQUIRED = ["P0", "F0", "F1", "F2", "F3", "F4", "F5", "F6", "F8", "F9", "F10"];
+/** Schema 3 only: the "preferences kept" case. */
+const REQUIRED_V3 = ["F11"];
 /** Fixed scenarios that depend on external services (doi.org, Unpaywall, publishers) may be skipped with a reason. */
 const MAY_SKIP = new Set(["F1"]);
 const STYLES = ["apa", "ieee", "vancouver", "harvard", "chicago"];
@@ -54,6 +65,16 @@ const LIB = /^(users|groups)\/\d+$/;
 const ZOTERO_PREFIX = "mcp__zotero__";
 const INJECT_CMD = /^node test\/live\/agent\/inject\.mjs\s/;
 const INVALID_ZCITE = "Invalid Zotero item key(s) in <zcite>";
+/** Ids of the CSL styles in the Zotero document preferences (src/citation-injector/document-prefs.ts). */
+const STYLE_IDS = {
+  apa: "http://www.zotero.org/styles/apa",
+  ieee: "http://www.zotero.org/styles/ieee",
+  vancouver: "http://www.zotero.org/styles/nlm-citation-sequence",
+  harvard: "http://www.zotero.org/styles/harvard-cite-them-right",
+  chicago: "http://www.zotero.org/styles/chicago-author-date",
+};
+/** F8 (and T-delete): the only objects a CI run deletes are named "<prefix> … to delete". */
+const TO_DELETE = /\bto delete$/;
 
 const problems = [];
 const warnings = [];
@@ -84,7 +105,7 @@ async function api(path) {
       await new Promise((r) => setTimeout(r, 1000 * attempt));
       continue;
     }
-    if ([429, 502, 503, 504].includes(res.status) && attempt < 4) {
+    if ([429, 500, 502, 503, 504].includes(res.status) && attempt < 4) {
       const wait = Number(res.headers.get("retry-after") ?? attempt * 2);
       await new Promise((r) => setTimeout(r, Math.min(wait, 30) * 1000));
       continue;
@@ -435,7 +456,7 @@ function limitProblem(call, max) {
  * claim one of them.
  * @returns {{ problems: string[], evidence: Set<object> }}
  */
-export function edgeCaseEvidence(messages) {
+export function edgeCaseEvidence(messages, { anyCall = false } = {}) {
   const out = [];
   const evidence = new Set();
   const calls = toolCalls(messages);
@@ -457,8 +478,11 @@ export function edgeCaseEvidence(messages) {
     const found = calls.filter((c) => match(c) && c.result);
     if (found.length === 0) out.push(`F10: ${desc} not called`);
     else {
-      evidence.add(found[0]);
-      const problem = expect(found[0]);
+      // schema 3: the row holds if any matching call has the expected outcome (that call is the evidence); before,
+      // only the first matching call counted
+      const met = anyCall ? found.find((c) => !expect(c)) : undefined;
+      evidence.add(met ?? found[0]);
+      const problem = met ? null : expect(found[0]);
       if (problem) out.push(`F10: ${desc}: ${problem}`);
     }
   }
@@ -600,9 +624,10 @@ export function sourceFeatures(documentXml) {
 /**
  * Everything both producers must write identically, except the random citationID: the full field JSON of
  * every citation (citationItems with uris, itemData, locator, label, prefix, suffix; properties), the visible
- * text of every citation, the visible text of every paragraph, and the bibliography fields.
+ * text of every citation, the visible text of every paragraph, and the bibliography fields. With `prefs`
+ * (claims schema 3) also the document preferences (style, field type, number of properties; the session id is random).
  */
-export function docxFingerprint(report) {
+export function docxFingerprint(report, { prefs = false } = {}) {
   const fields = report.citations.map((c) => {
     const { citationID: _random, ...rest } = c.json;
     return rest;
@@ -615,6 +640,7 @@ export function docxFingerprint(report) {
     visible: report.citations.map((c) => c.visible),
     paragraphs,
     bibliography: report.fields.filter((f) => f.instr.trim().startsWith("ADDIN ZOTERO_BIBL")).map((f) => f.instr.trim()),
+    ...(prefs ? { documentPrefs: report.documentPrefs ?? null } : {}),
   };
 }
 
@@ -651,6 +677,178 @@ async function documentXmlOf(path) {
 function insideAgentOut(p) {
   const path = resolve(p ?? "");
   return path.startsWith(resolve("agent-out") + sep) && existsSync(path) ? path : null;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Claims schema 3
+// ---------------------------------------------------------------------------------------------------
+
+/** Library a call wrote to: the per-call group override, otherwise the user library of the claims. */
+const callLibrary = (call, userLibrary) => (call.input?.library_type === "group" && call.input?.library_id ? `groups/${call.input.library_id}` : userLibrary);
+
+/**
+ * Every object the audited calls created: key → { kind, library_path, call_no, tool, name } (`name`: the title or
+ * collection name the tool reported, used to recognize the "to delete" objects of F8 and as the expected title).
+ */
+export function createdByCalls(calls, userLibrary) {
+  const out = new Map();
+  for (const call of calls) {
+    const json = successJson(call);
+    if (!json) continue;
+    const library_path = callLibrary(call, userLibrary);
+    const add = (key, kind, name) => {
+      if (typeof key === "string" && ZOTERO_KEY.test(key) && !out.has(key)) out.set(key, { kind, library_path, call_no: call.callNo, tool: call.tool, name: typeof name === "string" ? name : undefined });
+    };
+    switch (call.tool) {
+      case "create_collection":
+        add(json.collection_key, "collection", json.name);
+        break;
+      case "add_items":
+      case "add_items_by_doi":
+        for (const x of json.success ?? []) add(x?.item_key, "item", x?.title);
+        for (const x of json.pdf_results ?? []) add(x?.attachment_key, "attachment");
+        break;
+      case "add_linked_url_attachment":
+      case "import_pdf_to_zotero":
+        add(json.item_key, "attachment");
+        break;
+      case "find_and_attach_pdfs":
+        for (const x of json.results ?? []) add(x?.attachment_key, "attachment");
+        break;
+    }
+  }
+  return out;
+}
+
+/** Keys the audited calls deleted. */
+const deletedByCalls = (calls) => new Set(calls.flatMap((c) => callEffects(c).deleted));
+
+/**
+ * Created entries reference the call that created them (`call_no`): the audited call with that number must exist and
+ * have created that key. Returns the problems and, per key, the title the tool reported (checked against Zotero
+ * instead of a title typed again by hand).
+ * @returns {{ problems: string[], titles: Map<string, string> }}
+ */
+export function createdCallFindings(created, calls, userLibrary) {
+  const res = { problems: [], titles: new Map() };
+  const byKey = createdByCalls(calls, userLibrary);
+  for (const c of Array.isArray(created) ? created : []) {
+    const label = `${c?.kind ?? "object"} ${c?.key}`;
+    if (!Number.isInteger(c?.call_no)) {
+      res.problems.push(`${label}: call_no of the call that created it missing (claims schema 3)`);
+      continue;
+    }
+    const origin = byKey.get(c.key);
+    if (!origin || origin.call_no !== c.call_no) {
+      res.problems.push(`${label}: call_no ${c.call_no} did not create it${origin ? ` (call_no ${origin.call_no} did)` : " (no audited call created it)"}`);
+      continue;
+    }
+    if (c.library_path !== origin.library_path) {
+      res.problems.push(`${label}: created in ${origin.library_path} by call_no ${c.call_no}, claimed in ${c.library_path}`);
+      continue;
+    }
+    if (origin.kind === "item" && origin.name !== undefined) res.titles.set(c.key, origin.name);
+  }
+  return res;
+}
+
+/** Created keys of the audit that the claims neither list as created nor as deleted, and no call deleted. */
+export function undeclaredCreations(calls, claims, userLibrary) {
+  const declared = new Set([...(claims.created ?? []), ...(claims.deleted ?? [])].map((c) => c?.key));
+  const deleted = deletedByCalls(calls);
+  return [...createdByCalls(calls, userLibrary)].filter(([key]) => !declared.has(key) && !deleted.has(key)).map(([key, v]) => ({ key, ...v }));
+}
+
+/**
+ * CI deletes nothing beyond F8 (and T-delete): a warning for every successful deletion of an object that was not
+ * created as "<prefix> … to delete" by this run.
+ */
+export function deletionWarnings(calls, userLibrary) {
+  const origin = createdByCalls(calls, userLibrary);
+  const out = [];
+  for (const call of calls) {
+    for (const key of callEffects(call).deleted) {
+      const o = origin.get(key);
+      if (!o || !TO_DELETE.test(o.name ?? "")) out.push(`deletion outside F8: ${call.tool}${Number.isInteger(call.callNo) ? ` call_no ${call.callNo}` : ""} deleted ${key}${o?.name === undefined ? "" : ", not created as \"… to delete\""}`);
+    }
+  }
+  return out;
+}
+
+/** Metadata path of an inject.mjs command (third path argument), or null. */
+export function injectMetadataPath(command) {
+  const parts = String(command ?? "").trim().split(/\s+/);
+  return INJECT_CMD.test(String(command ?? "")) && parts.length >= 5 ? parts[4] : null;
+}
+
+/**
+ * Metadata files of inject.js (`claims.metadata`: { path, call_no }): every file an audited inject.mjs command read
+ * is declared, and each declared file is the result of the audited get_items_details call it names, verbatim (as JSON).
+ * `read(path)` returns the file's text or null.
+ */
+export function metadataFindings(list, calls, read) {
+  const res = { problems: [], checks: [] };
+  const declared = new Map((Array.isArray(list) ? list : []).map((m) => [String(m?.path ?? ""), m]));
+  const byNo = new Map(calls.filter((c) => Number.isInteger(c.callNo)).map((c) => [c.callNo, c]));
+  const used = new Set(calls.filter((c) => c.name === "Bash").map((c) => injectMetadataPath(c.input?.command)).filter(Boolean));
+  for (const path of used) if (!declared.has(path)) res.problems.push(`metadata ${path}: used by inject.js but not declared in claims.metadata with its call_no`);
+  for (const [path, m] of declared) {
+    const call = byNo.get(m?.call_no);
+    if (!call || call.tool !== "get_items_details" || call.result.isError) {
+      res.problems.push(`metadata ${path}: call_no ${JSON.stringify(m?.call_no)} is not a successful get_items_details call of the audit`);
+      continue;
+    }
+    const text = read(path);
+    if (text === null) {
+      res.problems.push(`metadata ${path}: missing or outside agent-out/`);
+      continue;
+    }
+    let same = false;
+    try {
+      same = canonical(JSON.parse(text)) === canonical(JSON.parse(call.result.text));
+    } catch {
+      same = false;
+    }
+    if (!same) res.problems.push(`metadata ${path}: differs from the result of get_items_details call_no ${m.call_no} (write it verbatim)`);
+    else res.checks.push(`metadata ${path} = get_items_details call_no ${m.call_no}`);
+  }
+  return res;
+}
+
+/** A skipped F1 needs an audited add_items_by_doi result that reports an external failure (helpers/external.mjs). */
+export function f1SkipEvidence(calls) {
+  const hit = calls.find((c) => c.tool === "add_items_by_doi" && c.result && externalReason(c.result.text));
+  return hit ? externalReason(hit.result.text) : null;
+}
+
+/**
+ * Targeted scenarios selected by the changed files of the trusted context (scenarios.json): each must be reported,
+ * passed or skipped with a reason (a warning: some rows need permissions the run may not have).
+ */
+export function targetedFindings(scenarios, context, table) {
+  const res = { problems: [], warnings: [], checks: [], required: [] };
+  if (!Array.isArray(context.changed_files)) {
+    res.problems.push("context.changed_files missing: the targeted scenarios cannot be checked (git diff against the base failed?)");
+    return res;
+  }
+  res.required = targetedScenarios(context.changed_files, table);
+  for (const id of res.required) {
+    const s = scenarios.get(id);
+    if (!s) res.problems.push(`scenario ${id} (selected by the changed files) not reported`);
+    else if (s.status === "failed") continue; // reported with every failed scenario
+    else if (s.status === "skipped" && s.notes) res.warnings.push(`scenario ${id} skipped: ${s.notes}`);
+    else if (s.status !== "passed") res.problems.push(`scenario ${id} ${s.status ?? "without status"}${s.notes ? `: ${s.notes}` : ""}`);
+    else res.checks.push(`scenario ${id}`);
+  }
+  return res;
+}
+
+/** Style id of the Zotero document preferences in a docx (docProps/custom.xml), or null. */
+async function documentPrefsStyleOf(path) {
+  const zip = await JSZip.loadAsync(readFileSync(path));
+  const custom = (await zip.file("docProps/custom.xml")?.async("string")) ?? "";
+  const value = [...custom.matchAll(/name="ZOTERO_PREF_\d+"[^>]*>\s*<vt:lpwstr>([\s\S]*?)<\/vt:lpwstr>/g)].map((m) => decode(m[1])).join("");
+  return /<style\b[^>]*\bid="([^"]+)"/.exec(value)?.[1] ?? null;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -720,22 +918,34 @@ async function main() {
     fail("claims.json missing: the agent did not complete the skill");
     return finish(context);
   }
-  if (claims.schema_version !== SCHEMA_VERSION) fail(`claims.schema_version ${claims.schema_version} != ${SCHEMA_VERSION}`);
+  if (!SCHEMA_VERSIONS.includes(claims.schema_version)) fail(`claims.schema_version ${claims.schema_version} != ${SCHEMA_VERSIONS.join(" or ")}`);
   if (claims.run_id !== context.run_id) fail(`claims.run_id ${claims.run_id} != context run ${context.run_id}`);
+  // every requirement added with schema 3 applies only to schema 3 claims (see the header)
+  const v3 = claims.schema_version === 3;
+  const audited = calls ?? [];
 
   // Scenarios: the fixed path must be reported, and nothing may be reported as failed
   const scenarios = new Map((claims.scenarios ?? []).map((s) => [s.id, s]));
-  const required = [...REQUIRED, ...(context.group_id ? ["F7"] : [])];
+  const required = [...REQUIRED, ...(v3 ? REQUIRED_V3 : []), ...(context.group_id ? ["F7"] : [])];
   for (const id of required) {
     const s = scenarios.get(id);
     if (!s) fail(`scenario ${id} not reported`);
-    else if (s.status === "skipped" && MAY_SKIP.has(id) && s.notes) ok(`scenario ${id} skipped: ${s.notes}`);
-    else if (s.status !== "passed") fail(`scenario ${id} ${s.status ?? "without status"}${s.notes ? `: ${s.notes}` : ""}`);
+    else if (s.status === "skipped" && MAY_SKIP.has(id) && s.notes) {
+      const external = v3 ? f1SkipEvidence(audited) : "";
+      if (external === null) fail(`scenario ${id} skipped without an audited add_items_by_doi result that reports an external failure: ${s.notes}`);
+      else ok(`scenario ${id} skipped: ${s.notes}${external ? ` (audit: ${external})` : ""}`);
+    } else if (s.status !== "passed") fail(`scenario ${id} ${s.status ?? "without status"}${s.notes ? `: ${s.notes}` : ""}`);
   }
   for (const s of scenarios.values()) if (s.status === "failed" && !required.includes(s.id)) fail(`scenario ${s.id} failed${s.notes ? `: ${s.notes}` : ""}`);
+  if (v3) {
+    const t = targetedFindings(scenarios, context, loadScenarios());
+    t.problems.forEach(fail);
+    warnings.push(...t.warnings);
+    checks.push(...t.checks);
+  }
 
   if (calls && calls.length) {
-    const edge = edgeCaseEvidence(calls);
+    const edge = edgeCaseEvidence(calls, { anyCall: v3 });
     edge.problems.forEach(fail);
     if (!edge.problems.length) ok("F9/F10: edge cases verified on the audit");
     const x = exploratoryFindings(claims.exploratory, calls, edge.evidence);
@@ -754,6 +964,9 @@ async function main() {
   const titles = new Map();
   const verifiedItems = new Set();
   const pending = [];
+  // schema 3: each created entry names the call that created it; the title that call reported is the expected one
+  const fromCalls = v3 ? createdCallFindings(created, audited, claims.library_path) : null;
+  fromCalls?.problems.forEach(fail);
   for (const c of created) {
     const id = `${c.library_path}/${c.key}`;
     if (!LIB.test(c.library_path ?? "") || !/^[A-Z0-9]{8}$/.test(c.key ?? "")) {
@@ -794,6 +1007,8 @@ async function main() {
     const e = c.expect ?? {};
     const bad = [];
     if (e.title && d.title !== e.title) bad.push("title");
+    if (fromCalls?.titles.has(c.key) && d.title !== undefined && d.title !== fromCalls.titles.get(c.key)) bad.push("title reported by its call_no");
+    if (v3 && e.publicationTitle !== undefined && d.publicationTitle !== e.publicationTitle) bad.push("publicationTitle");
     if (e.doi && String(d.DOI ?? "").toLowerCase() !== String(e.doi).toLowerCase()) bad.push("DOI");
     if (e.collection && !(d.collections ?? []).includes(e.collection)) bad.push("collection");
     if (e.parent_item && d.parentItem !== e.parent_item) bad.push("parent_item");
@@ -805,6 +1020,36 @@ async function main() {
     }
     if (bad.length) fail(`${c.kind} ${c.key}: state differs from the claim (${bad.join(", ")})`);
     else ok(`${c.kind} ${c.key}`);
+  }
+
+  if (v3 && context.cleanup !== "agent") {
+    // every object the run created is declared (or was deleted): an undeclared one must at least carry the run markers
+    const runCreated = createdByCalls(audited, claims.library_path);
+    for (const u of undeclaredCreations(audited, claims, claims.library_path)) {
+      if (!LIB.test(u.library_path ?? "")) continue;
+      const r = await api(`${u.library_path}/${u.kind === "collection" ? "collections" : "items"}/${u.key}`);
+      if (r.status === 404) continue;
+      if (r.status !== 200) {
+        fail(`${u.kind} ${u.key} (created by call_no ${u.call_no}, not in claims): HTTP ${r.status}`);
+        continue;
+      }
+      const d = r.data.data;
+      const isMarked =
+        u.kind === "collection"
+          ? String(d.name ?? "").startsWith(context.prefix)
+          : marked({ d }) || (d.parentItem !== undefined && (createdKeys.has(`${u.library_path}/${d.parentItem}`) || runCreated.has(d.parentItem)));
+      if (isMarked) warnings.push(`${u.kind} ${u.key} created by call_no ${u.call_no} (${u.tool}) but not declared in claims.json`);
+      else fail(`${u.kind} ${u.key} created by call_no ${u.call_no} (${u.tool}), not declared in claims.json and without the run markers`);
+    }
+    warnings.push(...deletionWarnings(audited, claims.library_path));
+  }
+  if (v3) {
+    const meta = metadataFindings(claims.metadata, audited, (p) => {
+      const path = insideAgentOut(p);
+      return path ? readFileSync(path, "utf8") : null;
+    });
+    meta.problems.forEach(fail);
+    checks.push(...meta.checks);
   }
 
   // Deleted objects are really gone, and were created by this run (seen in a tool result of the run)
@@ -845,8 +1090,14 @@ async function main() {
       fail(`docx ${doc.path}: source ${doc.source} missing or outside agent-out/`);
       continue;
     }
+    if (v3 && doc.document_prefs !== undefined && !STYLES.includes(doc.document_prefs)) {
+      fail(`docx ${doc.path}: unknown document_prefs style ${doc.document_prefs}`);
+      continue;
+    }
     const source = sourceFeatures(await documentXmlOf(sourcePath));
-    const report = await validateDocx(readFileSync(path), { style: doc.style, libraryPath: doc.library_path });
+    // schema 3: every document with citations must carry the document preferences (of the source, if it had them)
+    const prefsOptions = v3 ? { requireDocumentPrefs: source.zcites > 0, documentPrefsStyle: doc.document_prefs } : {};
+    const report = await validateDocx(readFileSync(path), { style: doc.style, libraryPath: doc.library_path, ...prefsOptions });
     const before = problems.length;
     for (const e of report.errors) fail(`docx ${doc.path}: ${e}`);
     // the numbering is the agent's choice; for author-date styles the visible text must match citeproc
@@ -861,7 +1112,7 @@ async function main() {
         else if (context.cleanup !== "agent" && titles.has(id) && titles.get(id) !== ci.itemData?.title) fail(`docx ${doc.path}: itemData title of ${m[2]} differs from Zotero`);
       }
     }
-    reports.push({ doc, report, source, fingerprint: docxFingerprint(report) });
+    reports.push({ doc, report, source, fingerprint: docxFingerprint(report, { prefs: v3 }), sourcePrefs: v3 ? await documentPrefsStyleOf(sourcePath) : null });
     if (problems.length === before) ok(`docx ${doc.path} (${doc.producer}, ${doc.style})`);
   }
 
@@ -901,6 +1152,9 @@ async function main() {
   }
   if (!verifiedGroups.some((v) => v.source.spacedKeys && v.source.duplicateKey)) fail('F9: no verified compare_group on the edge document (keys "A, B", a duplicated key)');
   if (!verifiedGroups.some((v) => v.source.zcites === 0 && v.report.fields.length === 0)) fail("F9: no verified compare_group on a document without <zcite>");
+  if (v3 && !verifiedGroups.some((v) => v.sourcePrefs && v.sourcePrefs !== STYLE_IDS[v.doc.style] && v.report.documentPrefs?.styleId === v.sourcePrefs)) {
+    fail("F11: no verified compare_group on a document that already had Zotero document preferences of another style, kept by both producers");
+  }
 
   if (RENDER) checkVisualReview(context, auditDir);
 

@@ -8,6 +8,8 @@
 //   {"zcite": {"keys": "KEY1,KEY2", "num": "1", "locator": "p. 3", "prefix": "see ", "suffix": "x"}}  own run
 //   {"zcite": {...}, "before": "text ", "after": " text"}  inline: text and tag in one run, mid-sentence
 //   {"zcite": {...}, "split": true}  the tag split across three runs with different formatting, as Word does
+// or {"prefs": "<style>", "paragraphs": [...]}: the same paragraphs in a document that already has Zotero document
+// preferences for that style (docProps/custom.xml, as Zotero for Word writes them; the server's own writer)
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve, sep } from "node:path";
 import JSZip from "jszip";
@@ -28,8 +30,10 @@ try {
   console.error(`make-docx: spec is not valid JSON (${e.message})`);
   process.exit(2);
 }
-if (!Array.isArray(spec) || !spec.every(Array.isArray)) {
-  console.error("make-docx: spec must be an array of paragraphs, each an array of runs");
+const prefsStyle = Array.isArray(spec) ? undefined : spec?.prefs;
+const paragraphs = Array.isArray(spec) ? spec : spec?.paragraphs;
+if (!Array.isArray(paragraphs) || !paragraphs.every(Array.isArray) || (prefsStyle !== undefined && typeof prefsStyle !== "string")) {
+  console.error('make-docx: spec must be an array of paragraphs, each an array of runs, or {"prefs": "<style>", "paragraphs": [...]}');
   process.exit(2);
 }
 
@@ -57,7 +61,7 @@ function renderRun(r) {
 }
 let body;
 try {
-  body = spec.map((runs) => `<w:p>${runs.map(renderRun).join("")}</w:p>`).join("");
+  body = paragraphs.map((runs) => `<w:p>${runs.map(renderRun).join("")}</w:p>`).join("");
 } catch (e) {
   console.error(`make-docx: ${e.message}`);
   process.exit(2);
@@ -76,9 +80,16 @@ zip.file(
   "word/document.xml",
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr/></w:body></w:document>`
 );
+if (prefsStyle !== undefined) {
+  const { writeZoteroDocumentPrefs } = await import("../../../src/citation-injector/document-prefs.ts");
+  if ((await writeZoteroDocumentPrefs(zip, prefsStyle)) !== "written") {
+    console.error(`make-docx: no document preferences for style ${JSON.stringify(prefsStyle)} (apa, ieee, vancouver, harvard, chicago)`);
+    process.exit(2);
+  }
+}
 const buffer = await zip.generateAsync({ type: "nodebuffer" });
 for (const out of outs) {
   mkdirSync(dirname(resolve(out)), { recursive: true });
   writeFileSync(resolve(out), buffer);
 }
-console.log(JSON.stringify({ outputs: outs, paragraphs: spec.length }));
+console.log(JSON.stringify({ outputs: outs, paragraphs: paragraphs.length, ...(prefsStyle ? { prefs: prefsStyle } : {}) }));

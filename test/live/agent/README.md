@@ -5,7 +5,7 @@ must not decide is set by whoever starts the session, the same way in CI and loc
 
 | What | Where | CI (`.github/workflows/claude-agent-smoke.yml`, after the live suite) | Locally |
 |---|---|---|---|
-| Run context, diff | `test/live/agent/prepare.mjs` | `--mode ci` (dedicated test account only) | `--mode local`, `ZOTERO_LIVE_SAFE_MODE=1` on a personal library |
+| Run context, diff, targeted scenarios | `test/live/agent/prepare.mjs` (`context.targeted` from `.claude/skills/test-mcp-zotero/scenarios.json`) | `--mode ci` (dedicated test account only) | `--mode local`, `ZOTERO_LIVE_SAFE_MODE=1` on a personal library |
 | MCP server | `test/live/agent/mcp.template.json` | rendered by `render-mcp.mjs` into `$RUNNER_TEMP` (key only in that file, mode 600) | passed as is: Claude Code expands `${VAR}` from your environment |
 | Built-in tools | `--tools "Skill,Read,Edit,Write,Bash"` | same | same |
 | Permissions | `--permission-mode dontAsk` + `--allowedTools` | same | same |
@@ -28,11 +28,11 @@ npm run build
 export ZOTERO_TEST_API_KEY=… ZOTERO_TEST_USER_ID=… UNPAYWALL_EMAIL=…   # UNSAFE_OPERATIONS defaults to items
 ZOTERO_LIVE_SAFE_MODE=1 node test/live/agent/prepare.mjs --mode local --base main
 MCP_TIMEOUT=30000 MCP_TOOL_TIMEOUT=120000 timeout 2700 claude -p "Carica la skill test-mcp-zotero e segui il percorso. Diff in agent-out/diff.txt." \
-  --model claude-sonnet-5-5 --max-turns 160 --max-budget-usd 3 \
+  --model claude-sonnet-5-5 --max-turns 140 --max-budget-usd 2 \
   --mcp-config test/live/agent/mcp.template.json --strict-mcp-config \
   --setting-sources project --settings .claude/agent-smoke/settings.json \
   --tools "Skill,Read,Edit,Write,Bash" --permission-mode dontAsk \
-  --allowedTools "Skill,mcp__zotero__*,Read(./agent-out/**),Edit(./agent-out/**),Bash(node test/live/agent/make-docx.mjs *),Bash(node test/live/agent/inject.mjs *)" \
+  --allowedTools "Skill,mcp__zotero__*,Read(./agent-out/**),Read(./agent-render/**),Edit(./agent-out/**),Bash(node test/live/agent/make-docx.mjs *),Bash(node test/live/agent/inject.mjs *)" \
   --disallowedTools "WebFetch,WebSearch" \
   --output-format stream-json --verbose < /dev/null > agent-audit/transcript.jsonl
 ```
@@ -56,5 +56,5 @@ them). Locally, render them first (Zotero 10 + `wordcraft-cli`, see `test/word-p
 <wordcraft-cli> agent-render`, then add `--render agent-render` to the verify-claims command. Without
 `agent-render/` the agent skips step 5b and verify-claims runs without `--render`.
 
-Expected cost with `claude-sonnet-5-5`: see the "Collaudo locale" paragraph of the agent smoke section in
+Local run with `claude-sonnet-5-5`: see the "Collaudo locale" paragraph of the agent smoke section in
 `test/TEST_CASES.md`.

@@ -187,7 +187,7 @@ test normali. Non restano `it.fails` nella suite.
 ## add_items_by_doi (`add-items-by-doi.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| AID-01 | DOI valido | GET doi.org con Accept CSL; item convertito (tipo, creators, publicationTitle) |
+| AID-01 | DOI valido (arXiv) | GET doi.org con Accept CSL; item convertito: `preprint` con `repository` "arXiv" e `archiveID` "arXiv:<id>", creators, nessun `publicationTitle` |
 | AID-02 | senza UNPAYWALL_EMAIL | pdf_results con warning breve, `hint` unico (cosa dire all'utente, dove impostarla, riavvio), nessuna chiamata a Unpaywall |
 | AID-03 | auto_attach_pdf=false | niente pdf_results |
 | AID-04 | collection_key/tags | nel payload |
@@ -240,7 +240,9 @@ test normali. Non restano `it.fails` nella suite.
 | DC-03 | all | GET versione → DELETE con If-Unmodified-Since-Version |
 | DC-04/05 | senza nome / nome unicode | name = chiave / preservato |
 | DC-06/07 | 404 su GET / su DELETE | errore strutturato not_found, `hint` "Nothing was deleted…" get_collections |
-| DC-08 | 412 | errore strutturato version_conflict ("not deleted. Retry the same call.") |
+| DC-08 | 412 ripetuto | una nuova GET e un solo nuovo tentativo (GET, DELETE, GET, DELETE), poi errore strutturato version_conflict con `http_status` 412 e `hint` "Retry the same call once." |
+| DC-08b | 412 poi successo | seconda DELETE con la versione della nuova GET, collezione cancellata |
+| DC-08c | 412, poi 404 sulla nuova GET | errore strutturato not_found, nessuna seconda DELETE |
 | DC-09 | versione assente | errore strutturato con `hint` di riprovare, nessuna DELETE |
 | DC-10/11/12 | 403/429/500/503 su GET o DELETE, rete | errore strutturato con `http_status` e `hint` |
 | DC-13 | chiave mancante/vuota/numero | isError |
@@ -253,7 +255,10 @@ test normali. Non restano `it.fails` nella suite.
 | DI-03 | 2 chiavi | GET itemKey → DELETE `?itemKey=A,B` con la versione della libreria |
 | DI-04 | cancellazione parziale | not_found; cancellate solo le chiavi trovate |
 | DI-05 | nessuna trovata | errore strutturato con `hint` "Nothing was deleted…", nessuna DELETE |
-| DI-06 | 412 | version_conflict ("nothing was deleted. Retry the same call.") |
+| DI-06 | 412 ripetuto | una nuova GET e un solo nuovo tentativo (2 GET, 2 DELETE), poi errore strutturato version_conflict con `http_status` 412 e `hint` "Retry the same call once.", senza `deleted_count` |
+| DI-06b | 412 poi successo | 2 GET, 2 DELETE, la seconda con `If-Unmodified-Since-Version` della nuova GET; tutte cancellate |
+| DI-06c | 412, nel frattempo una chiave sparita | la nuova GET chiede solo le chiavi da cancellare; seconda DELETE sulle rimaste, la sparita in `not_found` |
+| DI-06d | 412, nel frattempo sparite tutte | errore strutturato not_found, nessuna seconda DELETE |
 | DI-07 | versione assente | errore strutturato con `hint` di riprovare |
 | DI-08 | 20 chiavi | una GET + una DELETE |
 | DI-09 | 50 chiavi (massimo per chiamata) | tutte cancellate, GET di verifica con limit=50 |
@@ -381,7 +386,7 @@ assenti dal client) le decide il job `word-proxy` (sezione sotto) con Zotero des
 | DP-09 | `ZOTERO_PREF_*` con apici singoli | `kept`, nulla cambia |
 | DP-10 | relazione custom-properties verso un'altra parte | letta e unita lì, nessuna parte né relazione nuova |
 | DP-11 | parte esistente senza radice `Properties` riconoscibile | `skipped`: mai riscritta, nessun Override né relazione |
-| DV-16 | validatore | preferenze su più proprietà ricomposte; stile diverso dall'iniezione, buchi nella numerazione, parte oltre 255 caratteri, `fieldType` diverso, Override o relazione mancanti → errori |
+| DV-16 | validatore | preferenze su più proprietà ricomposte; stile diverso dall'iniezione, buchi nella numerazione, parte oltre 255 caratteri, `fieldType` diverso, Override o relazione mancanti → errori; assenti con `requireDocumentPrefs` → errore (senza: nessuno); preferenze di un altro stile con `documentPrefsStyle` → nessun errore |
 | SK-V01 (esteso) | inject.js nei 5 stili | stesse preferenze di `inject_citations` |
 | SK-V03 | inject.js con preferenze già presenti; radice con prefisso; parte non unibile | mantenute con WARNING; unite conservando le proprietà dell'utente; non scritte, parte intatta, WARNING |
 
@@ -399,6 +404,7 @@ assenti dal client) le decide il job `word-proxy` (sezione sotto) con Zotero des
 | SK-10 | chiave `<zcite>` non valida per Zotero (`../tags`, `AB?C`, mista a una valida, con 0/1, minuscole) | exit 1 con lo stesso errore di inject_citations (solo le chiavi errate), nessun output |
 | SK-V01 | stili apa, harvard, chicago, ieee, vancouver; singola, multi-chiave con locator/prefix, ripetuta | output di inject.js valido (struttura, schema, URI, citeproc con 2 voci in bibliografia, parti chiave) |
 | SK-V02 | libreria `groups/777` | URI di gruppo validi |
+| SK-10 | tesi, report, preprint, pagina web, libro, articolo da get_items_details | stessi itemData di inject_citations: università, istituzione, repository come `publisher`, `number`, `genre`, `accessed`, ISBN/ISSN/edizione/lingua/pagine, data non numerica come `raw`, "&" letterale nel nome della rivista; docx validi |
 | SK-09 | `place` restituito da get_items_details | `publisher-place` nell'itemData come in inject_citations (bug trovato da LIVE-SK-01, corretto: prima inject.js leggeva solo `publisherPlace`) |
 
 Gli output di SK-01, SK-02 e SK-08 passano anche da `expectValidDocx`.
@@ -463,6 +469,27 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 | HE-05 | entità sconosciute, `&#0;`, surrogati, fuori range, `&` isolato, senza `;` | invariate |
 | HE-06 | testo senza `&` | stessa stringa |
 | HE-07 | CSL annidato | ogni stringa decodificata, chiavi e valori non stringa invariati |
+
+## Conversione CSL ⇄ Zotero (`src/utils/csl-to-zotero.test.ts`)
+
+Import da DOI (`cslToZoteroItem`) e itemData incorporati nei codici di campo (`zoteroItemToCsl`, stesse regole in
+`inject.js` della skill, parità in SK-10). Oltre ai casi senza ID già presenti (tipi, ruoli, campi per tipo):
+
+| ID | Caso | Atteso |
+|---|---|---|
+| CSL-01 | `container-title-short`, `subtitle` (stringa o array) | `journalAbbreviation`; titolo "Titolo: Sottotitolo"; campo tolto dove il tipo non l'ha |
+| CSL-02 | `event-title`, `event` | `conferenceName` (prima `event-title`), solo per `conferencePaper` |
+| CSL-03 | `number`, `article-number` | `reportNumber` del report; pagine di un articolo senza `page` (con `page` restano le pagine) |
+| CSL-04 | `publisher` di tesi, report, preprint | `university`, `institution`, `repository` (niente `publisher`, che il tipo non ha) |
+| CSL-05 | abstract JATS (`<jats:title>`, `<jats:p>`, `<jats:italic>`) / abstract semplice | tag tolti con una regex, una riga per paragrafo, spazi compattati / invariato |
+| CSL-06 | DOI `10.48550/arXiv.*` (anche maiuscolo) / altro DOI con "arXiv" | `preprint`, `repository` "arXiv", `archiveID` "arXiv:<id>", niente `publicationTitle` / tipo dalla CSL |
+| CSL-07 | ogni campo nuovo su report, tesi, articolo, atti, preprint, libro | sempre filtrato da `ITEM_TYPE_FIELDS` |
+| CSL-08 | itemData di tesi e report | `publisher` da `university`/`institution`, `genre` da `thesisType`/`reportType`, `number` da `reportNumber` |
+| CSL-09 | itemData di un preprint | `publisher` da `repository`, `number` da `archiveID` |
+| CSL-10 | `accessDate` ISO, nel formato SQL di Zotero, vuoto | `accessed` con il solo giorno / assente |
+| CSL-11 | `ISBN`, `ISSN`, `edition`, `language`, `numPages` | omonimi CSL, `number-of-pages` |
+| CSL-12 | data "October 2023" / "2023-10" | `issued.raw` (la interpreta citeproc) / `date-parts` |
+| CSL-13 | campi nuovi vuoti | fuori dal codice di campo |
 
 ## Helper pubblici (`test/utils/helpers.test.ts`)
 | ID | Scenario | Atteso |
@@ -533,16 +560,16 @@ dialoghi. Ogni passo è confrontato con `test/word-proxy/expect.json` da `verify
 bibliografia dalla libreria locale con quella dall'`itemData` incorporato. Nessun account, nessun segreto.
 | ID | Scenario | Atteso |
 |---|---|---|
-| WP-apa…chicago | sessione "embedded" (percorso B, libreria vuota): primo Refresh nei 5 stili | H-W1 corretto: nessun dialogo Document Preferences, stile dell'iniezione (da `ZOTERO_PREF_*`) applicato e salvato; nessun avviso, `noteIndex` 0, un id per URI, 8 citazioni, 12 voci, tutte da `itemData` incorporato; "p. 110" del locator, "In J. Edmond (Ed.), …", cirillico, particelle |
+| WP-apa…chicago | sessione "embedded" (percorso B, libreria vuota): primo Refresh nei 5 stili | H-W1 corretto: nessun dialogo Document Preferences, stile dell'iniezione (da `ZOTERO_PREF_*`) applicato e salvato; nessun avviso, `noteIndex` 0, un id per URI, 9 citazioni, 13 voci, tutte da `itemData` incorporato; "p. 110" del locator, "In J. Edmond (Ed.), …", cirillico, particelle |
 | WP-proposed | OK sullo stile proposto, se Zotero lo chiede | prima del fix: stile a note, citazioni come testo di nota nel corpo; ora nessun dialogo, apa applicato |
 | WP-again / WP-restyle | secondo Refresh; Document Preferences → chicago-author-date | nessun dialogo, stesso testo; stile cambiato senza errori |
 | WP-group | docx dalla libreria di gruppo 777, gruppo assente in Zotero | H-W5: `itemData` incorporato, nessuna richiesta, URI `groups/777` |
 | WP-lib-apa/lib-group | sessione "library" (percorso A): stesse voci con le stesse chiavi nella libreria locale e in un gruppo 777 (`load-items.js`) | voci dalla libreria, nessun fallback, nessun dialogo |
-| WP-ab | bibliografia lib-apa contro apa | uguali salvo le 4 differenze note: `zoteroItemToCsl` non porta università (tesi), istituzione (report), repository/archiveID (preprint), data di accesso (pagina web) |
+| WP-ab | bibliografia lib-apa contro apa | uguali: nessuna differenza attesa da quando `zoteroItemToCsl` porta università (tesi), istituzione (report), repository/archiveID (preprint), genere, data di accesso (pagina web), ISBN/ISSN, edizione, lingua e pagine (prima 4 differenze note; senza differenze l'indice delle pagine non ha il problema noto `itemData`) |
 | WL-09 | ambito del job (`scripts/word-proxy-scope.mjs`, `test/utils/workflow-logic.test.ts`) | PR: solo se cambiano un sorgente del server (`src/`), la skill, il corpus, word-proxy o il job; PR solo docs o solo test: saltato; push su main e manuale: sempre |
 | WL-10 | struttura del job | senza segreti né `environment`, `ubuntu-24.04`, timeout ≤ 10 min, azione composita `word-tools` (versioni e sha256 fissati, archivi in cache ricontrollati a ogni run), artifact solo dopo `check-artifacts.mjs`, conservato 1 giorno |
 | WP-CA | `check-artifacts.mjs` (`test/utils/word-proxy.test.ts`) | fallisce con URI di libreria diversi dai segnaposto, email, home diversa da quella del runner, valori di variabili segrete, file inattesi (anche dentro i docx) |
-| WP-R01 | `render.mjs`: differenze itemData di `expect.json` | ognuna associata alla sua voce del corpus (voce di bibliografia di libreria che la contiene) |
+| WP-R01 | `render.mjs`: differenze itemData (le 4 di prima di #50; quelle di `expect.json`, ora nessuna) | ognuna associata alla sua voce del corpus (voce di bibliografia di libreria che la contiene) / elenco vuoto: nessun problema noto `itemData` nell'indice |
 | WP-V | `verify.mjs` / `compare.mjs` su documenti costruiti nel test | aspettative rispettate → ok; una differenza → errore con atteso/ottenuto; differenza A/B nuova o sparita → errore |
 
 ### word-render e revisione visiva (job di `claude-agent-smoke.yml`, `test/live/agent/visual-review.mjs`)
@@ -566,7 +593,7 @@ Read su `agent-render/`) e scrive `agent-out/visual-review.md`; `word-render-cle
 ## Corpus reale (`test/fixtures/corpus/`, helper `test/helpers/corpus.ts`)
 Opere vere con licenza CC BY / CC0 (conferenza ACL, articolo in cirillico, libro curato, capitolo, monografia, tesi
 DataCite, report con autore istituzionale, preprint arXiv con 18 autori e particelle, pagina web, coppia stesso
-autore e anno con altri coautori, coppia stesso autore unico e anno), registrate a mano da `scripts/record-corpus.mjs` (API ufficiali, 1 richiesta/s, arXiv 1 ogni 3 s):
+autore e anno con altri coautori, coppia stesso autore unico e anno, rivista con "&" che Crossref manda come `&amp;`), registrate a mano da `scripts/record-corpus.mjs` (API ufficiali, 1 richiesta/s, arXiv 1 ogni 3 s):
 cassette ridotte di doi.org/Unpaywall/DataCite/Zenodo/arXiv/Thoth, 3 PDF, `library.json` curata. `corpusRoutes()`
 le serve come route della FakeNet, `serveCorpusLibrary()` serve la libreria curata come Web API.
 | ID | Scenario | Atteso |
@@ -577,9 +604,9 @@ le serve come route della FakeNet, `serveCorpusLibrary()` serve la libreria cura
 | CORPUS-04/05 | corpus guastato in una copia: email, `@` nell'URL, valore dell'ambiente, ORCID, licenza NC, campo vietato, PDF cambiato, anni diversi, chiave non valida | ciascun controllo scatta |
 | CORPUS-AID-01 | `add_items_by_doi` su tutti i DOI del corpus (`test/tools/corpus.test.ts`) | ogni DOI risolto dalle cassette, un item per opera, nessuna richiesta senza route |
 | CORPUS-AID-02 | item creato contro la voce curata, campo per campo | uguale salvo le differenze note (tabella `KNOWN`, causa per campo); una differenza nota sparita va tolta dalla tabella |
-| CORPUS-AID-03 (`it.fails`) | differenze del prodotto, una per causa e opera | publisher-location, event, container-title-short, sottotitolo, article-number, contributor, JATS negli abstract, tipo CSL `article` → journalArticle (curatori e nome `literal` corretti: ora in CORPUS-AID-02) |
-| CORPUS-IC-01 | `inject_citations` sulla libreria curata in apa/harvard/chicago/ieee/vancouver | docx valido (`expectValidDocx`), 7 citazioni, 12 voci in bibliografia |
-| CORPUS-IC-02 | apa | coppia Peroni 2023 (coautori diversi) disambiguata con i coautori come vuole APA 7; coppia Eve 2020 (stesso autore unico) con 2020a/2020b; "Иванов, Н.", "de las Casas, D.", autori collettivi, "p. 110" |
+| CORPUS-AID-03 (`it.fails`) | differenze del prodotto, una per causa e opera | publisher-location, contributor (event, container-title-short, sottotitolo, article-number, JATS negli abstract, DOI arXiv → preprint corretti con #50, come prima curatori e nome `literal`: ora in CORPUS-AID-02) |
+| CORPUS-IC-01 | `inject_citations` sulla libreria curata in apa/harvard/chicago/ieee/vancouver | docx valido (`expectValidDocx`), 8 citazioni, 13 voci in bibliografia |
+| CORPUS-IC-02 | apa | coppia Peroni 2023 (coautori diversi) disambiguata con i coautori come vuole APA 7; coppia Eve 2020 (stesso autore unico) con 2020a/2020b; "Иванов, Н.", "de las Casas, D.", autori collettivi, "p. 110", "Arthropod Systematics & Phylogeny" con la `&` letterale (mai `&amp;`) |
 | CORPUS-IC-03 | apa, capitolo | "In J. Edmond (Ed.), Digital Technology and the Practices of Humanities Research (pp. 105–122)" dai dati incorporati (titolo del libro e curatori del `bookSection` nell'`itemData`) |
 | CORPUS-PDF-01 | `find_and_attach_pdfs` sulle 3 opere con PDF (Unpaywall registrato) | PDF veri scaricati, caricati identici, testo estratto (anche cirillico) nel PUT fulltext |
 | CORPUS-PDF-02 | `add_items_by_doi` con `UNPAYWALL_EMAIL` | voce creata e PDF allegato dalla risposta Unpaywall registrata |
@@ -616,7 +643,7 @@ Gira contro la Web API Zotero vera con il server compilato su stdio. Si attiva *
 | `ZOTERO_LIVE_SAFE_MODE=1` | libreria personale: `UNSAFE_OPERATIONS` al massimo `items`, LIVE-DC-02/03 e gruppi saltati, nessuna pulizia degli avanzi |
 
 Configurazione: un file alla volta, 120 s per test, 300 s per gli hook, ogni chiamata MCP 90 s, ogni
-richiesta diretta alla Web API 30 s con retry su 429/502/503/504 (Retry-After/Backoff). Report JSON in
+richiesta diretta alla Web API 30 s con retry su 429/500/502/503/504 (Retry-After/Backoff; anche in `lock.mjs` e `verify-claims.mjs`, con lo stesso numero di tentativi). Report JSON in
 `.vitest/live-report.json`, riepilogo della run (conteggi prima/dopo, voci rimosse) in `.vitest/live-summary.json`.
 
 **Fixture e pulizia** (`test/live/global-setup.ts`): ogni run ha un `runId` (`<timestamp base36>-<hex>`); crea la
@@ -628,7 +655,8 @@ marcatore della run (titolo con il runId, tag della run, collezione della run, o
 fallisce se resta qualcosa; in safe mode avvisa se i conteggi della libreria crescono (qualcosa creato senza
 marcatori). I casi che dipendono da doi.org/Crossref/Unpaywall/editori sono `soft`, ma si salta **solo** per un guasto
 esterno riconosciuto (`ExternalServiceError`: verifica diretta del servizio prima della chiamata, oppure testo del tool
-con timeout, errori di rete, 429/5xx di doi.org, "Download failed for all…"): un secondo tentativo, poi skip con il
+con timeout, errori di rete, 429/5xx di doi.org, "HTTP 429" o "HTTP 5xx", "Download failed for all…"; pattern in
+`test/live/helpers/external.mjs`, modulo senza effetti collaterali provato da EXT-01/02 in `test/utils/external-failure.test.ts`): un secondo tentativo, poi skip con il
 motivo. Qualsiasi altro errore, asserzioni comprese, fa fallire il test. Gli skip soft sono contati: oltre
 `ZOTERO_LIVE_MAX_SOFT_SKIPS` il teardown fallisce. Le asserzioni sono relative a ciò che la run crea, mai a conteggi
 assoluti della libreria; le chiavi inesistenti dei casi negativi (`ZZZZZZZZ`, `YYYYYYYY`) hanno la forma valida e il setup verifica che non
@@ -639,8 +667,8 @@ la libreria intera.
 collezione `mzt-lock <runId>`; se ne trova una più vecchia e non scaduta di un'altra run (di un'altra PR, dell'agente,
 di un altro worktree), aspetta con backoff (15 s, 30 s, poi ogni 60 s) fino a 25 min (`ZOTERO_LIVE_LOCK_WAIT_MIN`; 70 min in CI) e poi
 si ferma con "test account busy". I lock con runId più vecchio di 180 min (attesa in CI più la run più lunga, l'agente smoke) sono di run morte e vengono rimossi.
-I log riportano `[lock] acquired <runId>` e `[lock] released <runId>` (LK-01, `test/utils/lock.test.ts`). Vince il lock creato per primo, ordinato per `version` Zotero della collezione (versione della libreria alla scrittura, sempre crescente). L'ordine per runId lasciava vincere entrambe le run quando quella con il runId più vecchio creava il lock un attimo dopo (live-tests e agente smoke della PR #26, 2026-10-12: l'agente ha lavorato durante la suite e i conteggi finali sono cresciuti di 6 voci e 2 collezioni). LK-02: la run con il runId più vecchio che crea il lock dopo aspetta; LK-03: versione letta dall'elenco se manca nella risposta di creazione. Le collezioni di lock sono escluse dai conteggi prima/dopo (una run in attesa
-crea la sua mentre un'altra è fra i due conteggi). Rilascio a fine teardown (sempre) e nella modalità solo pulizia. I DELETE
+I log riportano `[lock] acquired <runId>` e `[lock] released <runId>` (LK-01, `test/utils/lock.test.ts`). Vince il lock creato per primo, ordinato per `version` Zotero della collezione (versione della libreria alla scrittura, sempre crescente). L'ordine per runId lasciava vincere entrambe le run quando quella con il runId più vecchio creava il lock un attimo dopo (live-tests e agente smoke della PR #26, 2026-10-12: l'agente ha lavorato durante la suite e i conteggi finali sono cresciuti di 6 voci e 2 collezioni). LK-02: la run con il runId più vecchio che crea il lock dopo aspetta; LK-03: versione letta dall'elenco se manca nella risposta di creazione; LK-04: HTTP 500 sulla creazione poi 200 → ritentato (attesa con timer finti), lock preso; LK-04b: 500 arrivato dopo una scrittura riuscita (due lock della stessa run) → la run non aspetta il proprio lock, il rilascio li toglie entrambi. Le collezioni di lock sono escluse dai conteggi prima/dopo (una run in attesa
+crea la sua mentre un'altra è fra i due conteggi). Rilascio a fine teardown (sempre) e nella modalità solo pulizia; un rilascio fallito è un errore nel log (`::error` in CI) e lascia il marcatore `live-run-<runId>.json`, tolto solo dopo un teardown pulito e un rilascio riuscito, così lo step "Clean up interrupted runs" ripete il rilascio. I DELETE
 ritentano fino a 8 volte con jitter sui 412 (versione della libreria cambiata nel frattempo).
 
 **Pulizia dopo una run interrotta** (processo ucciso, timeout; usa il reporter di default, così non sovrascrive
@@ -667,7 +695,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 | `add-linked-url-attachment` | LIVE-ALU-01 figlio con content_type e tag; 02 standalone in due collezioni; 03 override; 04 URL non valido, genitore inesistente |
 | `import-pdf-to-zotero` | LIVE-IP-01 PDF figlio: size, md5, fulltext, verificati via API; 02 standalone con filename/titolo/collezioni; 03 nome da Content-Disposition; 04 HTML come PDF → not_pdf, nessun allegato; 05 text/html (LIVE-STALE-5); 06 404; 07 genitore inesistente, URL non valido; 08 override |
 | `find-and-attach-pdfs` (soft per 04/05) | LIVE-FA-01 entrambi/nessuno; 02 chiave sconosciuta e senza DOI; 03 skipped e skip_if_attachment_exists false; 04 collezione dry_run → processed = voci regolari create (LIVE-STALE-2); 05 collezione reale (LIVE-STALE-4); 06 override |
-| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci cancellate definitivamente (non nel cestino); 03 solo sconosciute (LIVE-STALE-1); 04 mista; 05 51/0 chiavi; 06 genitore → anche il figlio; 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione |
+| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci cancellate definitivamente (non nel cestino); 03 solo sconosciute (LIVE-STALE-1); 04 mista; 05 51/0 chiavi; 06 genitore → anche il figlio (ogni asserzione riporta il testo del risultato); 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione |
 | `delete-collection` | LIVE-DC-01 UNSAFE none/items rifiutato; 02-03 (solo fuori safe mode) cancellata con la voce che resta, chiave sconosciuta/vuota |
 | `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente (isError che la nomina, nessun output); 03 override |
 | `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations |
@@ -698,13 +726,16 @@ voci mentre la pulizia era già passata. Ora lo step di pulizia ferma prima i pr
 tag né collezioni con il prefisso della run (al massimo 4, a 5 s), e il lock viene liberato solo dopo la pulizia. Una run che trova l'account dedicato non pulito all'avvio (voci, o collezioni oltre la sentinella) lo scrive nel log e come avviso GitHub (`::warning`): una pulizia fallita dopo un annullamento altrimenti si vedrebbe solo come "cancelled" nella sua run; le run di PR diverse e dell'agente si serializzano sul lato Zotero con
 `test/live/lock.mjs` (attesa fino a 70 min, poi "test account busy": l'agente smoke tiene l'account fino a circa 80 min), così le PR in stack non si annullano a vicenda i
 check obbligatori. Job di 100 min, step dei test di 85 (attesa del lock compresa). Il filtro sui file è un job
-(`changes`), non `on.paths`; con file non rilevanti il job `live-tests` passa senza la suite.
+(`changes`), non `on.paths`; con file non rilevanti il job `live-tests` passa senza la suite. Sulle PR in stack un
+force-push della base manda un secondo `synchronize` sullo stesso head SHA: se una run precedente su quel commit è
+riuscita con tutti i job in ambito (`scripts/duplicate-run.mjs`, WL-11), live e agente vengono saltati e i verdetti
+passano con il link a quella run nel Job Summary; una run precedente fallita, annullata o in corso non conta.
 Senza i secret lo step "Require the test account" fallisce invece di far passare una suite tutta saltata;
 con più di 2 casi soft saltati (`ZOTERO_LIVE_MAX_SOFT_SKIPS`) la run fallisce.
 Lo step dei test (18 min) è più corto del job (30 min); poi, sempre:
 - **solo pulizia** (`npm run test:live:cleanup`, cioè `ZOTERO_LIVE_CLEANUP_ONLY=1`): nessuna fixture, tutti i test saltati; pulisce le run indicate in
   `ZOTERO_LIVE_CLEANUP_RUN_IDS` e quelle interrotte (file `.vitest/live-run-<runId>.json` scritto all'avvio e tolto a
-  fine teardown), con le stesse regole sui marcatori; sull'account dedicato anche gli avanzi > 6 h;
+  fine teardown, solo dopo il rilascio del lock), con le stesse regole sui marcatori; sull'account dedicato anche gli avanzi > 6 h;
 - `test/live/scrub-report.mjs`: copia report e riepilogo mascherando chiave, user id, username, id e nome del gruppo ed
   email, e fallisce (togliendo l'output) se un segreto sopravvive o se c'è un gruppo senza `ZOTERO_TEST_GROUP_NAME`;
   l'artifact (7 giorni) si carica solo dopo uno scrub riuscito. Il nome del gruppo lo legge, all'inizio del job,
@@ -762,15 +793,14 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 - **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
   comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
   docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
-  negati; 160 turni, tetto di 3 USD (`maxBudgetUsd`; una run costa circa 0,35-0,45 USD), `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min (costo atteso: vedi
-  il collaudo locale sotto; i limiti sono circa il doppio). La chiave Zotero sta solo nel file
+  negati; 140 turni, tetto di 2 USD (`maxBudgetUsd`, `.github/agents/agent-smoke.json`; le run reali usano 65-98 turni), `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min. La chiave Zotero sta solo nel file
   di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente. Gli artifact fra i job
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
   nel job successivo), username, nome del gruppo, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne
   resta uno (anche dentro i docx) o se c'è un gruppo senza il suo nome; conservazione 1 giorno. Ogni job che usa
   l'account comincia mascherando il nome del gruppo (`mask-group-name.mjs`).
 - **Riepilogo**: dopo lo scrub, `test/live/agent/summary.mjs` scrive il Job Summary (verdetto, problemi e avvisi,
-  tabella degli scenari, esplorativi X1–X5 con le chiamate come le ha registrate l'audit, friction, turni/durata/costo)
+  tabella degli scenari, esplorativi X1–X5 con le chiamate come le ha registrate l'audit, friction, turni e durata; il costo non compare nei testi pubblici)
   dalla copia scrubbata; non scrive nulla se nel testo, pubblicato o prima dell'escape, resta un segreto dell'ambiente,
   il nome del gruppo o un `users|groups/<id>` diverso dai segnaposto. Il job
   `agent-smoke-comment` (PR dello stesso repo, solo `pull-requests: write`, niente checkout, npm o segreti) ricontrolla
@@ -778,7 +808,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 - **Sulle PR** il job dell'agente ripristina `.claude/`, `CLAUDE.md` (e `.mcp.json`, `.claude.json`, `CLAUDE.local.md`) dal branch di base (configurazione dell'agente
   scritta nella PR = non fidata): gira la skill del branch di base. Se lì la skill non c'è ancora (la PR che la
   introduce), il job lo segnala e salta; il primo collaudo vero è l'avvio manuale da `main` dopo il merge.
-- **Percorso**: P0 precondizioni (15 tool, get_user_id, sentinella o safe mode); F0 sonde dei guardrail (un comando
+- **Percorso**: P0 precondizioni (numero di tool da `context.tool_count`, scritto da prepare.mjs da `manifest.json`; get_user_id, sentinella o safe mode); F0 sonde dei guardrail (un comando
   Bash concatenato con `&& ls` e `delete_items` di `XXXXXXXX`, chiave inesistente: entrambi devono essere negati dagli
   hook); F1 DOI con PDF OA; F2 collezione,
   sottocollezione, add_items di tre voci (libro con autore istituzionale, articolo con titolo e autori non ASCII,
@@ -790,9 +820,15 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   (chiave sconosciuta ben formata → stesso errore, nessun output; chiave malformata `../items` → stesso rifiuto;
   `keys="A, B"`; chiave ripetuta; documento senza zcite); F10 casi limite degli input dei tool (array vuoti, stringhe di soli spazi,
   limiti 0/1/max/max+1 dove lo schema li fissa: delete_items 1..50, add_items almeno 1, search_library massimo 100);
-  poi gli scenari T-… per i file toccati, fino a 5 **scenari esplorativi** X1..X5 scelti dall'agente in base al diff
+  F11 preferenze del documento mantenute (sorgente di make-docx con le preferenze `chicago`, iniettato in `apa` dai due
+  produttori: avviso, preferenze `chicago` conservate, `compare_group` `prefs-kept`);
+  poi gli scenari T-… per i file toccati (tabella condivisa `.claude/skills/test-mcp-zotero/scenarios.json`, copiata in
+  `agent-out/scenarios.json`; prepare.mjs scrive in `context.targeted` le righe scelte da `context.changed_files`; ogni
+  sorgente di `src/` ha almeno una riga, SC-02), fino a 5 **scenari esplorativi** X1..X5 scelti dall'agente in base al diff
   (null, tipi sbagliati, vuoti, spazi, stringhe lunghissime, unicode, limiti, duplicati, valori validi e non validi
-  insieme), la valutazione d'uso e `agent-out/claims.json` (`schema_version: 2`).
+  insieme; almeno 1 con un diff solo CI o test), la valutazione d'uso e `agent-out/claims.json` (`schema_version: 3`).
+  Regole contro le deviazioni: in CI nessuna cancellazione oltre gli oggetti `<prefix> … to delete` di F8 e T-delete,
+  mai eseguire il verificatore, `notes` e `friction` in italiano; limiti 140 turni e 2 USD.
 - **verify-claims** (exit 0/1/2, `verdict.json` e riepilogo nello step summary): scenari fissi presenti e non falliti
   (F1 può essere `skipped` con motivo); ogni oggetto dichiarato esiste con i marcatori della run e lo stato dichiarato
   (titolo, DOI, collezione, genitore, link_mode, PDF); ogni cancellazione dichiarata ha una chiave nel formato Zotero,
@@ -824,6 +860,17 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   errori di validazione), nessun crash di inject.js. **Sicurezza** delle scritture: ogni chiave passata a un tool di
   scrittura è ben formata e creata prima dalla run (o finta), niente scritture sul gruppo in safe mode, mai
   delete_collection in safe mode. I messaggi riportano solo chiavi, tool e percorsi, mai contenuti della libreria.
+  **Claims schema 3** (solo dalla skill che lo introduce: sulle PR l'agente segue la skill del branch base, quindi un file
+  con `schema_version: 2` è giudicato esattamente come prima, VC-14): scenari T scelti dai file cambiati del contesto
+  fidato con la tabella condivisa (mancante → problema, saltato con motivo → avviso), F11 obbligatorio; ogni chiave creata
+  nell'audit dichiarata o cancellata (altrimenti avviso, problema senza i marcatori della run); `created[].call_no` = la
+  chiamata che ha creato la chiave, con il titolo atteso preso dal suo risultato invece che ridigitato; `metadata[]`
+  (`path`, `call_no`) per ogni file di metadati letto da inject.mjs, identico al risultato di quel `get_items_details`;
+  preferenze del documento obbligatorie in ogni documento con citazioni e nell'impronta di parità (`document_prefs` per
+  lo stile conservato del caso F11) e un gruppo verificato con preferenze mantenute; `expect.publicationTitle`
+  (T-doi, "Computers & Operations Research" con la `&` letterale); F10 soddisfatto da una qualsiasi chiamata corrispondente
+  (prima solo dalla prima); F1 saltato solo con un risultato di add_items_by_doi nell'audit che riporta un guasto esterno
+  (`test/live/helpers/external.mjs`); avviso per ogni cancellazione riuscita di un oggetto non creato come "… to delete".
 
 | ID | Scenario (`test/utils/verify-claims.test.ts`) | Atteso |
 |---|---|---|
@@ -843,6 +890,16 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-07 | make-docx: tag in linea e spezzato riconosciuti dal sorgente, `num` su ogni tag, spazi e chiave ripetuta (F9), percorso fuori agent-out e `"` nei valori rifiutati | caratteristiche lette correttamente; exit 2 |
 | VC-08 | 5 stili: inject_citations (server con Zotero finto) e inject.js (via inject.mjs, metadata da get_items_details) sul documento di parità | docx validi, 5 citazioni, impronte identiche, copertura istituzionale/senza metadati/non ASCII, testo attorno ai tag in linea e spezzato conservato, una bibliografia |
 | VC-08b | impronta alterata: citationID diverso / locator / testo visibile / bibliografia | nessuna differenza / percorso della prima differenza |
+| VC-08c | schema 3 con i due produttori reali: sorgente make-docx con preferenze `chicago` (stile sconosciuto → exit 2), iniettato in `apa` | entrambi avvisano e conservano `chicago` (valido con `documentPrefsStyle`, errore senza), stessa impronta con le preferenze; documenti di parità con le preferenze del loro stile; impronta schema 2 senza preferenze |
+| VC-13a | `createdByCalls` | chiavi create con tipo, libreria (gruppo per chiamata), `call_no`, titolo o nome riportato dal tool |
+| VC-13b | `created[].call_no` giusto, di un'altra chiamata, mancante, inesistente, libreria diversa | titolo atteso dal risultato / un problema per caso |
+| VC-13c | chiavi create non dichiarate (né cancellate); cancellazione di un oggetto non "… to delete" | elencate / avviso |
+| VC-13d | `metadata[]`: file identico al risultato del suo `call_no`, non dichiarato ma usato da inject.mjs, `call_no` non get_items_details riuscito, contenuto diverso, file mancante | controllo / un problema per caso |
+| VC-13e | F1 saltato: nessun add_items_by_doi, 503 di doi.org, 404 | nessuna prova / prova / nessuna prova |
+| VC-13f | scenari T dal contesto: scelti per percorso e prefisso, mancante, saltato con motivo, fallito, `changed_files` assente | problema / avviso / nessun doppio problema / problema |
+| VC-13g | F10 con la prima chiamata sbagliata e la seconda giusta | schema 2: problema; schema 3: nessuno, prova = la seconda |
+| VC-14/14b | script completo sullo stesso audit con claims schema 2 / 3 (riga T scelta, F1 saltato senza prova, cancellazione fuori da F8, metadati non dichiarati, F10 giusto solo alla seconda chiamata, niente F11) | schema 2: verdetto identico a quello del verificatore della 2.0.3 (problemi, avvisi, controlli); schema 3: i requisiti nuovi in più, il problema F10 in meno, l'avviso sulla cancellazione |
+| SC-01..04 | tabella degli scenari mirati (`test/utils/agent-scenarios.test.ts`): id unici e pattern esistenti; ogni sorgente di `src/` mappato; scelta per percorso, prefisso `/**`, ordine, docs/CI esclusi; SKILL.md rimanda a `agent-out/scenarios.json` e a `context.targeted`, senza ripetere la tabella | come atteso |
 | VC-09a/b | script completo senza rete: senza `--audit`; claims incompleti, cancellazione non attribuibile, chiamata della trascrizione assente dall'audit | exit 2; exit 1 e `verdict.json` con scenari mancanti, sicurezza, sonde F0, buco dell'audit, F10, parità, F9; la chiave non compare nell'output |
 | VC-09c | riga d'audit con un runId diverso | problema "evidence from another run" (in VC-09b) |
 | VC-11 | `agent-out/context.json` identico alla copia degli hook / modificato (cleanup) | nessun problema sul contesto / "differs from the copy written before the agent started" |
@@ -885,6 +942,11 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | WL-06b | mascheramento del nome del gruppo nel job di pulizia dell'agente | `continue-on-error` (la pulizia non salta mai), solo lì |
 | WL-06c | job della issue settimanale; `skill-zips` che crea una release | download del report non bloccante, `gh` con `timeout 60` / versione di package.json = tag prima di creare la release, tag sul commit provato (`--target "$GITHUB_SHA"`) |
 | WL-07 | workflow unico live + agente | `live-tests.yml` non esiste più; `changes` con `live-scope.mjs`; prepare dopo `live` riuscito; verdetti `live-tests` e `agent-smoke` (rosso se il live non è passato); `id-token`, `issues: write`, `pull-requests: write` ciascuno in un solo job; cron del venerdì; input `scope`; posto per `word-render`; timeout su ogni job e step, azioni fissate per SHA; deps-update avvia una sola run con `scope=live+agent` |
+| WL-11/11b/11c | run doppie (`scripts/duplicate-run.mjs`): run precedente sullo stesso head SHA riuscita con tutti i job in ambito (live-tests-run; agent-smoke-run e agent-smoke-verify con l'agente) / fallita, annullata, in corso, riuscita senza agente, doppia a sua volta / run corrente, solo live, nulla in ambito | duplicate con il link alla più recente / si procede / come atteso |
+| WL-11d | `duplicate-run.mjs` come processo senza token (errore di lookup) | `duplicate=false`: la run procede |
+| WL-11e | job `changes` e verdetti | `actions: read` solo per leggere le run; `live-tests-run` saltato con `duplicate`; `live-tests` e `agent-smoke` verdi con il link alla run precedente nel Job Summary, controllo prima di quelli che leggerebbero i job saltati come fallimento |
+| WL-12 | lock dell'agente | `run_id` scritto prima di "Lock the test account"; prepare rilascia se fallisce o è annullato; `agent-smoke-cleanup` rilascia con `always()` |
+| WL-12b | id della federazione Anthropic | primo step di agent-smoke-prepare, agent-smoke-run e del job agente di deps-update: `::add-mask::` dei quattro `ANTHROPIC_*_ID` (variabili, non segreti) |
 | WL-08/08b | `scripts/live-scope.mjs`: PR solo docs, sul codice, sulla suite dal vivo, solo sulla skill dell'agente, sul workflow; push; schedule; manuale senza input, `live`, `live+agent`; scope sconosciuto; processo | live/agent attesi (la skill dell'agente fa girare anche il live); errore; `live=…`/`agent=…` per `$GITHUB_OUTPUT` |
 | CR-01a..d | `mask-group-name.mjs` (`test/utils/ci-report.test.ts`): lettura con header e timeout; 503 poi 200, 404, rete giù, nome assente; output `::add-mask::` e `$GITHUB_ENV`; processo senza gruppo, senza chiave, id non numerico | nome; ritenta solo 429/5xx/rete, errori senza il nome; delimitatore casuale, a capo rifiutato; no-op / exit 1 |
 | CR-02a..c | scrub-report e redact con il nome del gruppo; senza `ZOTERO_TEST_GROUP_NAME` ma con un gruppo | nome, id e username mascherati / token; exit 1 senza output |
@@ -899,7 +961,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | CP-02 | testo normale di PR o issue delle dipendenze | nessun problema |
 
 Collaudo locale (2026-10-11, libreria del proprietario in safe mode, Claude Code 2.1.289, `claude-sonnet-5-5`, stessa
-configurazione della CI: template MCP, `--tools`, `dontAsk`, hook): 78 turni, 0,69 USD, 2 min 20 s (i limiti in CI,
+configurazione della CI: template MCP, `--tools`, `dontAsk`, hook): 78 turni, 2 min 20 s (i limiti in CI,
 160 turni e 3 USD, lasciano margine). P0, F0-F6, F8-F10 e 8 righe T passati, F7 saltato (nessun gruppo);
 18 docx in 9 `compare_group` (parità nei 5 stili, edge, nozcite, nonum-ieee, bare-id) tutti identici fra i due
 produttori; 4 esplorativi (1 ok, 3 unclear, nessun bug). Hook: 69 chiamate nell'audit, esattamente 2 negazioni, le

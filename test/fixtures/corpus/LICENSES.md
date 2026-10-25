@@ -128,3 +128,13 @@ Recorded on 2026-10-21.
 - Verified at: https://www.frontiersin.org/articles/10.3389/fnut.2022.1032481/full (2026-10-21). Article page: "This is an open-access article distributed under the terms of the Creative Commons Attribution License (CC BY)" (link to CC BY 4.0)
 - Source of the metadata: doi, unpaywall
 - PDF: not included
+
+## ament2025
+
+- Title: Is additive coding useful for morphological phylogenetic analyses? An empirical evaluation
+- Authors: Danilo César Ament; Eduardo A.B. Almeida
+- Identifier: https://doi.org/10.3897/asp.83.e146637
+- Licence: CC-BY-4.0 (https://creativecommons.org/licenses/by/4.0/)
+- Verified at: https://arthropod-systematics.arphahub.com/article/146637/ (2026-10-21). Article page (full text, article_preview.php?id=146637): "This is an open access article distributed under the terms of the Creative Commons Attribution License (CC BY 4.0)" (link to CC BY 4.0); page metadata dc.rights and Crossref license: http://creativecommons.org/licenses/by/4.0/
+- Source of the metadata: doi
+- PDF: not included
