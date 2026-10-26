@@ -790,8 +790,27 @@ export function metadataFindings(list, calls, read) {
   const res = { problems: [], checks: [] };
   const declared = new Map((Array.isArray(list) ? list : []).map((m) => [String(m?.path ?? ""), m]));
   const byNo = new Map(calls.filter((c) => Number.isInteger(c.callNo)).map((c) => [c.callNo, c]));
-  const used = new Set(calls.filter((c) => c.name === "Bash").map((c) => injectMetadataPath(c.input?.command)).filter(Boolean));
-  for (const path of used) if (!declared.has(path)) res.problems.push(`metadata ${path}: used by inject.js but not declared in claims.metadata with its call_no`);
+  // Each metadata path an inject.mjs command used, and whether any inject that used it succeeded.
+  const used = new Map();
+  for (const c of calls.filter((x) => x.name === "Bash")) {
+    const path = injectMetadataPath(c.input?.command);
+    if (!path) continue;
+    const prev = used.get(path) ?? { anySuccess: false };
+    if (!c.result?.isError) prev.anySuccess = true;
+    used.set(path, prev);
+  }
+  for (const [path, { anySuccess }] of used) {
+    if (declared.has(path)) continue;
+    // A metadata file used ONLY by inject.js calls that failed never needs a claims.metadata entry, whether it
+    // exists (e.g. deliberately malformed JSON) or not (a nonexistent path): it is a legitimate test of
+    // inject.js's error path. Only metadata used by a SUCCESSFUL inject must be declared with its
+    // get_items_details call_no (so the verifier can compare the file with the audited result).
+    if (!anySuccess) {
+      res.checks.push(`metadata ${path}: not declared, used only by inject calls that failed (error-path test)`);
+      continue;
+    }
+    res.problems.push(`metadata ${path}: used by inject.js but not declared in claims.metadata with its call_no`);
+  }
   for (const [path, m] of declared) {
     const call = byNo.get(m?.call_no);
     if (!call || call.tool !== "get_items_details" || call.result.isError) {

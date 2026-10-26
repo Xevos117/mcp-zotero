@@ -409,6 +409,15 @@ Garantisce la regola del proprietario: Word non si tocca, l'output resta identic
 | AW-04 | `overwrite:false` su file assente | creato |
 | AW-05 | cartella non scrivibile | errore `EACCES`, nessun temporaneo (il tool mappa anche `EBUSY` → "chiudi il file in Word") |
 
+## Skill inject.js — generazione dal sorgente (`test/skills/inject-bundle.test.ts`, `test/skills/inject-golden.test.ts`)
+
+`inject.js` è generato da `scripts/skill/inject-cli.ts` con `npm run build:skill` (bundle esbuild del nucleo comune `src/citation-injector`); solo `metadataToCsl` resta nella CLI.
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| BUNDLE-01 | ricostruzione in memoria vs file committato | identici (fallisce se sorgente o `inject.js` modificati senza rigenerare); intestazione GENERATED e shebang |
+| SKGOLD-* | i 5 stili + gruppo, con metadati di vari tipi (articolo, libro, capitolo, report istituzionale, senza autore, tesi con data non numerica) | `word/document.xml` e `docProps/custom.xml` dello script generato identici allo snapshot dello script scritto a mano (normalizzando citationID e id di sessione) |
+
 ## Skill inject.js (`test/skills/inject-script.test.ts`, processo node reale)
 | ID | Scenario | Atteso |
 |---|---|---|
@@ -917,6 +926,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-13d | `metadata[]`: file identico al risultato del suo `call_no`, non dichiarato ma usato da inject.mjs, `call_no` non get_items_details riuscito, contenuto diverso, file mancante | controllo / un problema per caso |
 | VC-13e | F1 saltato: nessun add_items_by_doi, 503 di doi.org, 404 | nessuna prova / prova / nessuna prova |
 | VC-13f | scenari T dal contesto: scelti per percorso e prefisso, mancante, saltato con motivo, fallito, `changed_files` assente | problema / avviso / nessun doppio problema / problema |
+| VC-13h | metadata di inject.js usato solo da inject falliti (error path), file assente / presente ma malformato / inject riuscito / usato anche da un inject riuscito | tollerato / tollerato / da dichiarare / da dichiarare |
 | VC-13g | F10 con la prima chiamata sbagliata e la seconda giusta | schema 2: problema; schema 3: nessuno, prova = la seconda |
 | VC-14/14b | script completo sullo stesso audit con claims schema 2 / 3 (riga T scelta, F1 saltato senza prova, cancellazione fuori da F8, metadati non dichiarati, F10 giusto solo alla seconda chiamata, niente F11) | schema 2: verdetto identico a quello del verificatore della 2.0.3 (problemi, avvisi, controlli); schema 3: i requisiti nuovi in più, il problema F10 in meno, l'avviso sulla cancellazione |
 | SC-01..04 | tabella degli scenari mirati (`test/utils/agent-scenarios.test.ts`): id unici e pattern esistenti; ogni sorgente di `src/` mappato; scelta per percorso, prefisso `/**`, ordine, docs/CI esclusi; SKILL.md rimanda a `agent-out/scenarios.json` e a `context.targeted`, senza ripetere la tabella | come atteso |

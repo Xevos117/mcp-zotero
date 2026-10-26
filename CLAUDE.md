@@ -3,7 +3,10 @@
 MCP server for the Zotero Web API (TypeScript, ESM, Node >= 22), published on npm as
 `@xevos117/mcp-zotero`. Source in `src/`, compiled to `build/` with `tsc` (TypeScript 7).
 The product skill lives in `skills/zotero-skill-mcp-integrations/` (standalone `inject.js`,
-shipped as a release zip, not in the npm package).
+shipped as a release zip, not in the npm package). `inject.js` is **generated** from
+`scripts/skill/inject-cli.ts` by `npm run build:skill` (esbuild bundle of the shared citation core in
+`src/citation-injector`); never edit it by hand — change the source and regenerate. The `inject-bundle`
+test fails if the committed file is out of sync.
 
 ## Hard rules
 
