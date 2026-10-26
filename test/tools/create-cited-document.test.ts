@@ -119,6 +119,31 @@ describe("create_cited_document (CCD)", () => {
     expect(r.rendered!.citations[0]).toContain("2023");
   });
 
+  it("CCD-10 output_path relativo → errore (la descrizione chiede assoluto)", async () => {
+    const res = await h.call("create_cited_document", { markdown: "A [@SMITH222].", output_path: "relative/doc.docx" });
+    const json = expectErrorJson(res, "output_path must be an absolute path");
+    expect(json.output_path).toBe("relative/doc.docx");
+  });
+
+  it("CCD-11 markdown vuoto (solo spazi) → documento creato con avviso", async () => {
+    const out = join(dir.path, "empty.docx");
+    const res = await h.call("create_cited_document", { markdown: "   \n\t \n", output_path: out });
+    expect(res.isError, res.text).toBe(false);
+    expect(res.json).toMatchObject({ blocks: 0, citations: 0 });
+    expect(res.json.warnings.join(" ")).toMatch(/Markdown is empty/);
+    await expect(readFile(out)).resolves.toBeTruthy();
+  });
+
+  it("CCD-12 una email nel markdown non diventa una citazione né un errore", async () => {
+    serveItems(h, { SMITH222: SMITH });
+    const out = join(dir.path, "email.docx");
+    const res = await h.call("create_cited_document", { markdown: "Contact a@b.com about [@SMITH222].", output_path: out });
+    expect(res.isError, res.text).toBe(false);
+    expect(res.json.citations).toBe(1); // solo SMITH222, non "@b"
+    const xml = await readDocumentXml(await readFile(out));
+    expect(xml).toContain("a@b.com");
+  });
+
   it("CCD-08 nessuna citazione → documento creato senza bibliografia", async () => {
     const out = join(dir.path, "plain.docx");
     const res = await h.call("create_cited_document", { markdown: "# Just a title\n\nNo citations.", output_path: out });

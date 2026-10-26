@@ -32,6 +32,19 @@ describe("pandoc-cite (CCD)", () => {
   it("CCD-P06 suffisso non-locator", () => {
     expect(cites("[@ABCD2345, emphasis added]")[0]).toMatchObject({ keys: ["ABCD2345"], suffix: "emphasis added" });
   });
+
+  it("CCD-P07 una email a@b.com non è una citazione (@ dopo un alfanumerico)", () => {
+    expect(cites("write to a@b.com or x3@y.org")).toEqual([]);
+    expect(parseCites("write to a@b.com").map((i) => i.kind)).toEqual(["text"]);
+  });
+
+  it("CCD-P08 una @parola non chiave Zotero resta testo con un avviso, non una citazione", () => {
+    const warnings: string[] = [];
+    const parts = parseCites("see @notakey and @ABCD2345", (m) => warnings.push(m));
+    expect(parts.filter((i) => i.kind === "cite")).toHaveLength(1); // solo ABCD2345
+    expect(parts.some((i) => i.kind === "text" && i.text.includes("@notakey"))).toBe(true);
+    expect(warnings.join(" ")).toMatch(/@notakey.*not a well-formed Zotero item key/);
+  });
 });
 
 describe("markdown (CCD)", () => {

@@ -1,4 +1,5 @@
 import { CitationRequest } from "../citation-injector/model.js";
+import { ZOTERO_KEY } from "../utils/zotero-keys.js";
 import { Inline } from "./model.js";
 
 /**
@@ -40,11 +41,13 @@ function parseBracket(inner: string): CitationRequest | null {
   return { keys, prefix, suffix, locator, suppressAuthor, raw: `[${inner}]` };
 }
 
-export function parseCites(text: string): Inline[] {
+export function parseCites(text: string, onWarning: (msg: string) => void = () => {}): Inline[] {
   const out: Inline[] = [];
   let last = 0;
-  // una citazione tra parentesi che contiene @, oppure una citazione in linea -@K / @K
-  const re = /\[([^\]]*@[^\]]*)\]|(-?)@([A-Za-z0-9]+)/g;
+  // una citazione tra parentesi che contiene @, oppure una citazione in linea -@K / @K. Come pandoc, una
+  // citazione in linea comincia solo a inizio testo o dopo un carattere non alfanumerico: così "a@b.com"
+  // (una email) non viene scambiato per la citazione "@b".
+  const re = /\[([^\]]*@[^\]]*)\]|(?<![A-Za-z0-9])(-?)@([A-Za-z0-9]+)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) out.push({ kind: "text", text: text.slice(last, m.index) });
@@ -52,8 +55,12 @@ export function parseCites(text: string): Inline[] {
       const req = parseBracket(m[1]);
       if (req) out.push({ kind: "cite", request: req });
       else out.push({ kind: "text", text: m[0] });
-    } else {
+    } else if (ZOTERO_KEY.test(m[3])) {
       out.push({ kind: "cite", request: { keys: [m[3]], suppressAuthor: m[2] === "-", raw: m[0] } });
+    } else {
+      // una @parola in linea che non è una chiave Zotero ben formata resta testo, con un avviso (mai un errore)
+      out.push({ kind: "text", text: m[0] });
+      onWarning(`"${m[0]}" is not a well-formed Zotero item key (8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ); kept as text`);
     }
     last = m.index + m[0].length;
   }

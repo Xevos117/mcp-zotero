@@ -392,7 +392,12 @@ Crea un documento `.docx`/`.odt` da markdown con citazioni pandoc (`src/cited-do
 | CCD-06 | chiave assente dalla libreria | errore "not found in the library", nessun output |
 | CCD-07 | `format` in contrasto con l'estensione | errore |
 | CCD-08 | nessuna citazione | documento creato, nessuna bibliografia |
+| CCD-10 | `output_path` relativo | errore "output_path must be an absolute path" |
+| CCD-11 | markdown vuoto (solo spazi) | documento creato con avviso "Markdown is empty" |
+| CCD-12 | una email (`a@b.com`) nel markdown accanto a `[@K]` | solo `[@K]` citato, email intatta, nessun errore |
 | CCD-P01..06 | pandoc: `[@K]`, `[@K1; @K2]`, `[see @K, p. 12]` (prefix+locator), `-@K`/`@K`, testo alternato, suffisso non-locator | richieste di citazione corrette |
+| CCD-P07 | `a@b.com` / `x3@y.org` | nessuna citazione (`@` solo a inizio testo o dopo un non-alfanumerico, come pandoc) |
+| CCD-P08 | `@parola` non chiave Zotero ben formata | resta testo con un avviso, mai un errore (la chiave valida accanto resta una citazione) |
 | CCD-M01..04 | markdown: titoli/grassetto/corsivo/elenco, citazione in paragrafo, costrutti non supportati con avviso, paragrafi su più righe | blocchi e avvisi corretti |
 | CCD-N01 | numerazione | ordine di prima citazione, chiave ripetuta stesso numero |
 

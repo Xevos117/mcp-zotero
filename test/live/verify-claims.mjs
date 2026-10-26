@@ -274,6 +274,8 @@ function callEffects(call) {
     case "create_note":
       add(created, json.note_key ?? json.item_key ?? json.key);
       break;
+    case "create_cited_document":
+      break; // writes a document file, creates no Zotero items: no keys to attribute
   }
   return { created, deleted };
 }
@@ -1165,7 +1167,7 @@ async function main() {
       fail(`docx ${doc.path}: unknown style ${doc.style}`);
       continue;
     }
-    if (!["inject_citations", "inject.js"].includes(doc.producer)) {
+    if (!["inject_citations", "inject.js", "create_cited_document"].includes(doc.producer)) {
       fail(`docx ${doc.path}: unknown producer ${doc.producer}`);
       continue;
     }

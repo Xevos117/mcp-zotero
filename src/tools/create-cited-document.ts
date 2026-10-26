@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isAbsolute } from "node:path";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { createCitedDocument } from "../cited-document/create.js";
@@ -46,6 +47,13 @@ export async function handleCreateCitedDocument(
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
   const { markdown, output_path, style, format, library_type, library_id } = Schema.parse(args);
   const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
+
+  if (!isAbsolute(output_path)) {
+    return formatErrorResponse("output_path must be an absolute path", {
+      output_path,
+      hint: "Pass an absolute path (e.g. the user's Documents folder), as the tool description requires.",
+    });
+  }
 
   const extFormat = output_path.endsWith(".docx") ? "docx" : output_path.endsWith(".odt") ? "odt" : undefined;
   if (!extFormat) {

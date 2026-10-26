@@ -8,7 +8,7 @@ import { parseCites } from "./pandoc-cite.js";
  */
 
 /** Grassetto/corsivo, poi le citazioni dentro ciascun pezzo di testo (che ne eredita lo stile). */
-function parseInlines(text: string): Inline[] {
+function parseInlines(text: string, onWarning: (msg: string) => void): Inline[] {
   const segments: Array<{ text: string; bold?: boolean; italic?: boolean }> = [];
   const re = /\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_/g;
   let last = 0;
@@ -24,7 +24,7 @@ function parseInlines(text: string): Inline[] {
 
   const out: Inline[] = [];
   for (const s of segments) {
-    for (const inl of parseCites(s.text)) {
+    for (const inl of parseCites(s.text, onWarning)) {
       if (inl.kind === "text") {
         if (inl.text) out.push({ kind: "text", text: inl.text, bold: s.bold, italic: s.italic });
       } else {
@@ -38,12 +38,13 @@ function parseInlines(text: string): Inline[] {
 export function parseMarkdown(md: string): ParsedMarkdown {
   const blocks: Block[] = [];
   const warnings = new Set<string>();
+  const warn = (m: string) => warnings.add(m);
   const lines = md.replace(/\r\n?/g, "\n").split("\n");
 
   let paragraph: string[] = [];
   const flush = () => {
     if (paragraph.length) {
-      blocks.push({ type: "paragraph", inlines: parseInlines(paragraph.join(" ")) });
+      blocks.push({ type: "paragraph", inlines: parseInlines(paragraph.join(" "), warn) });
       paragraph = [];
     }
   };
@@ -69,21 +70,21 @@ export function parseMarkdown(md: string): ParsedMarkdown {
     if (heading) {
       flush();
       if (heading[1].length > 6) warnings.add("heading levels deeper than 6 are rendered as level 6");
-      blocks.push({ type: "heading", level: Math.min(heading[1].length, 6), inlines: parseInlines(heading[2].trim()) });
+      blocks.push({ type: "heading", level: Math.min(heading[1].length, 6), inlines: parseInlines(heading[2].trim(), warn) });
       continue;
     }
     const item = /^(\s*)[-*+]\s+(.*)$/.exec(line);
     if (item) {
       flush();
       if (item[1].length > 0) warnings.add("nested lists are flattened to one level");
-      blocks.push({ type: "list-item", level: 1, inlines: parseInlines(item[2].trim()) });
+      blocks.push({ type: "list-item", level: 1, inlines: parseInlines(item[2].trim(), warn) });
       continue;
     }
     const ordered = /^\s*\d+\.\s+(.*)$/.exec(line);
     if (ordered) {
       flush();
       warnings.add("ordered lists are rendered as bullet lists");
-      blocks.push({ type: "list-item", level: 1, inlines: parseInlines(ordered[1].trim()) });
+      blocks.push({ type: "list-item", level: 1, inlines: parseInlines(ordered[1].trim(), warn) });
       continue;
     }
     if (/^\s*>/.test(line)) warnings.add("block quotes are rendered as plain text");
@@ -92,6 +93,8 @@ export function parseMarkdown(md: string): ParsedMarkdown {
     paragraph.push(line.replace(/^\s*>\s?/, "").replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1"));
   }
   flush();
+
+  if (blocks.length === 0) warnings.add("the Markdown is empty; an empty document was created");
 
   return { blocks, warnings: [...warnings] };
 }
