@@ -32,6 +32,7 @@ const EXPECTED: Record<string, { required: string[]; properties: string[] }> = {
     properties: ["item_keys", "collection_key", "skip_if_attachment_exists", "dry_run"],
   },
   inject_citations: { required: ["file_path"], properties: ["file_path", "style", "format"] },
+  create_cited_document: { required: ["markdown", "output_path"], properties: ["markdown", "output_path", "style", "format"] },
 };
 
 const LIBRARY_ARGS = ["library_type", "library_id"];
@@ -48,7 +49,7 @@ describe("tools/list (MCP)", () => {
     await h.close();
   });
 
-  it("TL-01 espone esattamente i 15 tool attesi", () => {
+  it("TL-01 espone esattamente i 16 tool attesi", () => {
     expect(tools.map((t) => t.name).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 

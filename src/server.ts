@@ -44,6 +44,8 @@ class ZoteroServer {
           "3. Call inject_citations with the file path — it fetches metadata from Zotero automatically and picks the format from the extension (.docx or .odt; pass format to override). The file must be on the machine where this server runs.",
           "4. Tell the user to open it in Word or LibreOffice with the Zotero plugin → Zotero → Add/Edit Bibliography, then Zotero → Refresh.",
           "",
+          "To write a whole document from scratch (not fill placeholders in an existing one), use create_cited_document: give it Markdown with pandoc-style citations ([@KEY], [@K1; @K2], [see @KEY, p. 12], -@KEY) and an output .docx/.odt path. It never overwrites an existing file.",
+          "",
           "KEY NOTES:",
           "- add_items_by_doi auto-attaches open-access PDFs found via Unpaywall (needs UNPAYWALL_EMAIL in the server settings; uses the user's Zotero storage). Do not disable auto_attach_pdf unless it causes errors.",
           "- For IEEE/Vancouver (numbered) citation styles, every <zcite> MUST include a num attribute. num is the citation number assigned in order of first appearance in the text (first cited = num=\"1\", second = num=\"2\", etc.). For multi-item citations use comma-separated values: keys=\"KEY1,KEY2\" num=\"1,2\". Without num, citations render as [?].",

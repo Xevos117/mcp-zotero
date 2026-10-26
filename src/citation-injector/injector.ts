@@ -17,7 +17,7 @@ const WRITERS: Record<DocumentFormat, FormatWriter> = { docx: docxWriter, odt: o
  * ItemSource per il server: una GET per chiave dall'API Zotero; una chiave con 404 viene raccolta come
  * assente dal chiamante, ogni altro errore interrompe subito (come prima in fetchCslData).
  */
-function zoteroItemSource(zoteroApi: ZoteroApiInterface, libraryType: LibraryType, userId: string): ItemSource {
+export function zoteroItemSource(zoteroApi: ZoteroApiInterface, libraryType: LibraryType, userId: string): ItemSource {
   return async (keys) => {
     const cslData = new Map<string, CslItemData>();
     for (const key of keys) {

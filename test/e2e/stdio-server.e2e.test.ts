@@ -61,9 +61,9 @@ describe("e2e: build/server.js su stdio", () => {
     expect(s.client.getInstructions()).toMatch(/Errors carry a hint.*tell the user instead of retrying/);
   });
 
-  it("E2E-02 tools/list: 15 tool, ognuno con inputSchema object", async () => {
+  it("E2E-02 tools/list: 16 tool, ognuno con inputSchema object", async () => {
     const { tools } = await s.client.listTools(undefined, { timeout: CALL_TIMEOUT_MS });
-    expect(tools).toHaveLength(15);
+    expect(tools).toHaveLength(16);
     for (const t of tools) {
       expect(t.inputSchema.type).toBe("object");
       expect(t.description).toBeTruthy();
@@ -207,6 +207,16 @@ describe("e2e: build/server.js su stdio", () => {
     const xml = await readDocumentXml(await readFile(join(cwd, "paper_cited.docx")));
     expect(xml).toContain("ADDIN ZOTERO_ITEM CSL_CITATION");
     expect(xml).toContain("(Lovelace, 2023)");
+  });
+
+  it("E2E-18b create_cited_document da markdown su un .docx reale", async () => {
+    fake.net.on("GET", `${ZBASE}/items/AAAARRRR`, zSingle(article("AAAARRRR")));
+    const out = await call(s, "create_cited_document", { markdown: "# Title\n\nClaim [@AAAARRRR].", output_path: join(cwd, "new.docx") });
+    expect(out.json).toMatchObject({ output_path: join(cwd, "new.docx"), citations: 1 });
+    const xml = await readDocumentXml(await readFile(join(cwd, "new.docx")));
+    expect(xml).toContain("ADDIN ZOTERO_ITEM CSL_CITATION");
+    expect(xml).toContain("ADDIN ZOTERO_BIBL");
+    expect(xml).toContain("Title");
   });
 
   it("E2E-19 errore API Zotero (403) → isError al client", async () => {

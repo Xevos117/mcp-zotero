@@ -377,6 +377,30 @@ Gli output di IC-01/02/03/04/07/19/23/25 passano anche dal validatore docx (`exp
 | ICO-07 | estensione non supportata (`.rtf`) | errore "File must be a .docx (Word) or .odt (LibreOffice) file" |
 | SK-ODT-01/02 | script della skill su `.odt` nei 5 stili e in un gruppo | stessi itemData/testo/URI di `inject_citations`, odt valido |
 
+### create_cited_document (`test/tools/create-cited-document.test.ts`)
+
+Crea un documento `.docx`/`.odt` da markdown con citazioni pandoc (`src/cited-document/`). Parser puri in `src/cited-document/parsers.test.ts` (CCD-P pandoc, CCD-M markdown, CCD-N numerazione).
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| CCD-01 | markdown (titolo, grassetto/corsivo, elenco, 3 citazioni) → `.docx` | field code, `ZOTERO_BIBL`, titolo con `pStyle Heading1`, `<w:b/>`/`<w:i/>`, punto elenco; docx valido |
+| CCD-02 | lo stesso → `.odt` | reference mark, `text:h` con `Heading_20_N`, `text:style-name="T_Bold"`; odt valido |
+| CCD-09 | `-@K` (suppress-author) | solo l'anno nel testo ("(2023)"), `suppress-author: true` nel field JSON; citeproc rende "(2023)" senza il cognome |
+| CCD-03 | stile apa e ieee | valido; ieee: numeri nell'ordine di prima citazione ([1] SMITH, [2] PAIR) |
+| CCD-04 | output già esistente | errore "already exists", file originale intatto (mai sovrascritto) |
+| CCD-05 | chiave non valida per Zotero | stesso errore di inject_citations, nessun output |
+| CCD-06 | chiave assente dalla libreria | errore "not found in the library", nessun output |
+| CCD-07 | `format` in contrasto con l'estensione | errore |
+| CCD-08 | nessuna citazione | documento creato, nessuna bibliografia |
+| CCD-10 | `output_path` relativo | errore "output_path must be an absolute path" |
+| CCD-11 | markdown vuoto (solo spazi) | documento creato con avviso "Markdown is empty" |
+| CCD-12 | una email (`a@b.com`) nel markdown accanto a `[@K]` | solo `[@K]` citato, email intatta, nessun errore |
+| CCD-P01..06 | pandoc: `[@K]`, `[@K1; @K2]`, `[see @K, p. 12]` (prefix+locator), `-@K`/`@K`, testo alternato, suffisso non-locator | richieste di citazione corrette |
+| CCD-P07 | `a@b.com` / `x3@y.org` | nessuna citazione (`@` solo a inizio testo o dopo un non-alfanumerico, come pandoc) |
+| CCD-P08 | `@parola` non chiave Zotero ben formata | resta testo con un avviso, mai un errore (la chiave valida accanto resta una citazione) |
+| CCD-M01..04 | markdown: titoli/grassetto/corsivo/elenco, citazione in paragrafo, costrutti non supportati con avviso, paragrafi su più righe | blocchi e avvisi corretti |
+| CCD-N01 | numerazione | ordine di prima citazione, chiave ripetuta stesso numero |
+
 ### Validazione docx (IC-V)
 | ID | Scenario | Atteso |
 |---|---|---|
@@ -560,7 +584,7 @@ Import da DOI (`cslToZoteroItem`) e itemData incorporati nei codici di campo (`z
 | RM-02 | versione, `name`, pacchetto npm | `version` e `packages[0].version` = versione di `package.json`, `name` = `mcpName`, `identifier` = nome npm, `mcpName` con prefisso `io.github.<owner>/` col maiuscolo/minuscolo esatto del repository |
 | RM-03 | `environmentVariables` | stessi nomi delle `process.env.X` lette in `src/` (test esclusi); solo `ZOTERO_API_KEY` segreta (e obbligatoria); `choices`/`default` di `UNSAFE_OPERATIONS` e `ZOTERO_LIBRARY_TYPE` |
 | RM-04 | `manifest.json` (estensione Claude Desktop) contro lo schema MCPB della sua `manifest_version` (0.3, dal pacchetto `@anthropic-ai/mcpb`) | valido; `version` = package.json, `entry_point` = `main`, args `${__dirname}/build/server.js`, Node minimo = `engines` |
-| RM-05 | `tools` del manifest | nomi e ordine dei 15 tool registrati, ciascuno con un riassunto proprio di una riga (10-100 caratteri, non confrontato col codice: riformulare una descrizione in `src/` non tocca il manifest), `tools_generated: false` |
+| RM-05 | `tools` del manifest | nomi e ordine dei 16 tool registrati, ciascuno con un riassunto proprio di una riga (10-100 caratteri, non confrontato col codice: riformulare una descrizione in `src/` non tocca il manifest), `tools_generated: false` |
 | RM-06 | `mcp_config.env` e `user_config` | stesse variabili di `server.json`; obbligatorie e sensibili coincidono con `isRequired`/`isSecret`; ogni opzione facoltativa ha un default (stringa vuota o il default di `server.json`), altrimenti al server arriverebbe il letterale `${user_config.<chiave>}`; `unsafe_operations` facoltativa con default `none` |
 
 Smoke del bundle (`npm run smoke -- --bundle dist/mcp-zotero.mcpb`, in `test.yml` e `release.yml`): il .mcpb viene spacchettato
@@ -572,9 +596,9 @@ poi gli stessi scenari utente e gruppo di `npm run smoke`; inoltre: nessuna vari
 ## E2E (`test/e2e/stdio-server.e2e.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni (UNPAYWALL_EMAIL, regola UNSAFE_OPERATIONS, hint negli errori), 15 tool con schema object |
+| E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni (UNPAYWALL_EMAIL, regola UNSAFE_OPERATIONS, hint negli errori), 16 tool con schema object |
 | E2E-03 | argomenti non validi su 14 tool | isError con il campo, nessuna chiamata HTTP |
-| E2E-04..18 | una tools/call per ciascuno dei 15 tool (deletes con UNSAFE_OPERATIONS=all) | risultato atteso, richieste corrette alla FakeNet |
+| E2E-04..18 | una tools/call per ciascuno dei 16 tool (deletes con UNSAFE_OPERATIONS=all) | risultato atteso, richieste corrette alla FakeNet |
 | E2E-19 | 403 Zotero | isError al client |
 | E2E-20 | rete | nessuna richiesta del processo figlio senza route |
 | E2E-21/22 | UNSAFE_OPERATIONS assente / " ITEMS " | delete bloccati senza chiamate HTTP, con `hint` per l'utente / solo delete_items abilitato |
@@ -727,7 +751,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 
 | File | Casi |
 |---|---|
-| `get-user-id` | LIVE-GUI-01 libreria della chiave; 02 senza arguments / argomenti in più; 03 15 tool |
+| `get-user-id` | LIVE-GUI-01 libreria della chiave; 02 senza arguments / argomenti in più; 03 16 tool |
 | `search-library` | LIVE-SL-01 query sul titolo → solo quella voce; 02 sort title asc sul prefisso della run; 03 5 sort × 2 direzioni; 04 limit 500 → min(100, totale); 05 dateAdded desc ordinato; 06 nessun risultato senza isError; 07 argomenti non validi; 08 override utente, gruppo senza id, gruppo inesistente |
 | `get-collections` | LIVE-GC-01 collezione e sottocollezione con genitore; 02 include_trashed; 03 override e tipo sbagliato |
 | `get-collection-items` | LIVE-GCI-01 collezione con 3 voci note + inclusione delle fixture; 02 sottocollezione; 03 105 voci (paginazione >100); 04 allegato standalone escluso/incluso; 05 vuota; 06 inesistente / chiave mancante; 07 override |

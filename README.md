@@ -250,6 +250,7 @@ available in every project (the default `local` scope covers only the current pr
 | Tool | Description |
 |---|---|
 | `inject_citations` | Inject live Zotero citations into a Word (`.docx`) or LibreOffice (`.odt`) document (native fields in Word, reference marks in LibreOffice; format from the extension or the `format` argument). Supports APA, IEEE, Vancouver, Harvard, Chicago. Output is saved in the same folder as the input file with a `_cited` suffix (e.g. `paper.docx` → `paper_cited.docx`, `paper.odt` → `paper_cited.odt`) |
+| `create_cited_document` | Create a new `.docx` or `.odt` from Markdown (headings, bold/italic, one-level lists) with pandoc-style citations (`[@KEY]`, `[@K1; @K2]`, `[see @KEY, p. 12]`, `-@KEY`) turned into native Zotero citations and a bibliography. Never overwrites an existing file |
 | `get_user_id` | Returns the configured Zotero user ID |
 
 ## Development

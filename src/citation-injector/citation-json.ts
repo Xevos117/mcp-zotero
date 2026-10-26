@@ -28,6 +28,7 @@ export function buildCitationItems(
     if (request.locator) item.locator = request.locator;
     if (request.prefix) item.prefix = request.prefix;
     if (request.suffix) item.suffix = request.suffix;
+    if (request.suppressAuthor) item["suppress-author"] = true;
     return item;
   });
 }

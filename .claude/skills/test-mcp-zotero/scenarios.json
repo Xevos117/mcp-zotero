@@ -67,6 +67,11 @@
       "scenario": "a .odt (LibreOffice) document in apa: make-docx --odt an .odt source with <zcite>, then both producers on it — inject_citations (format from the .odt extension) and inject.js via inject.mjs — so content.xml gets reference marks instead of Word fields, the bibliography a text:section, and meta.xml the preferences with fieldType ReferenceMark; claim both with compare_group \"odt-apa\" (tool vs script, same odt source), which verify-claims fingerprints with its odt branch"
     },
     {
+      "id": "T-ccd",
+      "files": ["src/cited-document/**", "src/tools/create-cited-document.ts"],
+      "scenario": "create_cited_document from a small Markdown with a heading, bold/italic, a one-level list and pandoc citations ([@K], [@K1; @K2], [see @K, p. 12]) in apa; then the same in ieee (numbers in order of first citation) and as .odt; it never overwrites an existing output; claim the documents"
+    },
+    {
       "id": "T-skill",
       "files": ["skills/zotero-skill-mcp-integrations/**"],
       "scenario": "inject.js with the bare numeric user id instead of users/<id> on the apa document: same URIs; claim it, and the inject_citations apa document a second time, with compare_group \"bare-id\""
