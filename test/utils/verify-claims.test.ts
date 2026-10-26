@@ -32,6 +32,7 @@ import { startHarness } from "../helpers/mcp-harness.js";
 import { ZBASE, zLibraryQuery, zSingle, article, USER_ID } from "../helpers/zotero-fake.js";
 import { readDocumentXml, tempDir, TempDir } from "../helpers/fixtures.js";
 import { validateDocx, CitationStyle } from "../helpers/docx-validate.js";
+import { validateOdt } from "../helpers/citation-validate.js";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const TIMEOUT_MS = 20_000;
@@ -495,6 +496,44 @@ describe("verify-claims: documento di parità con i due produttori reali (VC-07,
     other.documentPrefs = null;
     expect(firstDifference(docxFingerprint(apa, { prefs: true }), other)).toBe(".documentPrefs");
   });
+
+  it.each<CitationStyle>(["apa", "ieee"])(
+    "VC-08d odt %s: docxFingerprint riconosce l'odt (sniff); inject_citations e inject.js danno la stessa impronta; le impronte docx restano invariate",
+    async (style) => {
+      const make = join(ROOT, "test", "live", "agent", "make-docx.mjs");
+      expect((await node(make, ["--odt", `agent-out/o-${style}.odt`, SPEC(style === "ieee")], { cwd: dir.path })).code).toBe(0);
+      const h = await startHarness();
+      try {
+        h.net.on("GET", `${ZBASE}/items`, zLibraryQuery(ITEMS));
+        for (const it of ITEMS) h.net.on("GET", `${ZBASE}/items/${it.key}`, zSingle(it));
+        const details = await h.call("get_items_details", { item_keys: ITEMS.map((i) => i.key) });
+        await writeFile(join(out, `meta-odt-${style}.json`), JSON.stringify(details.json));
+        const tool = await h.call("inject_citations", { file_path: join(out, `o-${style}.odt`), style });
+        expect(tool.isError, tool.text).toBe(false);
+        const skill = await node(
+          join(ROOT, "test", "live", "agent", "inject.mjs"),
+          [`agent-out/o-${style}.odt`, `agent-out/o-${style}_skill.odt`, `agent-out/meta-odt-${style}.json`, `users/${USER_ID}`, style],
+          { cwd: dir.path }
+        );
+        expect(skill.code, skill.stderr).toBe(0);
+        const a = await validateOdt(await readFile(tool.json.output_path), { style });
+        const b = await validateOdt(await readFile(join(out, `o-${style}_skill.odt`)), { style });
+        expect([...a.errors, ...b.errors]).toEqual([]);
+        expect(a.citations).toHaveLength(5);
+        // il fingerprint sniffa l'odt: niente campi w:fldChar, bibliografia dal nome della sezione ZOTERO_BIBL
+        const fp = docxFingerprint(a, { prefs: true });
+        expect(fp.bibliography).toEqual(["ZOTERO_BIBL {\"uncited\":[],\"omitted\":[],\"custom\":[]} CSL_BIBLIOGRAPHY"]);
+        expect(fp.documentPrefs?.fieldType).toBe("ReferenceMark");
+        expect(firstDifference(docxFingerprint(a, { prefs: true }), docxFingerprint(b, { prefs: true }))).toBeNull();
+        // le impronte docx non cambiano: il ramo docx legge ancora i paragrafi dai w:t
+        const docx = await validateDocx(await readFile(join(out, "p-apa_skill.docx")), { style: "apa" });
+        expect(docxFingerprint(docx).paragraphs[0]).toMatch(/^Single /);
+        expect(docxFingerprint(docx).bibliography[0]).toMatch(/^ADDIN ZOTERO_BIBL/);
+      } finally {
+        await h.close();
+      }
+    }
+  );
 });
 
 describe("verify-claims: script completo senza rete (VC-09)", () => {

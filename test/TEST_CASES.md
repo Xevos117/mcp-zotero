@@ -361,6 +361,22 @@ test normali. Non restano `it.fails` nella suite.
 
 Gli output di IC-01/02/03/04/07/19/23/25 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
 
+### LibreOffice ODT (`test/tools/inject-citations-odt.test.ts`, validatore `test/helpers/citation-validate.ts`)
+
+`inject_citations` su `.odt`: reference mark al posto dei field code, bibliografia in una `text:section`, preferenze in `meta.xml` (fieldType ReferenceMark). `validateOdt`/`expectValidOdt` controllano struttura ODF, mimetype primo e STORED, schema CSL, URI e rendering citeproc (la stessa macchina di docx-validate).
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| ICO-01 | un `<zcite>` in un `.odt` | `*_cited.odt` con reference mark (nome `ZOTERO_ITEM CSL_CITATION {json} RND<10>`, senza plainCitation), `ZOTERO_BIBL`, originale intatto, odt valido |
+| ICO-V01 | i 5 stili sulla matrice IC-V (singola, coppia+molti, locator/prefix/suffix, unicode/senza autore/istituzionale, ripetuta) | odt valido, citeproc 5 citazioni + 7 voci, preferenze `fieldType` ReferenceMark |
+| ICO-V02 | libreria di gruppo per chiamata | URI `groups/<id>` validi |
+| ICO-02 | `<zcite>` spezzato tra più `text:span` | normalizzato e iniettato, testo intorno conservato |
+| ICO-03 | nessuno `<zcite>` | found 0, output `.odt` scritto, nessuna chiamata |
+| ICO-04 | `format: "docx"` su un file `.odt` | errore di estensione, nessun output |
+| ICO-05/06 | `.docx` rinominato `.odt` / `.odt` rinominato `.docx` | errore di contenuto (sniff), nessun output |
+| ICO-07 | estensione non supportata (`.rtf`) | errore "File must be a .docx (Word) or .odt (LibreOffice) file" |
+| SK-ODT-01/02 | script della skill su `.odt` nei 5 stili e in un gruppo | stessi itemData/testo/URI di `inject_citations`, odt valido |
+
 ### Validazione docx (IC-V)
 | ID | Scenario | Atteso |
 |---|---|---|
@@ -826,8 +842,11 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
   nel job successivo), username, nome del gruppo, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne
   resta uno (anche dentro i docx) o se c'è un gruppo senza il suo nome; conservazione 1 giorno. Ogni job che usa
-  l'account comincia mascherando il nome del gruppo (`mask-group-name.mjs`). Test in `test/utils/redact.test.ts` (RED):
-  docx (parti XML) con round trip redact/restore, un `.docx` che non è uno zip redatto come testo senza crash, file di testo.
+  l'account comincia mascherando il nome del gruppo (`mask-group-name.mjs`). Redige allo stesso modo le parti XML dei
+  `.docx` e degli `.odt` (altrimenti l'id resterebbe compresso dentro l'odt), e una scansione finale fail-closed
+  decomprime ogni zip e controlla ogni file: se un identificatore sopravvive, non carica nulla. Test in
+  `test/utils/redact.test.ts` (RED): docx e odt (parti XML) con round trip redact/restore, un `.docx` non-zip redatto
+  come testo senza crash, file di testo, e la scansione che coglie un id in una parte compressa di uno zip qualsiasi.
 - **Riepilogo**: dopo lo scrub, `test/live/agent/summary.mjs` scrive il Job Summary (verdetto, problemi e avvisi,
   tabella degli scenari, esplorativi X1–X5 con le chiamate come le ha registrate l'audit, friction, turni e durata; il costo non compare nei testi pubblici)
   dalla copia scrubbata; non scrive nulla se nel testo, pubblicato o prima dell'escape, resta un segreto dell'ambiente,
@@ -921,6 +940,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-08 | 5 stili: inject_citations (server con Zotero finto) e inject.js (via inject.mjs, metadata da get_items_details) sul documento di parità | docx validi, 5 citazioni, impronte identiche, copertura istituzionale/senza metadati/non ASCII, testo attorno ai tag in linea e spezzato conservato, una bibliografia |
 | VC-08b | impronta alterata: citationID diverso / locator / testo visibile / bibliografia | nessuna differenza / percorso della prima differenza |
 | VC-08c | schema 3 con i due produttori reali: sorgente make-docx con preferenze `chicago` (stile sconosciuto → exit 2), iniettato in `apa` | entrambi avvisano e conservano `chicago` (valido con `documentPrefsStyle`, errore senza), stessa impronta con le preferenze; documenti di parità con le preferenze del loro stile; impronta schema 2 senza preferenze |
+| VC-08d | odt (apa, ieee): sorgente `make-docx --odt`, i due produttori su `.odt`; `docxFingerprint` sniffa l'odt | impronte identiche; bibliografia dal nome della sezione `ZOTERO_BIBL` (senza RND), preferenze `fieldType` ReferenceMark; il ramo docx resta invariato (paragrafi dai `w:t`, bibliografia dagli `ADDIN ZOTERO_BIBL`) |
 | VC-13a | `createdByCalls` | chiavi create con tipo, libreria (gruppo per chiamata), `call_no`, titolo o nome riportato dal tool |
 | VC-13b | `created[].call_no` giusto, di un'altra chiamata, mancante, inesistente, libreria diversa | titolo atteso dal risultato / un problema per caso |
 | VC-13c | chiavi create non dichiarate (né cancellate); cancellazione di un oggetto non "… to delete" | elencate / avviso |

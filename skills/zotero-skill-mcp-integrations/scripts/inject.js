@@ -193,6 +193,16 @@ function formatCitationText(items, style, opts = {}) {
   return `(${parts.join("; ")})`;
 }
 
+// src/citation-injector/model.ts
+var InjectionError = class extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+    this.name = "InjectionError";
+  }
+  code;
+};
+
 // runtime-dep:fast-xml-parser
 var _N2 = "fast-xml-parser,node:module".split(",");
 var _fxp;
@@ -521,9 +531,14 @@ var docxWriter = {
   app: "Word",
   invalidPackageMessage: (detail) => `Invalid .docx file: not a readable ZIP archive (${detail}). ${REGENERATE_DOCX}`,
   bodyMissingMessage: `Invalid .docx file: word/document.xml not found. ${REGENERATE_DOCX}`,
+  sniff(zip) {
+    if (zip.file("content.xml") && !zip.file("word/document.xml")) {
+      throw new InjectionError("format_mismatch", 'This looks like a LibreOffice .odt, not a Word .docx. Use format "odt" (or a .odt file).');
+    }
+  },
   normalize: (bodyXml) => normalizeZciteTags(bodyXml),
   citationXml: (prepared) => generateZoteroFieldCode(prepared.items, prepared.formattedText),
-  replaceTag: (bodyXml, rawTag, citationXml) => replaceZciteInXml(bodyXml, rawTag, citationXml),
+  replaceTag: (bodyXml, rawTag, citationXml2) => replaceZciteInXml(bodyXml, rawTag, citationXml2),
   appendBibliography: (bodyXml) => bodyXml.replace("</w:body>", `${generateBibliographyFieldCode()}</w:body>`),
   writePrefs: (zip, style) => writeZoteroDocumentPrefs(zip, style),
   prefsWarnings: (outcome) => {
@@ -533,9 +548,227 @@ var docxWriter = {
   }
 };
 
+// src/citation-injector/formats/odt.ts
+import { randomBytes as randomBytes3 } from "node:crypto";
+
+// src/citation-injector/odt-normalizer.ts
+var ZCITE_PATTERN2 = /&lt;zcite\s+[\s\S]*?\/&gt;/;
+var PARSER_OPTIONS2 = {
+  preserveOrder: true,
+  ignoreAttributes: false,
+  processEntities: false,
+  trimValues: false,
+  parseTagValue: false,
+  parseAttributeValue: false
+};
+var BUILDER_OPTIONS2 = {
+  preserveOrder: true,
+  ignoreAttributes: false,
+  processEntities: false,
+  format: false,
+  suppressEmptyNode: false,
+  suppressBooleanAttributes: false
+};
+var MASKED = /* @__PURE__ */ new Set(["office:annotation", "text:note"]);
+function extractSpanText(spanChildren) {
+  let text = "";
+  for (const child of spanChildren) {
+    if ("#text" in child) text += String(child["#text"]);
+    else if ("text:s" in child) {
+      const c = Number(child[":@"]?.["@_text:c"] ?? "1");
+      text += " ".repeat(Number.isFinite(c) && c > 0 ? c : 1);
+    }
+  }
+  return text;
+}
+function isSpan(node) {
+  return "text:span" in node;
+}
+function spanHasText(spanChildren) {
+  return spanChildren.some((c) => "#text" in c || "text:s" in c);
+}
+function collectConsecutiveSpanGroups(children) {
+  const groups = [];
+  let current = null;
+  const flush = () => {
+    if (current && current.texts.length >= 2) groups.push(current);
+    current = null;
+  };
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (isSpan(child) && spanHasText(child["text:span"])) {
+      const text = extractSpanText(child["text:span"]);
+      if (current) {
+        current.endIndex = i;
+        current.texts.push(text);
+      } else {
+        current = { startIndex: i, endIndex: i, texts: [text] };
+      }
+      continue;
+    }
+    flush();
+  }
+  flush();
+  return groups;
+}
+function findSplitZcite2(group) {
+  const { texts } = group;
+  for (let start = 0; start < texts.length; start++) {
+    let concat = "";
+    for (let end = start; end < texts.length; end++) {
+      concat += texts[end];
+      if (end <= start) continue;
+      const m = ZCITE_PATTERN2.exec(concat);
+      if (m) {
+        const matchStart = m.index;
+        const matchEnd = m.index + m[0].length;
+        const lastStart = concat.length - texts[end].length;
+        if (matchStart < lastStart && matchEnd > lastStart) return { startOffset: start, endOffset: end };
+      }
+    }
+  }
+  return null;
+}
+function mergeSpansInPlace(children, group, startOffset, endOffset) {
+  const absStart = group.startIndex + startOffset;
+  const absEnd = group.startIndex + endOffset;
+  const count = absEnd - absStart + 1;
+  let merged = "";
+  for (let i = absStart; i <= absEnd; i++) merged += extractSpanText(children[i]["text:span"]);
+  const newSpan = { "text:span": [{ "#text": merged }] };
+  const firstAttrs = children[absStart][":@"];
+  if (firstAttrs) newSpan[":@"] = firstAttrs;
+  children.splice(absStart, count, newSpan);
+}
+function normalizeParagraph(children) {
+  let modified = false;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const group of collectConsecutiveSpanGroups(children)) {
+      const split = findSplitZcite2(group);
+      if (split) {
+        mergeSpansInPlace(children, group, split.startOffset, split.endOffset);
+        modified = true;
+        changed = true;
+        break;
+      }
+    }
+  }
+  return modified;
+}
+function walk(nodes) {
+  let modified = false;
+  for (const node of nodes) {
+    const tag = Object.keys(node).find((k) => k !== ":@" && k !== "#text");
+    if (tag && MASKED.has(tag)) continue;
+    if (tag === "text:p" || tag === "text:h") {
+      if (normalizeParagraph(node[tag])) modified = true;
+    }
+    for (const key of Object.keys(node)) {
+      if (key === ":@" || key === "#text") continue;
+      const value = node[key];
+      if (Array.isArray(value) && walk(value)) modified = true;
+    }
+  }
+  return modified;
+}
+function normalizeOdtZciteTags(contentXml) {
+  if (!contentXml.includes("zcite")) return contentXml;
+  const parsed = new XMLParser(PARSER_OPTIONS2).parse(contentXml);
+  if (!walk(parsed)) return contentXml;
+  return new XMLBuilder(BUILDER_OPTIONS2).build(parsed);
+}
+
+// src/citation-injector/formats/odt.ts
+var REGENERATE_ODT = "The file is not a LibreOffice document or is corrupted: create it again as .odt and call again.";
+var RND_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+function rnd10() {
+  return [...randomBytes3(10)].map((b) => RND_ALPHABET[b % RND_ALPHABET.length]).join("");
+}
+function citationXml(prepared) {
+  const csl = buildCslCitation(prepared.items, prepared.formattedText);
+  const name = escapeXml(`ZOTERO_ITEM CSL_CITATION ${JSON.stringify(csl)} RND${rnd10()}`);
+  return `<text:reference-mark-start text:name="${name}"/>` + escapeXml(prepared.formattedText) + `<text:reference-mark-end text:name="${name}"/>`;
+}
+function appendBibliography(contentXml) {
+  const name = escapeXml(`ZOTERO_BIBL {"uncited":[],"omitted":[],"custom":[]} CSL_BIBLIOGRAPHY RND${rnd10()}`);
+  const section = `<text:section text:name="${name}"><text:p text:style-name="Bibliography_20_1">[Bibliography will be generated by Zotero]</text:p></text:section><text:p/>`;
+  return contentXml.replace("</office:text>", `${section}</office:text>`);
+}
+var BIBLIOGRAPHY_STYLE = '<style:style style:name="Bibliography_20_1" style:display-name="Bibliography 1" style:family="paragraph" style:parent-style-name="Standard" style:class="list"/>';
+async function ensureBibliographyStyle(zip) {
+  const entry = zip.file("styles.xml");
+  if (!entry) return;
+  let styles = await entry.async("string");
+  if (styles.includes('style:name="Bibliography_20_1"')) return;
+  if (styles.includes("</office:styles>")) {
+    styles = styles.replace("</office:styles>", `${BIBLIOGRAPHY_STYLE}</office:styles>`);
+  } else if (/<office:styles\s*\/>/.test(styles)) {
+    styles = styles.replace(/<office:styles\s*\/>/, `<office:styles>${BIBLIOGRAPHY_STYLE}</office:styles>`);
+  } else {
+    return;
+  }
+  zip.file("styles.xml", styles);
+}
+var EXISTING_ODT_PREFS_WARNING = "The document already has Zotero document preferences (ZOTERO_PREF_* in meta.xml): kept as they are, so on the first Refresh Zotero uses the style saved there, not the style of this injection.";
+var ODT_PREFS_NOT_WRITTEN_WARNING = "Zotero document preferences not written: meta.xml has no <office:meta> to merge into, so Zotero may ask for the document style (Document Preferences) on the first Refresh.";
+async function writeOdtPrefs(zip, style) {
+  const styleId = ZOTERO_STYLE_IDS[style];
+  if (!styleId) return "skipped";
+  const entry = zip.file("meta.xml");
+  const meta = entry ? await entry.async("string") : void 0;
+  if (meta === void 0) return "skipped";
+  if (/\bmeta:name=["']ZOTERO_PREF_\d+["']/.test(meta)) return "kept";
+  const value = zoteroDocumentData(styleId, "ReferenceMark");
+  const props = prefChunks(value).map((chunk, i) => `<meta:user-defined meta:name="ZOTERO_PREF_${i + 1}">${escapeXml(chunk)}</meta:user-defined>`).join("");
+  const close = "</office:meta>";
+  const at = meta.lastIndexOf(close);
+  if (at < 0) {
+    const m = /<office:meta\b([^>]*)\/>/.exec(meta);
+    if (!m) return "skipped";
+    zip.file("meta.xml", meta.replace(m[0], `<office:meta${m[1]}>${props}</office:meta>`));
+    return "written";
+  }
+  zip.file("meta.xml", meta.slice(0, at) + props + meta.slice(at));
+  return "written";
+}
+var odtWriter = {
+  format: "odt",
+  fieldType: "ReferenceMark",
+  bodyPart: "content.xml",
+  app: "LibreOffice",
+  invalidPackageMessage: (detail) => `Invalid .odt file: not a readable ZIP archive (${detail}). ${REGENERATE_ODT}`,
+  bodyMissingMessage: `Invalid .odt file: content.xml not found. ${REGENERATE_ODT}`,
+  sniff(zip) {
+    if (zip.file("word/document.xml")) {
+      throw new InjectionError("format_mismatch", 'This looks like a Word .docx, not a LibreOffice .odt. Use format "docx" (or a .docx file).');
+    }
+  },
+  normalize: (bodyXml) => normalizeOdtZciteTags(bodyXml),
+  citationXml,
+  replaceTag: (bodyXml, rawTag, cite) => {
+    const at = bodyXml.indexOf(rawTag);
+    return at < 0 ? bodyXml : bodyXml.slice(0, at) + cite + bodyXml.slice(at + rawTag.length);
+  },
+  appendBibliography,
+  writePrefs: writeOdtPrefs,
+  prefsWarnings: (outcome) => {
+    if (outcome === "kept") return [EXISTING_ODT_PREFS_WARNING];
+    if (outcome === "skipped") return [ODT_PREFS_NOT_WRITTEN_WARNING];
+    return [];
+  },
+  async finalize(zip) {
+    await ensureBibliographyStyle(zip);
+    const mimetype = zip.file("mimetype");
+    if (mimetype) zip.file("mimetype", await mimetype.async("uint8array"), { compression: "STORE" });
+  },
+  generateOptions: { compression: "DEFLATE" }
+};
+
 // scripts/skill/inject-cli.ts
 var ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
-var WRITERS = { docx: docxWriter };
+var WRITERS = { docx: docxWriter, odt: odtWriter };
 var ZOTERO_TO_CSL_TYPE = {
   journalArticle: "article-journal",
   magazineArticle: "article-magazine",
@@ -710,6 +943,7 @@ async function main() {
   const libType = libraryType.replace(/s$/, "");
   const fileBuffer = await readFile(inputPath);
   const zip = await jszip_default.loadAsync(fileBuffer);
+  writer.sniff?.(zip);
   const bodyEntry = zip.file(writer.bodyPart);
   if (!bodyEntry) throw new Error(`Invalid ${format === "odt" ? ".odt" : ".docx"} file: ${writer.bodyPart} not found`);
   let body = writer.normalize(await bodyEntry.async("string"));
@@ -717,7 +951,8 @@ async function main() {
   const cslData = convertMetadataToCsl(metadata);
   const requests = parseZciteTags(body);
   if (requests.length === 0) {
-    const buffer2 = await zip.generateAsync({ type: "nodebuffer" });
+    if (writer.finalize) await writer.finalize(zip);
+    const buffer2 = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
     await writeFileAtomic(outputPath, buffer2);
     console.log(JSON.stringify({ output: outputPath, found: 0, injected: 0 }));
     return;
@@ -755,7 +990,8 @@ async function main() {
   zip.file(writer.bodyPart, body);
   const prefs = await writer.writePrefs(zip, style);
   for (const w of writer.prefsWarnings(prefs)) console.error(`WARNING: ${w}`);
-  const buffer = await zip.generateAsync({ type: "nodebuffer" });
+  if (writer.finalize) await writer.finalize(zip);
+  const buffer = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
   await writeFileAtomic(outputPath, buffer);
   console.log(JSON.stringify({ output: outputPath, found: requests.length, injected }));
 }

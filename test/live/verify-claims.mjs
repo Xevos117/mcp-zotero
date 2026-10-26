@@ -31,6 +31,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { validateDocx } from "../helpers/docx-validate.ts";
+import { validateOdt } from "../helpers/citation-validate.ts";
 import { VISUAL_REVIEW, parseVisualReview, visualReviewFindings, visualReviewProblems } from "./agent/visual-review.mjs";
 import { loadScenarios, targetedScenarios } from "./agent/scenarios.mjs";
 import { externalReason } from "./helpers/external.mjs";
@@ -623,11 +624,17 @@ export function exploratoryFindings(list, messages, reserved = new Set(), denial
 
 const decode = (s) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
-/** What the <zcite> tags of a source document exercise (tags are read across runs, as the normalizer does). */
-export function sourceFeatures(documentXml) {
+/**
+ * What the <zcite> tags of a source document exercise (tags are read across runs, as the normalizer does).
+ * `odt`: the source is a LibreOffice document (content.xml, text:p/text:h with text:span), not a .docx;
+ * the tags are read from the joined paragraph text (split/inline detection is docx-only — the odt parity
+ * document is never the required coverage document, which stays on docx).
+ */
+export function sourceFeatures(documentXml, odt = false) {
   const f = { zcites: 0, multiKey: false, locatorPrefixSuffix: false, inline: false, split: false, allNum: true, spacedKeys: false, duplicateKey: false, keys: [] };
-  for (const p of documentXml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []) {
-    const segments = [...p.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]);
+  const paraRe = odt ? /<text:(?:p|h)\b[\s\S]*?<\/text:(?:p|h)>/g : /<w:p[ >][\s\S]*?<\/w:p>/g;
+  for (const p of documentXml.match(paraRe) ?? []) {
+    const segments = odt ? [p.replace(/<[^>]*>/g, "")] : [...p.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]);
     const starts = [];
     let joined = "";
     for (const s of segments) {
@@ -637,10 +644,12 @@ export function sourceFeatures(documentXml) {
     const segAt = (offset) => starts.findLastIndex((st) => st <= offset);
     for (const m of joined.matchAll(/&lt;zcite\s[\s\S]*?\/&gt;/g)) {
       f.zcites++;
-      const first = segAt(m.index);
-      const last = segAt(m.index + m[0].length - 1);
-      if (first !== last) f.split = true;
-      else if (segments[first].replace(m[0], "").trim()) f.inline = true;
+      if (!odt) {
+        const first = segAt(m.index);
+        const last = segAt(m.index + m[0].length - 1);
+        if (first !== last) f.split = true;
+        else if (segments[first].replace(m[0], "").trim()) f.inline = true;
+      }
       const attrs = Object.fromEntries([...decode(m[0]).matchAll(/(\w+)="([^"]*)"/g)].map((a) => [a[1], decode(a[2])]));
       const raw = attrs.keys ?? "";
       const keys = raw.split(",").map((k) => k.trim()).filter(Boolean);
@@ -667,15 +676,29 @@ export function docxFingerprint(report, { prefs = false } = {}) {
     const { citationID: _random, ...rest } = c.json;
     return rest;
   });
+  const common = { fields, visible: report.citations.map((c) => c.visible) };
+  const withPrefs = prefs ? { documentPrefs: report.documentPrefs ?? null } : {};
+
+  // dispatch per sniff: il report docx porta documentXml (+ fields con i w:fldChar), l'odt porta contentXml
+  if (report.documentXml === undefined) {
+    const content = report.contentXml ?? "";
+    const paragraphs = (content.match(/<text:(p|h)\b[^>]*>([\s\S]*?)<\/text:\1>/g) ?? []).map((p) => decode(p.replace(/<[^>]*>/g, "")));
+    // il nome della sezione ZOTERO_BIBL, senza il suffisso RND casuale (diverso tra i due produttori)
+    const bibliography = [...content.matchAll(/<text:section text:name="([^"]*)"/g)]
+      .map((m) => decode(m[1]))
+      .filter((n) => n.startsWith("ZOTERO_BIBL"))
+      .map((n) => n.replace(/ RND[0-9A-Za-z]{10}$/, ""));
+    return { ...common, paragraphs, bibliography, ...withPrefs };
+  }
+
   const paragraphs = (report.documentXml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).map((p) =>
     decode([...p.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]).join(""))
   );
   return {
-    fields,
-    visible: report.citations.map((c) => c.visible),
+    ...common,
     paragraphs,
     bibliography: report.fields.filter((f) => f.instr.trim().startsWith("ADDIN ZOTERO_BIBL")).map((f) => f.instr.trim()),
-    ...(prefs ? { documentPrefs: report.documentPrefs ?? null } : {}),
+    ...withPrefs,
   };
 }
 
@@ -706,6 +729,8 @@ export function itemCoverage(report) {
 
 async function documentXmlOf(path) {
   const zip = await JSZip.loadAsync(readFileSync(path));
+  // docx: word/document.xml; odt: content.xml
+  if (path.endsWith(".odt")) return (await zip.file("content.xml")?.async("string")) ?? "";
   return (await zip.file("word/document.xml")?.async("string")) ?? "";
 }
 
@@ -900,6 +925,11 @@ export function targetedFindings(scenarios, context, table) {
 /** Style id of the Zotero document preferences in a docx (docProps/custom.xml), or null. */
 async function documentPrefsStyleOf(path) {
   const zip = await JSZip.loadAsync(readFileSync(path));
+  if (path.endsWith(".odt")) {
+    const meta = (await zip.file("meta.xml")?.async("string")) ?? "";
+    const value = [...meta.matchAll(/meta:name="ZOTERO_PREF_\d+"[^>]*>([\s\S]*?)<\/meta:user-defined>/g)].map((m) => decode(m[1])).join("");
+    return /<style\b[^>]*\bid="([^"]+)"/.exec(value)?.[1] ?? null;
+  }
   const custom = (await zip.file("docProps/custom.xml")?.async("string")) ?? "";
   const value = [...custom.matchAll(/name="ZOTERO_PREF_\d+"[^>]*>\s*<vt:lpwstr>([\s\S]*?)<\/vt:lpwstr>/g)].map((m) => decode(m[1])).join("");
   return /<style\b[^>]*\bid="([^"]+)"/.exec(value)?.[1] ?? null;
@@ -1148,10 +1178,12 @@ async function main() {
       fail(`docx ${doc.path}: unknown document_prefs style ${doc.document_prefs}`);
       continue;
     }
-    const source = sourceFeatures(await documentXmlOf(sourcePath));
+    const isOdt = path.endsWith(".odt");
+    const source = sourceFeatures(await documentXmlOf(sourcePath), sourcePath.endsWith(".odt"));
     // schema 3: every document with citations must carry the document preferences (of the source, if it had them)
     const prefsOptions = v3 ? { requireDocumentPrefs: source.zcites > 0, documentPrefsStyle: doc.document_prefs } : {};
-    const report = await validateDocx(readFileSync(path), { style: doc.style, libraryPath: doc.library_path, ...prefsOptions });
+    const validate = isOdt ? validateOdt : validateDocx;
+    const report = await validate(readFileSync(path), { style: doc.style, libraryPath: doc.library_path, ...prefsOptions });
     const before = problems.length;
     for (const e of report.errors) fail(`docx ${doc.path}: ${e}`);
     // the numbering is the agent's choice; for author-date styles the visible text must match citeproc

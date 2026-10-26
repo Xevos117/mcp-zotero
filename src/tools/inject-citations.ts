@@ -38,7 +38,7 @@ WHERE THE FILE LIVES: this tool reads and writes files on the machine where this
     file_path: z
       .string()
       .describe(
-        'Absolute path to the .docx file containing <zcite keys="..."/> placeholder tags'
+        'Absolute path to the .docx (Word) or .odt (LibreOffice) file containing <zcite keys="..."/> placeholder tags'
       ),
     style: z
       .enum(["apa", "ieee", "vancouver", "harvard", "chicago"])
@@ -46,6 +46,12 @@ WHERE THE FILE LIVES: this tool reads and writes files on the machine where this
       .default("apa")
       .describe(
         "Citation style for the visible placeholder text. Zotero will reformat on refresh. Default: apa"
+      ),
+    format: z
+      .enum(["docx", "odt"])
+      .optional()
+      .describe(
+        "Document format: docx for Word, odt for LibreOffice. Defaults to the file extension; an error if it disagrees with the extension or the file content."
       ),
     ...libraryArgsSchema,
   },
@@ -64,19 +70,27 @@ export async function handleInjectCitations(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { file_path, style, library_type, library_id } = InjectCitationsSchema.parse(args);
+  const { file_path, style, format, library_type, library_id } = InjectCitationsSchema.parse(args);
   const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
-  if (!file_path.endsWith(".docx")) {
-    return formatErrorResponse("File must be a .docx file", {
+  const extFormat = file_path.endsWith(".docx") ? "docx" : file_path.endsWith(".odt") ? "odt" : undefined;
+  if (!extFormat) {
+    return formatErrorResponse("File must be a .docx (Word) or .odt (LibreOffice) file", {
       file_path,
-      hint: "Only Word .docx files are supported and the name must end in lowercase .docx: convert .doc, .odt or .rtf to .docx first, or create the document as .docx with <zcite> placeholders.",
+      hint: "The name must end in lowercase .docx or .odt: convert .doc or .rtf first, or create the document as .docx/.odt with <zcite> placeholders.",
     });
   }
+  if (format && format !== extFormat) {
+    return formatErrorResponse(`format '${format}' does not match the file extension of ${file_path}`, {
+      file_path,
+      hint: `The file ends in .${extFormat}: pass format "${extFormat}" or omit it, or rename the file to match the format.`,
+    });
+  }
+  const resolvedFormat = format ?? extFormat;
 
   let result: Awaited<ReturnType<typeof injectCitations>>;
   try {
-    result = await injectCitations(file_path, zoteroApi, libraryType, libraryId, style);
+    result = await injectCitations(file_path, zoteroApi, libraryType, libraryId, style, resolvedFormat);
   } catch (err) {
     // A path from a sandbox or cloud workspace (Claude.ai, Claude Desktop code execution) does not exist here:
     // say so and point to the skill instead of a bare ENOENT.

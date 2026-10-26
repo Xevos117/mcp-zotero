@@ -9,13 +9,19 @@ import { fileURLToPath } from "node:url";
 
 const SCRIPT = fileURLToPath(new URL("../../../skills/zotero-skill-mcp-integrations/scripts/inject.js", import.meta.url));
 const root = resolve("agent-out");
-const inside = (p, ext) => typeof p === "string" && resolve(p).startsWith(root + sep) && resolve(p).endsWith(ext);
-const [input, output, metadata, library, style] = process.argv.slice(2);
+const inside = (p, exts) => typeof p === "string" && resolve(p).startsWith(root + sep) && exts.some((e) => resolve(p).endsWith(e));
+// --format è opzionale e viene passato così com'è allo script della skill
+const rawArgs = process.argv.slice(2);
+const fmtAt = rawArgs.indexOf("--format");
+const formatArgs = fmtAt >= 0 ? rawArgs.slice(fmtAt, fmtAt + 2) : [];
+const positional = fmtAt >= 0 ? [...rawArgs.slice(0, fmtAt), ...rawArgs.slice(fmtAt + 2)] : rawArgs;
+const [input, output, metadata, library, style] = positional;
+const DOC = [".docx", ".odt"];
 
-if (!inside(input, ".docx") || !inside(output, ".docx") || !inside(metadata, ".json") || !/^(users|groups)\/\d+$|^\d+$/.test(library ?? "")) {
-  console.error("usage: inject.mjs agent-out/<in>.docx agent-out/<out>.docx agent-out/<metadata>.json <users/ID|groups/ID> [style] (paths inside agent-out/)");
+if (!inside(input, DOC) || !inside(output, DOC) || !inside(metadata, [".json"]) || !/^(users|groups)\/\d+$|^\d+$/.test(library ?? "")) {
+  console.error("usage: inject.mjs agent-out/<in>.(docx|odt) agent-out/<out>.(docx|odt) agent-out/<metadata>.json <users/ID|groups/ID> [style] [--format docx|odt] (paths inside agent-out/)");
   process.exit(2);
 }
-const r = spawnSync(process.execPath, [SCRIPT, input, output, metadata, library, ...(style ? [style] : [])], { stdio: "inherit", timeout: 60_000 });
+const r = spawnSync(process.execPath, [SCRIPT, input, output, metadata, library, ...(style ? [style] : []), ...formatArgs], { stdio: "inherit", timeout: 60_000 });
 if (r.error) console.error(`inject.mjs: ${r.error.message}`);
 process.exit(r.status ?? 1);

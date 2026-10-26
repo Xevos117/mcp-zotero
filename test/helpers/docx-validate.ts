@@ -118,7 +118,7 @@ function readFixture(name: string): string {
   return readFileSync(new URL(name, CSL_DIR), "utf8");
 }
 
-function getCitationValidator() {
+export function getCitationValidator() {
   if (citationValidator) return citationValidator;
   const data = JSON.parse(readFixture("csl-data.json"));
   const citation = JSON.parse(readFixture("csl-citation.json"));
@@ -306,7 +306,7 @@ function renderClusters(engine: any, clusters: Array<Array<Record<string, unknow
   return clusters.map((_, i) => texts.get(`mzt-c${i}`) ?? "");
 }
 
-function renderWithCiteproc(report: DocxReport, style: CitationStyle): void {
+export function renderWithCiteproc(report: DocxReport, style: CitationStyle): void {
   // id sintetici = URI della voce (+ numero di validazione): stabili tra citazioni, indipendenti da citationItems[].id
   const run = ++validationSeq;
   const idOf = (uri: string) => `${uri}#v${run}`;
@@ -376,7 +376,7 @@ function compareKeyParts(report: DocxReport, style: CitationStyle, c: CitationFi
   }
 }
 
-function checkCitation(json: Record<string, any>, visible: string, idx: number, opts: ValidateOptions, errors: string[]): void {
+export function checkCitation(json: Record<string, any>, visible: string, idx: number, opts: ValidateOptions, errors: string[]): void {
   const where = `citazione ${idx + 1}`;
   const validate = getCitationValidator();
   if (!validate(json)) {

@@ -62,7 +62,7 @@
     },
     {
       "name": "inject_citations",
-      "description": "Turn <zcite> placeholders in a .docx file into live Zotero citations."
+      "description": "Turn <zcite> placeholders in a .docx or .odt file into live Zotero citations."
     },
     {
       "name": "get_item_fulltext",

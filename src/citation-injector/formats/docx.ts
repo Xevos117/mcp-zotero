@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { FormatWriter } from "./types.js";
-import { PreparedCitation } from "../model.js";
+import { InjectionError, PreparedCitation } from "../model.js";
 import { regexEscape } from "../xml-utils.js";
 import { normalizeZciteTags } from "../zcite-normalizer.js";
 import { generateZoteroFieldCode, generateBibliographyFieldCode } from "../field-codes.js";
@@ -66,6 +66,12 @@ export const docxWriter: FormatWriter = {
   app: "Word",
   invalidPackageMessage: (detail) => `Invalid .docx file: not a readable ZIP archive (${detail}). ${REGENERATE_DOCX}`,
   bodyMissingMessage: `Invalid .docx file: word/document.xml not found. ${REGENERATE_DOCX}`,
+  sniff(zip: JSZip) {
+    // un .odt passato come .docx: errore chiaro invece di "word/document.xml not found"
+    if (zip.file("content.xml") && !zip.file("word/document.xml")) {
+      throw new InjectionError("format_mismatch", 'This looks like a LibreOffice .odt, not a Word .docx. Use format "odt" (or a .odt file).');
+    }
+  },
   normalize: (bodyXml) => normalizeZciteTags(bodyXml),
   citationXml: (prepared: PreparedCitation) => generateZoteroFieldCode(prepared.items, prepared.formattedText),
   replaceTag: (bodyXml, rawTag, citationXml) => replaceZciteInXml(bodyXml, rawTag, citationXml),

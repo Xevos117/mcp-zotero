@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Native citations for LibreOffice** (`.odt`, issue #37): `inject_citations` and the skill's script now inject into ODT documents too. Citations become reference marks (`text:reference-mark-start/end` named `ZOTERO_ITEM CSL_CITATION {json} RND…`), the bibliography a `text:section` `ZOTERO_BIBL`, and the document preferences go in `meta.xml` with `fieldType` ReferenceMark; the `Bibliography 1` paragraph style is defined in `styles.xml` if missing and `mimetype` stays the package's first, STORED entry. The format is taken from the extension (`.docx`/`.odt`) and can be forced with the new `format` argument (a value that disagrees with the extension or the file content is an error). The output stays `<name>_cited.<ext>`. An ODT normalizer joins `<zcite>` tags split across several `text:span` (comments and notes excluded, as in Word). Word is unchanged: docx and odt share the format-neutral core (parsing, citation JSON, key resolution).
+
 ### Changed
 
 - **Shared citation core split from the per-format writers** (internal refactor, no change to the Word output): the format-neutral logic (parsing `<zcite>` tags, building the citation CSL JSON, resolving keys against an `ItemSource`) now lives in `src/citation-injector/{model,zcite,citation-json,pipeline}.ts`, while the docx path is a thin wrapper in `formats/docx.ts` over today's functions (normalizer, field codes, preferences). A golden test checks that `inject_citations` produces byte-identical `word/document.xml` and `docProps/custom.xml` on every fixture (apart from the citationID and the session id). Groundwork for LibreOffice without touching Word.

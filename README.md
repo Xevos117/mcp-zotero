@@ -20,7 +20,7 @@ For advanced use cases (PDF upload policy, citation style guidance, source trans
 | LLM with filesystem access (Claude Code, LM Studio, etc.) | All 15 tools | No |
 | LLM without filesystem access (Claude.ai Projects, Claude Desktop) | API tools (search, add, metadata) | Yes, for citation injection |
 
-LLMs with filesystem access can use all tools directly, including `inject_citations` which reads and writes `.docx` files on disk.
+LLMs with filesystem access can use all tools directly, including `inject_citations` which reads and writes `.docx` (Word) and `.odt` (LibreOffice) files on disk.
 
 LLMs without filesystem access — including Claude Desktop, which connects to MCP but cannot generate files locally — can use the included **Claude skill** (`skills/zotero-skill-mcp-integrations/`), which runs citation injection entirely inside a sandbox. MCP tools handle all Zotero API operations; the skill handles document assembly.
 
@@ -249,7 +249,7 @@ available in every project (the default `local` scope covers only the current pr
 
 | Tool | Description |
 |---|---|
-| `inject_citations` | Inject live Zotero citations into a Word document. Supports APA, IEEE, Vancouver, Harvard, Chicago. Output is saved in the same folder as the input file with a `_cited` suffix (e.g. `paper.docx` → `paper_cited.docx`) |
+| `inject_citations` | Inject live Zotero citations into a Word (`.docx`) or LibreOffice (`.odt`) document (native fields in Word, reference marks in LibreOffice; format from the extension or the `format` argument). Supports APA, IEEE, Vancouver, Harvard, Chicago. Output is saved in the same folder as the input file with a `_cited` suffix (e.g. `paper.docx` → `paper_cited.docx`, `paper.odt` → `paper_cited.odt`) |
 | `get_user_id` | Returns the configured Zotero user ID |
 
 ## Development

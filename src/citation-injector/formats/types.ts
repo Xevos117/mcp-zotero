@@ -37,4 +37,8 @@ export interface FormatWriter {
   writePrefs(zip: JSZip, style: string): Promise<DocumentPrefsOutcome>;
   /** Avvisi corrispondenti all'esito delle preferenze. */
   prefsWarnings(outcome: DocumentPrefsOutcome): string[];
+  /** Ultimo ritocco al pacchetto prima di salvarlo (odt: mimetype STORED, manifest). */
+  finalize?(zip: JSZip): Promise<void>;
+  /** Opzioni per JSZip.generateAsync specifiche del formato (odt: niente compressione globale forzata). */
+  readonly generateOptions?: Record<string, unknown>;
 }
