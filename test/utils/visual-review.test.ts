@@ -156,6 +156,42 @@ describe("revisione visiva (VR)", () => {
     expect(visualReviewMarkdown(parseVisualReview("Nessun problema di contenuto."), escapedInline)).toContain("Nessun problema di contenuto nelle pagine renderizzate.");
   });
 
+  it("VR-08 sezione LibreOffice: problema su pagina lo-*, osservazioni LO di impaginazione a parte (non fanno fallire)", () => {
+    const index = {
+      corpus: [{ id: "eve2020" }, { id: "conneau2020" }],
+      knownIssues: [],
+      images: [
+        { image: "apa-p2.png", document: "apa", app: "word" },
+        { image: "lo-apa-p1.png", document: "lo-apa", app: "libreoffice" },
+      ],
+    };
+    const review = `# Revisione visiva
+## Problema 1: autore mancante nella citazione LibreOffice
+- Documento: lo-apa
+- Pagina: lo-apa-p1.png
+- Posizione: paragrafo 2, prima citazione
+- Voce del corpus: conneau2020
+- Reso: "(2020)"
+- Atteso: "(Conneau et al., 2020)"
+
+## Da verificare in Word
+- rientro sporgente assente (apa-p2.png)
+
+## Da verificare in LibreOffice
+- interlinea doppia nella bibliografia (lo-apa-p1.png)
+`;
+    const r = parseVisualReview(review);
+    expect(r.errors).toEqual([]);
+    expect(r.wordChecks).toEqual(["rientro sporgente assente (apa-p2.png)"]);
+    expect(r.loChecks).toEqual(["interlinea doppia nella bibliografia (lo-apa-p1.png)"]);
+    expect(r.problems).toHaveLength(1);
+    expect(r.problems[0]).toMatchObject({ document: "lo-apa", image: "lo-apa-p1.png", missing: [] });
+    expect(visualReviewProblems(r, index)).toEqual([]);
+    const md = visualReviewMarkdown(r, escapedInline);
+    expect(md).toContain("**Da verificare in LibreOffice**");
+    expect(md).toContain("interlinea doppia nella bibliografia (lo-apa-p1.png)");
+  });
+
   it("VR-05 il riepilogo include la revisione visiva ed è soggetto allo stesso controllo delle fughe", () => {
     const visual = parseVisualReview(REVIEW.replace("voce di bibliografia 4", "users/987654 voce 4"));
     const text = buildSummary({ visual });

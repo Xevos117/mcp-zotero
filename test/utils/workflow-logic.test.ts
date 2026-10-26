@@ -146,7 +146,11 @@ describe("workflow dal vivo e agente smoke (WL)", () => {
     expect(render).toContain("needs.changes.outputs.agent == 'true' &&\n      needs.live.result == 'success' &&");
     expect(render).not.toMatch(/secrets\.|environment:|id-token/);
     expect(render).toContain("uses: ./.github/actions/word-tools");
-    expect(step(render, "Render the refreshed pages")).toContain("node test/word-proxy/check-artifacts.mjs");
+    // LibreOffice pages (lo-apa/lo-ieee/lo-group) rendered into the same artifact; the fail-closed check is last (F)
+    expect(render).toContain("uses: ./.github/actions/libreoffice-tools");
+    expect(step(render, "Render the Word pages")).toContain("node test/word-proxy/render.mjs");
+    expect(step(render, "Render the LibreOffice pages and check the artifact")).toContain("node test/lo-proxy/render.mjs");
+    expect(step(render, "Render the LibreOffice pages and check the artifact")).toContain("node test/word-proxy/check-artifacts.mjs");
     expect(render).toContain("retention-days: 1");
     expect(job(agent, "agent-run")).toContain("needs: [prepare, word-render]");
     expect(job(agent, "agent-run")).toContain("needs.word-render.result == 'success'");
@@ -278,6 +282,8 @@ describe("ambito di una run del workflow dal vivo (scripts/live-scope.mjs, WL-08
     ["PR sul live suite", "pull_request", ["test/live/search-library.live.test.ts"], "", { live: true, agent: false }],
     ["PR solo sulla skill dell'agente (il live gira comunque prima)", "pull_request", [".claude/skills/test-mcp-zotero/SKILL.md"], "", { live: true, agent: true }],
     ["PR sul workflow", "pull_request", [".github/workflows/claude-agent-smoke.yml"], "", { live: true, agent: true }],
+    ["PR sui test lo-proxy (pagine LO del word-render)", "pull_request", ["test/lo-proxy/run.sh"], "", { live: true, agent: true }],
+    ["PR sull'azione libreoffice-tools", "pull_request", [".github/actions/libreoffice-tools/action.yml"], "", { live: true, agent: true }],
     ["push su main", "push", [], "", { live: true, agent: false }],
     ["schedule", "schedule", [], "", { live: true, agent: false }],
     ["manuale senza input (default)", "workflow_dispatch", [], "", { live: true, agent: true }],

@@ -236,7 +236,8 @@ jobs:
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     # pinned: ubuntu-latest moves to a new release
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    # Word pages (WordCraft) plus a few LibreOffice pages (lo-apa, lo-ieee, lo-group) in one artifact
+    timeout-minutes: 22
     permissions:
       contents: read
     steps:
@@ -253,24 +254,49 @@ jobs:
         timeout-minutes: 5
       - run: npm run build
         timeout-minutes: 3
-      - name: Zotero and WordCraft (pinned, sha256, cached)
+      - name: Zotero and WordCraft (pinned, sha256, cached) — Zotero ships the .oxt
         id: tools
         uses: ./.github/actions/word-tools
         timeout-minutes: 8
+      - name: LibreOffice (pinned, sha256, cached) + JRE + poppler
+        id: lotools
+        uses: ./.github/actions/libreoffice-tools
+        timeout-minutes: 10
       # The checks against expect.json are word-proxy's job (test.yml): here only a command that does not complete fails
-      - name: Inject and refresh through Zotero
+      - name: Inject and refresh through Zotero (Word)
         timeout-minutes: 7
         env:
           XVFB: Xvfb
           ZOTERO_DIR: ${{ steps.tools.outputs.zotero }}
           WORDCRAFT_CLI: ${{ steps.tools.outputs.wordcraft }}
         run: timeout 400 test/word-proxy/ci.sh "$ZOTERO_DIR" "$WORDCRAFT_CLI" "$RUNNER_TEMP/word-proxy"
-      - name: Render the refreshed pages
+      - name: Render the Word pages
         timeout-minutes: 4
         env:
           WORDCRAFT_CLI: ${{ steps.tools.outputs.wordcraft }}
+        run: timeout 200 node test/word-proxy/render.mjs "$RUNNER_TEMP/word-proxy" "$WORDCRAFT_CLI" "$RUNNER_TEMP/word-render"
+      # A few documents refreshed in LibreOffice (apa, ieee, group; path B embedded itemData) for the same review
+      - name: Inject odt and refresh through LibreOffice (apa, ieee, group)
+        timeout-minutes: 8
+        env:
+          XVFB: Xvfb
+          ZOTERO_DIR: ${{ steps.tools.outputs.zotero }}
+          SOFFICE: ${{ steps.lotools.outputs.soffice }}
+          UNOPKG: ${{ steps.lotools.outputs.unopkg }}
+          UNO_PYTHON: ${{ steps.lotools.outputs.python }}
         run: |
-          timeout 200 node test/word-proxy/render.mjs "$RUNNER_TEMP/word-proxy" "$WORDCRAFT_CLI" "$RUNNER_TEMP/word-render"
+          OXT="$ZOTERO_DIR/integration/libreoffice/Zotero_LibreOffice_Integration.oxt"
+          test -f "$OXT" || { echo "::error::Zotero .oxt not found at $OXT"; exit 1; }
+          timeout 120 node test/lo-proxy/gen.mjs "$RUNNER_TEMP/lo-docs"
+          S=http://www.zotero.org/styles
+          timeout 500 test/lo-proxy/run.sh "$ZOTERO_DIR" "$SOFFICE" "$UNOPKG" "$UNO_PYTHON" "$OXT" "$RUNNER_TEMP/lo-render-sess" \
+            "lo-apa,refresh,$S/apa,$RUNNER_TEMP/lo-docs/checklist-apa_cited.odt" \
+            "lo-ieee,refresh,$S/ieee,$RUNNER_TEMP/lo-docs/checklist-ieee_cited.odt" \
+            "lo-group,refresh,$S/apa,$RUNNER_TEMP/lo-docs/checklist-apa-group_cited.odt"
+      - name: Render the LibreOffice pages and check the artifact
+        timeout-minutes: 4
+        run: |
+          timeout 150 node test/lo-proxy/render.mjs "$RUNNER_TEMP/lo-render-sess" "$RUNNER_TEMP/word-render"
           node test/word-proxy/check-artifacts.mjs "$RUNNER_TEMP/word-render"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         timeout-minutes: 3
