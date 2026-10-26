@@ -84,7 +84,7 @@
     {
       "id": "T-prompts",
       "files": ["src/prompts/index.ts"],
-      "scenario": "prompts/list returns cite_word_document, write_cited_document, import_references and note_from_item with their arguments; prompts/get on note_from_item with the run's article key renders a message that names get_items_details and create_note and contains the key (no leftover ${arguments.…})"
+      "scenario": "The agent's own MCP client exposes tools, not prompts, so exercise the prompts through the read-only Bash wrapper. Run `node test/live/agent/prompts.mjs list`: it lists cite_word_document, write_cited_document, import_references and note_from_item, each with its arguments. Then run `node test/live/agent/prompts.mjs get note_from_item '{\"item_key\": \"<ARTICLE>\"}'` with a run article key for <ARTICLE>: the rendered message names get_items_details and create_note and contains that key, with no leftover ${arguments.…} placeholder. Claim the scenario referencing those Bash call_no(s)."
     },
     {
       "id": "T-library",
