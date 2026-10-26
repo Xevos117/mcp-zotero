@@ -3,7 +3,8 @@ import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeDocx, para, tempDir, TempDir } from "../helpers/fixtures.js";
+import JSZip from "jszip";
+import { makeDocx, makeOdt, odtPara, para, readContentXml, tempDir, TempDir } from "../helpers/fixtures.js";
 
 /**
  * redact.mjs (agent smoke): sostituisce gli identificatori dell'account di test in agent-out/ prima di
@@ -65,5 +66,28 @@ describe("redact.mjs (RED)", () => {
     const r = await run("redact", dir.path);
     expect(r.code, r.stderr).toBe(0);
     expect(await readFile(path, "utf8")).not.toContain(USER_ID);
+  });
+
+  it("RED-04 odt: l'id utente in content.xml (compresso) viene redatto; restore lo ripristina", async () => {
+    const path = await dir.file("paper.odt", await makeOdt(odtPara(URI(USER_ID))));
+    const r = await run("redact", dir.path);
+    expect(r.code, r.stderr).toBe(0);
+    let xml = await readContentXml(await readFile(path));
+    expect(xml).not.toContain(USER_ID);
+    expect(xml).toContain(USER_PLACEHOLDER);
+    const restore = await run("restore", dir.path);
+    expect(restore.code, restore.stderr).toBe(0);
+    xml = await readContentXml(await readFile(path));
+    expect(xml).toContain(USER_ID);
+  });
+
+  it("RED-05 scansione fail-closed: un id dentro una parte compressa di uno zip (estensione qualsiasi) fa fallire", async () => {
+    // un vecchio controllo sui soli byte grezzi (latin1) non vedrebbe l'id compresso: la scansione lo decomprime
+    const zip = new JSZip();
+    zip.file("data.txt", URI(USER_ID), { compression: "DEFLATE" });
+    await dir.file("leak.bin", await zip.generateAsync({ type: "nodebuffer" }));
+    const r = await run("redact", dir.path);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toMatch(/identifiers still present/);
   });
 });

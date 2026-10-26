@@ -72,7 +72,8 @@ for (const path of files) {
     const out = transform(readFileSync(path, "utf8"));
     writeFileSync(path, out);
     if (mode === "redact" && survivors(out).length) problems.push(path);
-  } else if (/\.docx$/i.test(path)) {
+  } else if (/\.(docx|odt)$/i.test(path)) {
+    // docx (Word) and odt (LibreOffice) are zips whose XML parts hold the URIs with the account id
     let zip = null;
     try {
       zip = await JSZip.loadAsync(readFileSync(path));
@@ -96,8 +97,30 @@ for (const path of files) {
     if (survivors(readFileSync(path).toString("latin1")).length) problems.push(path);
   }
 }
+// Fail-closed final scan (redact only): decompress every file that is a zip and scan all of its parts,
+// plus the raw bytes of every other file, for a surviving identifier. This catches an id hiding in a
+// compressed part that the per-file pass above did not cover (the leak that odt files slipped through).
+if (mode === "redact") {
+  for (const path of files) {
+    let zip = null;
+    try {
+      zip = await JSZip.loadAsync(readFileSync(path));
+    } catch {
+      zip = null;
+    }
+    if (zip) {
+      for (const part of Object.values(zip.files).filter((f) => !f.dir)) {
+        if (survivors(await part.async("string")).length) problems.push(`${path}:${part.name} (scan)`);
+      }
+    } else if (!TEXT.test(path)) {
+      if (survivors(readFileSync(path).toString("latin1")).length) problems.push(`${path} (scan)`);
+    } else if (survivors(readFileSync(path, "utf8")).length) {
+      problems.push(`${path} (scan)`);
+    }
+  }
+}
 if (problems.length) {
-  console.error(`redact: identifiers still present in ${problems.length} file(s): ${problems.join(", ")}`);
+  console.error(`redact: identifiers still present in ${[...new Set(problems)].length} file(s): ${[...new Set(problems)].join(", ")}`);
   process.exit(1);
 }
 console.log(`${mode}: ${files.length} file(s) in ${dir}`);

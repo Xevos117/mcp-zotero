@@ -842,8 +842,11 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
   nel job successivo), username, nome del gruppo, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne
   resta uno (anche dentro i docx) o se c'è un gruppo senza il suo nome; conservazione 1 giorno. Ogni job che usa
-  l'account comincia mascherando il nome del gruppo (`mask-group-name.mjs`). Test in `test/utils/redact.test.ts` (RED):
-  docx (parti XML) con round trip redact/restore, un `.docx` che non è uno zip redatto come testo senza crash, file di testo.
+  l'account comincia mascherando il nome del gruppo (`mask-group-name.mjs`). Redige allo stesso modo le parti XML dei
+  `.docx` e degli `.odt` (altrimenti l'id resterebbe compresso dentro l'odt), e una scansione finale fail-closed
+  decomprime ogni zip e controlla ogni file: se un identificatore sopravvive, non carica nulla. Test in
+  `test/utils/redact.test.ts` (RED): docx e odt (parti XML) con round trip redact/restore, un `.docx` non-zip redatto
+  come testo senza crash, file di testo, e la scansione che coglie un id in una parte compressa di uno zip qualsiasi.
 - **Riepilogo**: dopo lo scrub, `test/live/agent/summary.mjs` scrive il Job Summary (verdetto, problemi e avvisi,
   tabella degli scenari, esplorativi X1–X5 con le chiamate come le ha registrate l'audit, friction, turni e durata; il costo non compare nei testi pubblici)
   dalla copia scrubbata; non scrive nulla se nel testo, pubblicato o prima dell'escape, resta un segreto dell'ambiente,
