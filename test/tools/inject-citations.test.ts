@@ -434,6 +434,36 @@ describe("inject_citations (MCP)", () => {
     expect(out.json.output_path).toBe(join(sub, "paper_cited.docx"));
   });
 
+  // Run con attributi (<w:r w:rsidR="…">, revisioni di Word): prima venivano saltate in silenzio
+  // (found ma injected 0); ora vengono iniettate. I documenti senza attributi non cambiano (test golden).
+  it("IC-25a run con attributi, tag unico nella run (caso A) → iniettata", async () => {
+    serveItems(h, { SMITH222: SMITH });
+    const body = '<w:p><w:r w:rsidR="00AB12CD"><w:t>&lt;zcite keys=&quot;SMITH222&quot;/&gt;</w:t></w:r></w:p>';
+    const input = await dir.file("rsid-a.docx", await makeDocx(body));
+    const out = await h.call("inject_citations", { file_path: input });
+    expect(out.isError).toBe(false);
+    expect(out.json).toMatchObject({ citations_found: 1, citations_injected: 1 });
+    const xml = await readDocumentXml(await readFile(out.json.output_path));
+    expect(xml).toContain("ADDIN ZOTERO_ITEM CSL_CITATION");
+    expect(xml).not.toContain("zcite");
+    await expectValidDocx(await readFile(out.json.output_path), { libraryPath: `users/${USER_ID}` });
+  });
+
+  it("IC-25b run con attributi, tag inline con altro testo (caso B) → iniettata, testo intorno conservato", async () => {
+    serveItems(h, { SMITH222: SMITH });
+    const body = '<w:p><w:r w:rsidR="00AB12CD"><w:t xml:space="preserve">Before &lt;zcite keys=&quot;SMITH222&quot;/&gt; after</w:t></w:r></w:p>';
+    const input = await dir.file("rsid-b.docx", await makeDocx(body));
+    const out = await h.call("inject_citations", { file_path: input });
+    expect(out.isError).toBe(false);
+    expect(out.json).toMatchObject({ citations_found: 1, citations_injected: 1 });
+    const xml = await readDocumentXml(await readFile(out.json.output_path));
+    expect(xml).toContain("ADDIN ZOTERO_ITEM CSL_CITATION");
+    expect(xml).toContain("Before ");
+    expect(xml).toContain(" after");
+    expect(xml).not.toContain("zcite");
+    await expectValidDocx(await readFile(out.json.output_path), { libraryPath: `users/${USER_ID}` });
+  });
+
   describe("validazione input", () => {
     it.each([
       ["file_path", {}],

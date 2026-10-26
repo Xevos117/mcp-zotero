@@ -9,6 +9,10 @@ All notable changes to this project will be documented in this file.
 - **Shared citation core split from the per-format writers** (internal refactor, no change to the Word output): the format-neutral logic (parsing `<zcite>` tags, building the citation CSL JSON, resolving keys against an `ItemSource`) now lives in `src/citation-injector/{model,zcite,citation-json,pipeline}.ts`, while the docx path is a thin wrapper in `formats/docx.ts` over today's functions (normalizer, field codes, preferences). A golden test checks that `inject_citations` produces byte-identical `word/document.xml` and `docProps/custom.xml` on every fixture (apart from the citationID and the session id). Groundwork for LibreOffice without touching Word.
 - **Atomic output write** (`src/utils/atomic-write.ts`): the `_cited.docx` is written to a temporary file with `fsync` and then `rename`, so a reader sees either the old file or the complete new one. A locked output (e.g. open in Word) gives an `EBUSY` error with a hint to close it.
 
+### Fixed
+
+- **`inject_citations` on `<zcite>` tags inside a run with attributes** (`<w:r w:rsidR="…">`, written by Word when it tracks changes): they were counted but silently skipped (`citations_found` without `citations_injected`); now they are injected. Documents whose runs have no attributes are unchanged (verified by the golden test).
+
 ## [2.0.4] - 2026-10-25
 
 ### Changed
