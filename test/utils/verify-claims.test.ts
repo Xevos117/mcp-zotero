@@ -167,6 +167,14 @@ describe("verify-claims: scritture solo su oggetti della run (VC-04)", () => {
     expect(writeSafetyProblems(transcriptOf([call]), { safe_mode: false, group_id: "7" })).toEqual(["call #1 add_items: group 8 is not the test group"]);
     expect(writeSafetyProblems(transcriptOf([[call[0], { ...(call[1] as object), library_id: "7" }, call[2]]]), { safe_mode: false, group_id: "7" })).toEqual([]);
   });
+
+  it("VC-04d una scrittura negata dall'hook (guard probe su una chiave non creata) non è un problema: non è mai stata eseguita", () => {
+    const denied: Call = ["update_item", { item_key: "EXST2222", version: 1 }, "Denied by the agent smoke harness: EXST2222 was not created by this run. Write only to what this run created.", true];
+    expect(writeSafetyProblems(transcriptOf([denied]), ctx)).toEqual([]);
+    // la stessa chiamata eseguita (non negata) sarebbe un problema di sicurezza
+    const executed: Call = ["update_item", { item_key: "EXST2222", version: 1 }, { item_key: "EXST2222" }];
+    expect(writeSafetyProblems(transcriptOf([executed]), ctx).join("\n")).toMatch(/item_key EXST2222 was not created by this run/);
+  });
 });
 
 /** F9 + F10 completi, come li esegue l'agente seguendo la skill. */
@@ -271,6 +279,24 @@ describe("verify-claims: chiamate esplorative per call_no dell'audit (VC-06d)", 
       calls
     );
     expect(r).toMatchObject({ problems: [], warnings: [], checks: ["X1 ok", "X2 ok"] });
+  });
+
+  it("VC-06i guard probe: una negazione dell'hook vale come prova (scenario senza chiamate o chiamata senza call_no); le F0 no, e senza negazioni è un problema", () => {
+    const denial = { tool_name: "mcp__zotero__update_item", tool_input: { item_key: "XXXXXXXX" }, reason: "Denied by the agent smoke harness: XXXXXXXX was not created by this run" };
+    // scenario senza chiamate citabili (tutto negato dall'hook): la negazione lo sostiene
+    expect(exploratoryFindings([x([])], calls, new Set(), [denial])).toMatchObject({ problems: [], checks: ["X1: backed by a hook denial (guard probe, no audited call)", "X1 ok"] });
+    // senza negazioni → "no calls"
+    expect(exploratoryFindings([x([])], calls, new Set(), []).problems).toEqual(["X1: no calls"]);
+    // una chiamata citata senza call_no che corrisponde a una negazione dello stesso tool: valida
+    expect(exploratoryFindings([x([{ tool: "mcp__zotero__update_item" }])], calls, new Set(), [denial])).toMatchObject({
+      problems: [],
+      checks: ["X1: call 1 (update_item): denied by a hook (guard probe)", "X1 ok"],
+    });
+    // la stessa senza negazione: manca il call_no (l'audit numera ogni chiamata)
+    expect(exploratoryFindings([x([{ tool: "mcp__zotero__update_item" }])], calls, new Set(), []).problems.join("\n")).toMatch(/call 1 \(update_item\): no call_no/);
+    // una F0 probe (delete di XXXXXXXX) non è prova esplorativa → "no calls"
+    const f0 = { tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["XXXXXXXX"] }, reason: "Denied…" };
+    expect(exploratoryFindings([x([])], calls, new Set(), [f0]).problems).toEqual(["X1: no calls"]);
   });
 
   it.each<[string, unknown, RegExp]>([
