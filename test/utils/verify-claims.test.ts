@@ -758,6 +758,26 @@ describe("verify-claims: claims schema 3 (VC-13)", () => {
     expect(f1SkipEvidence(notFound)).toBeNull();
   });
 
+  it("VC-13h metadata usato solo da inject.js falliti (error path) non va dichiarato, che il file esista o no; un inject riuscito lo deve dichiarare", () => {
+    const cmd = (m: string) => `node test/live/agent/inject.mjs agent-out/a.docx agent-out/b.docx ${m} users/1`;
+    const failed = auditCalls([entry(3, "Bash", { command: cmd("agent-out/bad.json") }, "Error: Unexpected token in JSON", true)]);
+    const check = "metadata agent-out/bad.json: not declared, used only by inject calls that failed (error-path test)";
+    // file assente: tollerato
+    expect(metadataFindings([], failed, () => null)).toEqual({ problems: [], checks: [check] });
+    // file presente ma malformato (il nuovo caso #56): comunque tollerato, l'inject è fallito
+    expect(metadataFindings([], failed, () => "{bad json")).toEqual({ problems: [], checks: [check] });
+    // un inject riuscito deve sempre dichiarare il suo metadata
+    const ok = auditCalls([entry(4, "Bash", { command: cmd("agent-out/s.json") }, '{"output":"agent-out/a_cited.docx","found":1,"injected":1}')]);
+    expect(metadataFindings([], ok, () => null).problems).toEqual([
+      "metadata agent-out/s.json: used by inject.js but not declared in claims.metadata with its call_no",
+    ]);
+    // e se lo stesso file è usato sia da un inject riuscito sia da uno fallito, va dichiarato
+    const both = auditCalls([entry(5, "Bash", { command: cmd("agent-out/m.json") }, "Error", true), entry(6, "Bash", { command: cmd("agent-out/m.json") }, '{"found":1,"injected":1}')]);
+    expect(metadataFindings([], both, () => "{}").problems).toEqual([
+      "metadata agent-out/m.json: used by inject.js but not declared in claims.metadata with its call_no",
+    ]);
+  });
+
   it("VC-13f scenari T scelti dai file cambiati del contesto fidato: mancante o senza esito → problema, saltato con motivo → avviso", () => {
     const table = { rows: [{ id: "T-search", files: ["src/tools/search-library.ts"], scenario: "s" }, { id: "T-inject", files: ["src/citation-injector/**"], scenario: "i" }, { id: "T-link", files: ["src/tools/add-linked-url-attachment.ts"], scenario: "l" }] };
     const ctx = { changed_files: ["src/citation-injector/injector.ts", "src/tools/search-library.ts", "README.md"] };
