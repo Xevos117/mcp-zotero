@@ -1,20 +1,12 @@
-import { randomUUID } from "node:crypto";
-import { ZoteroCitationItem, ZoteroCslCitation } from "../types/csl-types.js";
+import { ZoteroCitationItem } from "../types/csl-types.js";
 import { escapeXml } from "./xml-utils.js";
+import { buildCslCitation } from "./citation-json.js";
 
 export function generateZoteroFieldCode(
   citationItems: ZoteroCitationItem[],
   formattedText: string
 ): string {
-  const citationId = randomUUID().slice(0, 8);
-
-  const cslCitation: ZoteroCslCitation = {
-    citationID: citationId,
-    properties: { formattedCitation: formattedText },
-    citationItems,
-    schema:
-      "https://github.com/citation-style-language/schema/raw/master/csl-citation.json",
-  };
+  const cslCitation = buildCslCitation(citationItems, formattedText);
 
   const instrText = ` ADDIN ZOTERO_ITEM CSL_CITATION ${JSON.stringify(cslCitation)} `;
   const escapedInstrText = escapeXml(instrText);

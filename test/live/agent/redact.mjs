@@ -73,13 +73,24 @@ for (const path of files) {
     writeFileSync(path, out);
     if (mode === "redact" && survivors(out).length) problems.push(path);
   } else if (/\.docx$/i.test(path)) {
-    const zip = await JSZip.loadAsync(readFileSync(path));
-    for (const part of Object.values(zip.files).filter((f) => !f.dir && /\.(xml|rels)$/.test(f.name))) {
-      const out = transform(await part.async("string"));
-      zip.file(part.name, out);
-      if (mode === "redact" && survivors(out).length) problems.push(`${path}:${part.name}`);
+    let zip = null;
+    try {
+      zip = await JSZip.loadAsync(readFileSync(path));
+    } catch {
+      zip = null; // not a real zip (e.g. a placeholder the agent wrote): redact as plain bytes, never crash
     }
-    writeFileSync(path, await zip.generateAsync({ type: "nodebuffer" }));
+    if (zip) {
+      for (const part of Object.values(zip.files).filter((f) => !f.dir && /\.(xml|rels)$/.test(f.name))) {
+        const out = transform(await part.async("string"));
+        zip.file(part.name, out);
+        if (mode === "redact" && survivors(out).length) problems.push(`${path}:${part.name}`);
+      }
+      writeFileSync(path, await zip.generateAsync({ type: "nodebuffer" }));
+    } else {
+      const out = transform(readFileSync(path, "latin1"));
+      writeFileSync(path, out, "latin1");
+      if (mode === "redact" && survivors(out).length) problems.push(path);
+    }
   } else if (mode === "redact") {
     // unknown binary: refuse to pass it on unless it is clean as raw bytes
     if (survivors(readFileSync(path).toString("latin1")).length) problems.push(path);

@@ -58,7 +58,7 @@
     },
     {
       "id": "T-inject",
-      "files": ["src/citation-injector/**", "src/tools/inject-citations.ts"],
+      "files": ["src/citation-injector/**", "src/tools/inject-citations.ts", "src/utils/atomic-write.ts"],
       "scenario": "ieee on the author-date document (no num): both producers warn about the missing num and write [?]; claim them with compare_group \"nonum-ieee\""
     },
     {
