@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 // @ts-expect-error plain .mjs script without type declarations
 import { liveScope } from "../../scripts/live-scope.mjs";
 // @ts-expect-error plain .mjs script without type declarations
-import { wordProxyScope } from "../../scripts/word-proxy-scope.mjs";
+import { wordProxyScope, loProxyScope } from "../../scripts/word-proxy-scope.mjs";
 // @ts-expect-error plain .mjs script without type declarations
 import { previousRun, requiredJobs } from "../../scripts/duplicate-run.mjs";
 
@@ -317,7 +317,7 @@ describe("job word-proxy di test.yml (WL-09, WL-10)", () => {
   it("WL-10 if a livello di job (non on.paths), nessun segreto, runner fissato, timeout, artifact solo dopo il controllo", () => {
     const test = workflow("test.yml");
     expect(test).not.toMatch(/^\s+paths:/m);
-    const job = test.slice(test.indexOf("\n  word-proxy:\n"));
+    const job = test.slice(test.indexOf("\n  word-proxy:\n"), test.indexOf("\n  lo-proxy:\n"));
     expect(job).toContain("needs: word-proxy-scope");
     expect(job).toContain("if: needs.word-proxy-scope.outputs.run == 'true'");
     expect(job).toContain("runs-on: ubuntu-24.04");
@@ -333,6 +333,47 @@ describe("job word-proxy di test.yml (WL-09, WL-10)", () => {
     expect(action.match(/sha256=[0-9a-f]{64}/g)).toHaveLength(4);
     expect(action).toContain("sha256sum -c -");
     // the archives are checked on every run, a cache hit included
+    expect(action).not.toMatch(/if: steps\.cache\.outputs\.cache-hit/);
+    expect(action).toMatch(/actions\/cache@[0-9a-f]{40}/);
+  });
+});
+
+describe("job lo-proxy di test.yml (#37, LibreOffice + Zotero .oxt)", () => {
+  it.each<[string, string, string[], boolean]>([
+    ["PR solo docs", "pull_request", ["README.md", "test/WORD_CHECKLIST.md"], false],
+    ["PR solo sui test unitari", "pull_request", ["test/tools/search-library.test.ts"], false],
+    ["PR su qualunque sorgente del server (lo scrittore odt sta nel server)", "pull_request", ["src/citation-injector/injector.ts"], true],
+    ["PR sulla skill (inject.js)", "pull_request", ["skills/zotero-skill-mcp-integrations/scripts/inject.js"], true],
+    ["PR sul corpus", "pull_request", ["test/fixtures/corpus/library.json"], true],
+    ["PR sui test lo-proxy", "pull_request", ["test/lo-proxy/verify.mjs"], true],
+    ["PR sul plugin condiviso word-proxy", "pull_request", ["test/word-proxy/plugin/bootstrap.js"], true],
+    ["PR sull'azione libreoffice-tools", "pull_request", [".github/actions/libreoffice-tools/action.yml"], true],
+    ["PR sull'azione word-tools (fornisce Zotero e l'.oxt)", "pull_request", [".github/actions/word-tools/action.yml"], true],
+    ["push su main", "push", [], true],
+    ["manuale", "workflow_dispatch", [], true],
+  ])("%s", (_label, event, files, expected) => {
+    expect(loProxyScope(event, files)).toBe(expected);
+  });
+
+  it("job non obbligatorio, nessun segreto, runner fissato, timeout <= 15, artifact solo dopo il controllo", () => {
+    const test = workflow("test.yml");
+    const job = test.slice(test.indexOf("\n  lo-proxy:\n"));
+    expect(job).toContain("needs: word-proxy-scope");
+    expect(job).toContain("if: needs.word-proxy-scope.outputs.lo == 'true'");
+    expect(job).toContain("runs-on: ubuntu-24.04");
+    expect(Number(job.match(/\n    timeout-minutes: (\d+)/)![1])).toBeLessThanOrEqual(15);
+    expect(job).not.toMatch(/secrets\.|environment:|id-token/);
+    expect(job).toContain("uses: ./.github/actions/word-tools");
+    expect(job).toContain("uses: ./.github/actions/libreoffice-tools");
+    expect(step(job, "Collect and check the artifact")).toContain("node test/word-proxy/check-artifacts.mjs");
+    const upload = step(job, "Upload documents, driver logs and reports");
+    expect(upload).toContain("steps.artifact.outcome == 'success'");
+    expect(upload).toContain("retention-days: 1");
+    for (const s of job.split(/\n {6}- /).slice(1)) expect(s, s.split("\n")[0]).toMatch(/timeout-minutes: \d+/);
+    const action = readFileSync(join(ROOT, ".github", "actions", "libreoffice-tools", "action.yml"), "utf8");
+    // one sha256 per architecture (x86_64 for CI, aarch64 for local), checked on every run (cache hit included)
+    expect(action.match(/sha256=[0-9a-f]{64}/g)).toHaveLength(2);
+    expect(action).toContain("sha256sum -c -");
     expect(action).not.toMatch(/if: steps\.cache\.outputs\.cache-hit/);
     expect(action).toMatch(/actions\/cache@[0-9a-f]{40}/);
   });

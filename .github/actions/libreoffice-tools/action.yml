@@ -1,0 +1,107 @@
+name: libreoffice-tools
+description: >-
+  LibreOffice (The Document Foundation deb build) for the lo-proxy and the LibreOffice pages of word-render: the
+  official archive at a pinned version, cached per version and architecture and checked against its sha256 on every
+  run, unpacked without root (dpkg-deb -x), plus the apt packages the Zotero LibreOffice plugin and the PDF render
+  need (default-jre-headless: the plugin is Java and unopkg needs a JRE; poppler-utils: pdftoppm; Xvfb and fonts).
+  The TDF build ships its own python with pyuno (program/python), so no python3-uno is installed. Composite steps
+  cannot carry timeout-minutes: every command has its own timeout and the calling step sets timeout-minutes.
+outputs:
+  soffice:
+    description: soffice binary (LibreOffice program directory)
+    value: ${{ steps.paths.outputs.soffice }}
+  unopkg:
+    description: unopkg binary (installs the Zotero .oxt into a user profile)
+    value: ${{ steps.paths.outputs.unopkg }}
+  python:
+    description: LibreOffice's bundled python (pyuno available), used by the UNO driver
+    value: ${{ steps.paths.outputs.python }}
+  program:
+    description: LibreOffice program directory (contains soffice, unopkg, python)
+    value: ${{ steps.paths.outputs.program }}
+runs:
+  using: composite
+  steps:
+    # Versions are updated by hand (version + sha256 + cache key), not by deps-update: TDF is not an npm package.
+    # downloadarchive.documentfoundation.org publishes both x86_64 (CI runner) and aarch64 deb tarballs.
+    - name: Versions
+      id: versions
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "lo=26.2.7.1"
+          # The download path segment is x86_64/aarch64, but the x86_64 file and its inner directory use "x86-64"
+          case "$RUNNER_ARCH" in
+            X64)
+              echo "lo_arch_dir=x86_64"
+              echo "lo_arch=x86-64"
+              echo "lo_sha256=7cc840bd089f4779636cb2340f33786e71ce66669fdfbe36fe5c7322edc186ee" ;;
+            ARM64)
+              echo "lo_arch_dir=aarch64"
+              echo "lo_arch=aarch64"
+              echo "lo_sha256=5af4603ad64600e00843e938a43cc6fe68011b9be993f67a553bfcb62642cdb8" ;;
+            *) echo "::error::libreoffice-tools: unsupported runner architecture $RUNNER_ARCH"; exit 1 ;;
+          esac
+        } >> "$GITHUB_OUTPUT"
+    - name: System packages (poppler for the render, Xvfb, X/font libraries; a JRE only if none is present)
+      shell: bash
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        set -euo pipefail
+        # GitHub runners already ship a JRE (JAVA_HOME set); the slow default-jre-headless download is only a
+        # fallback for a machine without java. run.sh points LibreOffice at the JRE through JAVA_HOME.
+        pkgs="poppler-utils xvfb x11-utils libxinerama1 libxrandr2 libxrender1 libxext6 libcups2t64 libsm6 libice6 libdbus-1-3 libfontconfig1 libcairo2 fonts-dejavu-core fonts-liberation2"
+        command -v java >/dev/null 2>&1 || pkgs="$pkgs default-jre-headless"
+        sudo timeout 240 apt-get update -qq
+        # DPkg::Lock::Timeout waits for the runner's background apt instead of failing; one retry for a slow mirror
+        sudo timeout 420 apt-get install -y -qq --no-install-recommends -o DPkg::Lock::Timeout=300 $pkgs > /dev/null \
+          || sudo timeout 420 apt-get install -y -qq --no-install-recommends -o DPkg::Lock::Timeout=300 $pkgs > /dev/null
+    # The cache holds the downloaded archive, not the unpacked program: every run checks it against the pinned
+    # sha256 (a cache hit included) and unpacks it again (a few seconds)
+    - name: Cache the LibreOffice archive
+      id: cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/lo-tools-archives
+        key: lo-tools-archives-lo${{ steps.versions.outputs.lo }}-${{ runner.arch }}
+    - name: Download, verify and unpack LibreOffice (pinned sha256, dpkg-deb -x, no root)
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        LO_VERSION: ${{ steps.versions.outputs.lo }}
+        LO_ARCH_DIR: ${{ steps.versions.outputs.lo_arch_dir }}
+        LO_ARCH: ${{ steps.versions.outputs.lo_arch }}
+        LO_SHA256: ${{ steps.versions.outputs.lo_sha256 }}
+      run: |
+        set -euo pipefail
+        mkdir -p ~/lo-tools-archives && cd ~/lo-tools-archives
+        a="LibreOffice_${LO_VERSION}_Linux_${LO_ARCH}_deb.tar.gz"
+        if [ "$CACHE_HIT" != "true" ]; then
+          timeout 420 curl -sSfL --retry 2 --max-time 400 -o "$a" \
+            "https://downloadarchive.documentfoundation.org/libreoffice/old/${LO_VERSION}/deb/${LO_ARCH_DIR}/$a"
+        fi
+        printf '%s  %s\n' "$LO_SHA256" "$a" | sha256sum -c -
+        rm -rf ~/lo-tools && mkdir -p ~/lo-tools
+        # The tarball holds LibreOffice_<ver>_Linux_<arch>_deb/DEBS/*.deb; extract every .deb into the prefix, no root
+        timeout 120 tar xzf ~/lo-tools-archives/"$a" -C ~/lo-tools
+        debs="$HOME/lo-tools/LibreOffice_${LO_VERSION}_Linux_${LO_ARCH}_deb/DEBS"
+        test -d "$debs" || { echo "::error::DEBS directory not found in $a"; ls ~/lo-tools; exit 1; }
+        for d in "$debs"/*.deb; do timeout 60 dpkg-deb -x "$d" "$HOME/lo-tools/root"; done
+    - name: Paths
+      id: paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        prog="$(dirname "$(find "$HOME/lo-tools/root/opt" -name soffice.bin -path '*/program/*' | head -1)")"
+        test -n "$prog" && test -x "$prog/soffice" && test -x "$prog/unopkg"
+        # The TDF build ships program/python (a wrapper that puts program/ on PYTHONPATH so `import uno` works)
+        test -x "$prog/python" && "$prog/python" -c 'import uno' 2>/dev/null \
+          || { echo "::error::LibreOffice bundled python cannot import uno"; exit 1; }
+        {
+          echo "program=$prog"
+          echo "soffice=$prog/soffice"
+          echo "unopkg=$prog/unopkg"
+          echo "python=$prog/python"
+        } >> "$GITHUB_OUTPUT"
