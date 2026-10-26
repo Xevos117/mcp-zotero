@@ -252,6 +252,25 @@ describe("e2e: build/server.js su stdio", () => {
     expect(posted).toMatchObject({ itemType: "note", parentItem: "AAAARRRR", note: "<p>Riga 1</p><p>Riga 2</p>" });
   });
 
+  it("E2E-27 prompts/list: capability e i 4 prompt", async () => {
+    expect(s.client.getServerCapabilities()?.prompts).toBeDefined();
+    const { prompts } = await s.client.listPrompts(undefined, { timeout: CALL_TIMEOUT_MS });
+    expect(prompts.map((p) => p.name)).toEqual([
+      "cite_word_document",
+      "write_cited_document",
+      "import_references",
+      "note_from_item",
+    ]);
+  });
+
+  it("E2E-28 prompts/get: testo reso con gli argomenti", async () => {
+    const r = await s.client.getPrompt({ name: "note_from_item", arguments: { item_key: "AAAARRRR" } }, { timeout: CALL_TIMEOUT_MS });
+    const text = (r.messages[0].content as { text: string }).text;
+    expect(text).toContain("AAAARRRR");
+    expect(text).toContain("create_note");
+    expect(text).not.toContain("${arguments.");
+  });
+
   it("E2E-19 errore API Zotero (403) → isError al client", async () => {
     fake.net.on("GET", `${ZBASE}/collections`, jsonResponse({}, { status: 403 }));
     const out = await call(s, "get_collections", {});

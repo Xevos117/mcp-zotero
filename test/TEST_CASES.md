@@ -546,7 +546,7 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 ## tools/list (`tools-list.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| TL-01 | elenco | esattamente 15 nomi |
+| TL-01 | elenco | esattamente i nomi attesi (confrontati con la tabella EXPECTED) |
 | TL-02 | per tool | `type: object`, properties e required attesi (+ `library_type`/`library_id` tranne get_user_id), descrizione presente |
 | TL-03 | enum/default | sort, direction, limit, style, auto_attach_pdf, max_characters, dry_run, content_type |
 | TL-04 | cardinalità | delete_items 1..50, add_items min 1, collection_key minLength 1 |
@@ -554,6 +554,15 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 | TL-06 | url | `format: uri` |
 | TL-07 | tool sconosciuto | isError |
 | TL-08 | override libreria | `library_type` enum user/group, `library_id` pattern numerico, mai required |
+
+## Prompt MCP (`test/utils/prompts.test.ts`)
+| ID | Scenario | Atteso |
+|---|---|---|
+| PR-01 | prompts/list | i prompt attesi in ordine (cite_word_document, write_cited_document, import_references, note_from_item), argomenti e flag `required` (opzionali da `.optional()` non obbligatori) |
+| PR-02 | prompts/get con argomenti | un messaggio `user` col testo reso (valori sostituiti, nessun `${arguments.}` residuo) |
+| PR-03 | prompts/get con opzionale omesso | default nel testo (es. style "apa") |
+| PR-04 | allineamento manifest.json | `prompts_generated: false`; nomi/ordine, `arguments` e `text` (con i placeholder `${arguments.x}`) uguali a `PROMPTS` |
+| PR-05 | contenuto dei template | ogni template nomina almeno un tool del server |
 
 ## Entità HTML nei metadati dei registri (`src/utils/html-entities.test.ts`)
 
@@ -620,7 +629,7 @@ Smoke del bundle (`npm run smoke -- --bundle dist/mcp-zotero.mcpb`, in `test.yml
 fuori dal repository, comando/args/env vengono calcolati da `getMcpConfigForManifest` di `@anthropic-ai/mcpb` (come un client),
 poi gli stessi scenari utente e gruppo di `npm run smoke`; inoltre: nessuna variabile `${...}` irrisolta, solo `build/`,
 `node_modules/`, `manifest.json`, `package.json`, `LICENSE`, `README.md` al primo livello, nessun pacchetto solo-dev del lockfile,
-`tools/list` = `tools` del manifest.
+`tools/list` = `tools` del manifest e `prompts/list` = `prompts` del manifest. Ogni scenario verifica anche i prompt: `prompts/list` ha i 4 prompt attesi e `prompts/get` di `import_references` rende il testo con il DOI passato.
 
 ## E2E (`test/e2e/stdio-server.e2e.test.ts`)
 | ID | Scenario | Atteso |
@@ -630,6 +639,7 @@ poi gli stessi scenari utente e gruppo di `npm run smoke`; inoltre: nessuna vari
 | E2E-04..18 | una tools/call per ciascuno dei tool di lettura/scrittura, create_cited_document compreso (deletes con UNSAFE_OPERATIONS=all) | risultato atteso, richieste corrette alla FakeNet |
 | E2E-24/25 | update_item: version corretta → PATCH con If-Unmodified-Since-Version; version errata → version_conflict senza PATCH | nuova versione / `code: version_conflict` |
 | E2E-26 | create_note | POST `itemType: note` sotto il parent, HTML `<p>…</p>` |
+| E2E-27/28 | prompts/list e prompts/get | capability prompts, i 4 prompt; testo reso con gli argomenti (nessun `${arguments.}`) |
 | E2E-19 | 403 Zotero | isError al client |
 | E2E-20 | rete | nessuna richiesta del processo figlio senza route |
 | E2E-21/22 | UNSAFE_OPERATIONS assente / " ITEMS " | delete bloccati senza chiamate HTTP, con `hint` per l'utente / solo delete_items abilitato |

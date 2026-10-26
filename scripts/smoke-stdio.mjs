@@ -16,6 +16,7 @@ import JSZip from "jszip";
 import { XMLValidator } from "fast-xml-parser";
 
 const EXPECTED_TOOLS = 18;
+const EXPECTED_PROMPTS = 4;
 const TIMEOUT_MS = 20_000;
 const root = fileURLToPath(new URL("..", import.meta.url));
 const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
@@ -254,6 +255,17 @@ function runScenario({ name, prefix }, launch, docxPath, odtPath) {
         if (schema?.type !== "object" || typeof schema.properties !== "object") throw new Error(`${tool.name}: invalid inputSchema`);
       }
 
+      const { prompts } = await request("prompts/list", {});
+      if (prompts.length !== EXPECTED_PROMPTS) throw new Error(`expected ${EXPECTED_PROMPTS} prompts, got ${prompts.length}`);
+      for (const prompt of prompts) {
+        if (!prompt.name || !prompt.description) throw new Error(`prompt ${prompt.name}: missing name/description`);
+      }
+      const gotPrompt = await request("prompts/get", { name: "import_references", arguments: { dois: "10.1/smoke" } });
+      const promptText = gotPrompt.messages?.[0]?.content?.text ?? "";
+      if (!promptText.includes("10.1/smoke") || !promptText.includes("add_items_by_doi")) {
+        throw new Error(`prompts/get import_references unexpected text: ${promptText.slice(0, 200)}`);
+      }
+
       const collections = await request("tools/call", { name: "get_collections", arguments: {} });
       const collectionsText = collections.content?.[0]?.text ?? "";
       if (collections.isError || !collectionsText.includes("SMOKE001")) {
@@ -272,7 +284,7 @@ function runScenario({ name, prefix }, launch, docxPath, odtPath) {
       if (injectedOdt.isError) throw new Error(`inject_citations (odt) failed: ${injectedOdtText.slice(0, 300)}`);
       await checkOdt(await readFile(JSON.parse(injectedOdtText).output_path), `http://zotero.org${prefix}/items/SMKITEM2`);
 
-      return { init, tools };
+      return { init, tools, prompts };
     })().then(
       (value) => finish(null, value),
       (err) => finish(err.message)
@@ -303,18 +315,21 @@ try {
   for (const scenario of SCENARIOS) {
     const docxPath = await makeDocx(workDir);
     const odtPath = await makeOdt(workDir);
-    const { init, tools } = await runScenario(scenario, await serverLaunch(scenario, bundle), docxPath, odtPath);
+    const { init, tools, prompts } = await runScenario(scenario, await serverLaunch(scenario, bundle), docxPath, odtPath);
     if (bundle) {
       const listed = tools.map((t) => t.name).sort().join(",");
       const declared = bundle.manifest.tools.map((t) => t.name).sort().join(",");
       if (listed !== declared) throw new Error(`bundle: tools/list [${listed}] != manifest tools [${declared}]`);
+      const listedPrompts = prompts.map((p) => p.name).sort().join(",");
+      const declaredPrompts = (bundle.manifest.prompts ?? []).map((p) => p.name).sort().join(",");
+      if (listedPrompts !== declaredPrompts) throw new Error(`bundle: prompts/list [${listedPrompts}] != manifest prompts [${declaredPrompts}]`);
     }
     if (dumpFile && scenario.name === "user") {
       const sorted = [...tools].sort((a, b) => a.name.localeCompare(b.name));
       writeFileSync(dumpFile, JSON.stringify({ serverInfo: init.serverInfo, tools: sorted }, null, 2));
     }
     console.log(
-      `smoke OK [${bundle ? "bundle " : ""}${scenario.name}]: protocol ${init.protocolVersion}, ${tools.length} tools, ` +
+      `smoke OK [${bundle ? "bundle " : ""}${scenario.name}]: protocol ${init.protocolVersion}, ${tools.length} tools, ${prompts.length} prompts, ` +
         `get_collections + inject_citations (docx + odt) via ${scenario.prefix}`
     );
   }

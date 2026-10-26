@@ -260,6 +260,17 @@ available in every project (the default `local` scope covers only the current pr
 | `create_cited_document` | Create a new `.docx` or `.odt` from Markdown (headings, bold/italic, one-level lists) with pandoc-style citations (`[@KEY]`, `[@K1; @K2]`, `[see @KEY, p. 12]`, `-@KEY`) turned into native Zotero citations and a bibliography. Never overwrites an existing file |
 | `get_user_id` | Returns the configured Zotero user ID |
 
+### Prompts
+
+User-initiated MCP prompts (`prompts/list`, `prompts/get`) that walk a client through a workflow in terms of the tools above:
+
+| Prompt | Description |
+|---|---|
+| `cite_word_document` | Add Zotero citations to an existing `.docx`/`.odt` via `inject_citations` |
+| `write_cited_document` | Draft a cited document from scratch and save it (`create_cited_document`) |
+| `import_references` | Import references by DOI (`add_items_by_doi`) |
+| `note_from_item` | Read an item and attach a summary note (`create_note`) |
+
 ## Development
 
 ```bash
