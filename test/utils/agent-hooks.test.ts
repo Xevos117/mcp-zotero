@@ -31,9 +31,10 @@ function hook(script: string, input: unknown, projectDir: string): Promise<{ cod
 
 const MAKE = "node test/live/agent/make-docx.mjs";
 const INJECT = "node test/live/agent/inject.mjs";
+const PROMPTS = "node test/live/agent/prompts.mjs";
 const SPEC = `'[["Single ", {"zcite": {"keys": "ABCD2345", "locator": "pp. 12-15", "prefix": "see "}}], [{"zcite": {"keys": "../items"}, "split": true}]]'`;
 
-describe("hook Bash: solo i due wrapper nella forma esatta (AH-01)", () => {
+describe("hook Bash: solo i wrapper nella forma esatta (AH-01)", () => {
   it.each([
     `${MAKE} agent-out/mzt-x-p-apa.docx ${SPEC}`,
     `${MAKE} agent-out/a.docx agent-out/b.docx agent-out/c.docx ${SPEC}`,
@@ -46,6 +47,11 @@ describe("hook Bash: solo i due wrapper nella forma esatta (AH-01)", () => {
     `${MAKE} agent-out/a.docx agent-out/b.odt ${SPEC}`,
     `${INJECT} agent-out/a.odt agent-out/a_cited.odt agent-out/metadata.json users/424242 apa --format odt`,
     `${INJECT} agent-out/a.docx agent-out/a_cited.docx agent-out/metadata.json users/424242 --format docx`,
+    // prompts wrapper (read-only): list, and get with or without a single-quoted json-args
+    `${PROMPTS} list`,
+    `${PROMPTS} get note_from_item '{"item_key": "ABCD2345"}'`,
+    `${PROMPTS} get import_references`,
+    `${PROMPTS} get write_cited_document '{"topic": "x", "output_path": "agent-out/o.docx"}'`,
   ])("AH-01a ammesso: %s", (command) => {
     expect(bashDecision({ command, description: "x" })).toBeNull();
   });
@@ -83,6 +89,11 @@ describe("hook Bash: solo i due wrapper nella forma esatta (AH-01)", () => {
     ["commento", `${INJECT} agent-out/a.docx agent-out/b.docx agent-out/m.json users/1 #x`],
     ["argomento dopo lo spec", `${MAKE} agent-out/a.docx '[["x"]]' agent-out/b.docx`],
     ["spec senza virgolette", `${MAKE} agent-out/a.docx [["x"]]`],
+    ["prompt sconosciuto", `${PROMPTS} get bogus_prompt`],
+    ["prompts list con argomento in più", `${PROMPTS} list extra`],
+    ["prompts get senza nome", `${PROMPTS} get`],
+    ["prompts args tra virgolette doppie", `${PROMPTS} get note_from_item "{}"`],
+    ["prompts con concatenazione", `${PROMPTS} list; ls`],
     ["comando vuoto", ``],
   ])("AH-01b negato: %s", (_label, command) => {
     expect(bashDecision({ command })).toBe("command not allowed");

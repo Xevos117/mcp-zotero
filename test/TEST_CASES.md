@@ -884,16 +884,16 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   `--mcp-config` così com'è: Claude Code espande `${VAR}`), `--tools "Skill,Read,Edit,Write,Bash"` (Write serve per
   creare file: con solo Edit l'agente non può crearli, provato), `--permission-mode dontAsk` (ciò che le regole non
   ammettono è negato senza chiedere) e gli hook di `.claude/agent-smoke/settings.json` (sulle PR `.claude/` viene dal
-  branch di base): PreToolUse su Bash che ammette solo le due forme esatte dei wrapper (niente concatenazioni, pipe,
+  branch di base): PreToolUse su Bash che ammette solo le forme esatte dei wrapper (make-docx, inject, prompts; niente concatenazioni, pipe,
   redirezioni, sostituzioni, variabili, altri interpreti, opzioni di node, percorsi fuori da `agent-out/`); PreToolUse
   sulle cancellazioni che ammette solo chiavi create dalla run (lette dall'audit) o inesistenti
   (`ZZZZZZZZ`/`YYYYYYYY`), mai delete_collection in safe mode; PostToolUse/PostToolUseFailure che scrive ogni chiamata
   Zotero e ogni comando Bash con il risultato in `agent-audit/audit.jsonl` (le negazioni in `denials.jsonl`), fuori
   da `agent-out/` dove l'agente scrive. Un errore dell'hook nega. Il contesto per gli hook (`agent-audit/context.json`)
   lo scrive prepare.mjs (in CI il job dell'agente lo copia prima di avviarlo).
-- **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
-  comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
-  docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
+- **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e i soli
+  wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
+  docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata), `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto) e `node test/live/agent/prompts.mjs` (sola lettura, elenca o rende i prompt MCP, che il client dell'agente non espone). WebFetch/WebSearch
   negati; 140 turni, tetto di 2 USD (`maxBudgetUsd`, `.github/agents/agent-smoke.json`; le run reali usano 65-98 turni), `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min. La chiave Zotero sta solo nel file
   di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente. Gli artifact fra i job
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati

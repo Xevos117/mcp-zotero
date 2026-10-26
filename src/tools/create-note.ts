@@ -69,8 +69,9 @@ export async function handleCreateNote(
   }
 
   if (parent.itemType === "note" || parent.itemType === "attachment") {
+    const article = /^[aeiou]/i.test(parent.itemType) ? "an" : "a";
     return formatErrorResponse(
-      `Parent item ${parent_item_key} is a ${parent.itemType}; a note can only be attached to a regular item`,
+      `Parent item ${parent_item_key} is ${article} ${parent.itemType}; a note can only be attached to a regular item`,
       { hint: ITEM_KEY_HINT }
     );
   }

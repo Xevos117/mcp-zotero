@@ -863,6 +863,26 @@ describe("verify-claims: claims schema 3 (VC-13)", () => {
     expect(v3.problems.filter(row)).toEqual([]);
     expect([...v3.evidence].map((c: { callNo: number }) => c.callNo)).toContain(2);
   });
+
+  it("VC-13h create_note conta come chiave creata; update_item sostituisce il titolo atteso della chiave", () => {
+    const c = auditCalls([
+      entry(1, "add_items", { items: [{ title: "mzt-r1 a" }] }, { success: [{ index: 0, item_key: "ITEM2222", title: "mzt-r1 a" }] }),
+      entry(2, "update_item", { item_key: "ITEM2222", version: 7, fields: { title: "mzt-r1 a edited" } }, { item_key: "ITEM2222", version: 8, updated_fields: ["title"] }),
+      entry(3, "create_note", { parent_item_key: "ITEM2222", note: "a note" }, { item_key: "NTE23456", parent_item_key: "ITEM2222" }),
+    ]);
+    const m = createdByCalls(c, "users/1");
+    expect(m.get("NTE23456")).toMatchObject({ kind: "note", call_no: 3, tool: "create_note" });
+    const res = createdCallFindings(
+      [
+        { kind: "item", key: "ITEM2222", call_no: 1, library_path: "users/1" },
+        { kind: "note", key: "NTE23456", call_no: 3, library_path: "users/1" },
+      ],
+      c,
+      "users/1"
+    );
+    expect(res.problems).toEqual([]); // the note's creating call is recognized
+    expect(res.titles.get("ITEM2222")).toBe("mzt-r1 a edited"); // update_item supersedes the add_items title
+  });
 });
 
 describe("verify-claims: claims schema 2 giudicati come prima (VC-14)", () => {

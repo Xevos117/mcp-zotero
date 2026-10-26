@@ -38,8 +38,10 @@ outputs) and do not re-read files you just wrote.
   `agent-render/`): always with the Read tool, never with `head`, `cat` or other shell commands (denied, and a
   wasted turn). For a long file use Read's `offset`/`limit`. `agent-render/` is read-only for you.
 - Files you may write: only under `agent-out/`, with the Write tool (never through the shell). The
-  only commands you may run are `node test/live/agent/make-docx.mjs …` and
-  `node test/live/agent/inject.mjs …` (a wrapper around the product skill's `inject.js` that keeps every path inside `agent-out/`), from the repository root, **exactly
+  only commands you may run are `node test/live/agent/make-docx.mjs …`,
+  `node test/live/agent/inject.mjs …` (a wrapper around the product skill's `inject.js` that keeps every path inside `agent-out/`)
+  and, only if a targeted scenario calls for it, `node test/live/agent/prompts.mjs list` / `node test/live/agent/prompts.mjs get <prompt name> ['<json args>']`
+  (read-only, prints the MCP prompts; the agent's own client exposes tools, not prompts), from the repository root, **exactly
   in that form, one command per call**: no `timeout` prefix, no variables, no `&&`, `;`, pipes or
   redirections, paths only as `agent-out/<name>`, the make-docx spec in single quotes. A hook denies
   anything else, and deletions of keys this run did not create; a denial outside step F0 is reported.

@@ -171,14 +171,19 @@ const DOC = FILE("(?:docx|odt)");
 const SPEC = "'[^'\\\\\\n\\r$`;&|<>]*'";
 const STYLE = "(?:apa|ieee|vancouver|harvard|chicago)";
 const LIBRARY = "(?:(?:users|groups)/[0-9]+|[0-9]+)";
+// MCP prompt names, for the read-only prompts wrapper (no Zotero access, no arguments that reach the API)
+const PROMPT_NAME = "(?:cite_word_document|write_cited_document|import_references|note_from_item)";
 const ALLOWED = [
   new RegExp(`^node test/live/agent/make-docx\\.mjs(?: --odt)?(?: ${DOC})+ ${SPEC}$`),
   new RegExp(`^node test/live/agent/inject\\.mjs ${DOC} ${DOC} ${FILE("json")} ${LIBRARY}(?: ${STYLE})?(?: --format (?:docx|odt))?$`),
+  new RegExp(`^node test/live/agent/prompts\\.mjs list$`),
+  new RegExp(`^node test/live/agent/prompts\\.mjs get ${PROMPT_NAME}(?: ${SPEC})?$`),
 ];
 export const BASH_USAGE =
   "Only these Bash commands are allowed, exactly in this form, one per call: " +
   "node test/live/agent/make-docx.mjs [--odt] agent-out/<name>.(docx|odt) [agent-out/<name>.(docx|odt) ...] '<json spec>' | " +
-  "node test/live/agent/inject.mjs agent-out/<in>.(docx|odt) agent-out/<out>.(docx|odt) agent-out/<metadata>.json <users/ID|groups/ID> [style] [--format docx|odt]. " +
+  "node test/live/agent/inject.mjs agent-out/<in>.(docx|odt) agent-out/<out>.(docx|odt) agent-out/<metadata>.json <users/ID|groups/ID> [style] [--format docx|odt] | " +
+  "node test/live/agent/prompts.mjs list | node test/live/agent/prompts.mjs get <prompt name> ['<json args>']. " +
   "No other programs, options, variables, quotes, chaining, pipes or redirections.";
 
 export function bashDecision(toolInput) {
