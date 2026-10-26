@@ -85,6 +85,14 @@
       "description": "Add items from metadata, for any Zotero item type (e.g. items without a DOI)."
     },
     {
+      "name": "update_item",
+      "description": "Edit an existing item's fields or creators (needs its current version)."
+    },
+    {
+      "name": "create_note",
+      "description": "Attach a plain-text note to an existing item."
+    },
+    {
       "name": "import_pdf_to_zotero",
       "description": "Download a PDF from a URL and store it in Zotero."
     },

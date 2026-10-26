@@ -777,6 +777,9 @@ export function createdByCalls(calls, userLibrary) {
       case "find_and_attach_pdfs":
         for (const x of json.results ?? []) add(x?.attachment_key, "attachment");
         break;
+      case "create_note":
+        add(json.note_key ?? json.item_key ?? json.key, "note");
+        break;
     }
   }
   return out;
@@ -810,6 +813,14 @@ export function createdCallFindings(created, calls, userLibrary) {
       continue;
     }
     if (origin.kind === "item" && origin.name !== undefined) res.titles.set(c.key, origin.name);
+  }
+  // update_item is a write that supersedes the title the creating call reported: the expected title becomes the
+  // latest value a successful update_item set on that key (its `fields.title` input), in call order.
+  for (const call of calls) {
+    if (call.tool !== "update_item" || !successJson(call)) continue;
+    const key = call.input?.item_key;
+    const title = call.input?.fields?.title;
+    if (typeof key === "string" && res.titles.has(key) && typeof title === "string") res.titles.set(key, title);
   }
   return res;
 }

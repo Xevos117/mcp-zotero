@@ -5,28 +5,19 @@ import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.
 import { postInBatches } from "../utils/write-results.js";
 import {
   ZOTERO_ITEM_TYPES,
-  ITEM_TYPE_FIELDS,
-  ITEM_TYPE_CREATOR_TYPES,
   TITLE_FIELD_NAME,
   ZoteroItemType,
 } from "../utils/zotero-item-types.js";
+import {
+  CreatorSchema,
+  fieldValidationIssues,
+  creatorValidationIssues,
+  toZoteroCreator,
+} from "../utils/item-fields.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
-const CreatorSchema = z
-  .object({
-    firstName: z.string().optional(),
-    lastName: z.string().optional(),
-    name: z.string().optional(),
-    creatorType: z.string().default("author"),
-  })
-  .refine(
-    (data) =>
-      data.name != null || (data.firstName != null && data.lastName != null),
-    {
-      message:
-        "Provide either 'name' (institutional) or both firstName+lastName",
-    }
-  );
+/** Keys that are not type-specific fields (handled as dedicated inputs), so excluded from field validation. */
+const NON_FIELD_KEYS = new Set(["itemType", "title", "creators"]);
 
 const ItemSchema = z
   .object({
@@ -37,28 +28,12 @@ const ItemSchema = z
   .catchall(z.string())
   .superRefine((data, ctx) => {
     const itemType = data.itemType as ZoteroItemType;
-    const validFields = ITEM_TYPE_FIELDS[itemType];
 
-    for (const key of Object.keys(data)) {
-      if (key === "itemType" || key === "title" || key === "creators") continue;
-      if (!validFields.has(key)) {
-        ctx.addIssue({
-          code: "custom",
-          message: `Field "${key}" is not valid for itemType "${data.itemType}". Valid fields: ${[...validFields].join(", ")}`,
-          path: [key],
-        });
-      }
+    for (const issue of fieldValidationIssues(itemType, Object.keys(data), NON_FIELD_KEYS)) {
+      ctx.addIssue({ code: "custom", message: issue.message, path: issue.path });
     }
-
-    const validCreatorTypes = ITEM_TYPE_CREATOR_TYPES[itemType];
-    for (const [i, creator] of (data.creators ?? []).entries()) {
-      if (!validCreatorTypes.has(creator.creatorType)) {
-        ctx.addIssue({
-          code: "custom",
-          message: `Invalid creatorType "${creator.creatorType}" for "${data.itemType}". Valid: ${[...validCreatorTypes].join(", ")}`,
-          path: ["creators", i, "creatorType"],
-        });
-      }
+    for (const issue of creatorValidationIssues(itemType, data.creators ?? [])) {
+      ctx.addIssue({ code: "custom", message: issue.message, path: issue.path });
     }
   });
 
@@ -132,16 +107,7 @@ export async function handleAddItems(
       itemType,
       ...fields,
       [titleFieldName]: title,
-      creators: (creators ?? []).map((c) => {
-        if (c.name) {
-          return { name: c.name, creatorType: c.creatorType };
-        }
-        return {
-          firstName: c.firstName,
-          lastName: c.lastName,
-          creatorType: c.creatorType,
-        };
-      }),
+      creators: (creators ?? []).map(toZoteroCreator),
       collections: collection_key ? [collection_key] : [],
       tags: (tags ?? []).map((t) => ({ tag: t })),
     };
