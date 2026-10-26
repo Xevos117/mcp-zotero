@@ -912,6 +912,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-04a | scritture su chiavi create prima, chiave finta, find_and_attach_pdfs in dry_run su chiave estranea | nessun problema |
 | VC-04b | delete_items su voce preesistente, allegato a voce preesistente, find_and_attach_pdfs reale su collezione estranea, chiave malformata a delete_items, scrittura nel gruppo in safe mode, delete_collection in safe mode | un problema per caso |
 | VC-04c | fuori safe mode, gruppo diverso da quello di test / uguale | problema / nessuno |
+| VC-04d | scrittura negata dall'hook (guard probe `update_item` su chiave non creata) / stessa chiamata eseguita | nessun problema (non eseguita) / problema |
 | VC-05a | F9 e F10 completi con gli esiti attesi | nessun problema |
 | VC-05b | inject.js accetta la chiave malformata, nessun avviso per la chiave sconosciuta, documento senza zcite non provato, 51 chiavi accettate, 50 chiavi rifiutate, limit 101 con più di 100 voci, chiamata F10 mancante | un problema per caso |
 | VC-06a/b | esplorativi ok (ordine delle chiavi indifferente, comando Bash senza description), assenti, `unclear` | nessun problema; `unclear` = avviso |
@@ -941,6 +942,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-10d | numerazione dell'audit: assente, 1..3 in disordine, ripetuta, con un buco, voce senza numero | nessun problema / un problema per caso |
 | VC-06d | esplorativi citati per `call_no` (tool con o senza prefisso, Bash, esito), argomento non ASCII mai ridigitato | nessun problema |
 | VC-06e | `call_no` inesistente o non intero, strumento diverso, Bash dichiarato come tool Zotero, `is_error` mancante o diverso, argomenti al posto di `call_no` con audit numerato | un problema per caso |
+| VC-06i | guard probe: negazione dell'hook come prova — scenario senza chiamate / chiamata senza `call_no` corrispondente a una negazione / senza negazioni / una F0 non vale | sostenuto / sostenuto / "no calls" / "no calls" |
 | VC-06f | audit senza numeri | confronto per argomenti (uguali / diversi), `call_no` non trovato |
 | VC-06g | stesso `call_no` in due scenari; `call_no` di una chiamata che prova un controllo fisso (F9/F10); input lungo e comando Bash | problema per i due casi; nel verdetto (`exploratory_calls`) ogni chiamata citata con l'input registrato dall'audit (solo il comando per Bash), troncato a 300 caratteri |
 | VC-06h | prova dei controlli fissi (`edgeCaseEvidence`) | la prima chiamata che soddisfa ogni riga F9/F10 |

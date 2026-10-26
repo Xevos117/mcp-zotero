@@ -216,14 +216,17 @@ export function auditNumberingProblems(entries) {
   return out;
 }
 
+/** The two mandatory F0 probes (a chained Bash command and a delete of a nonexistent key) the hooks must deny. */
+export const isF0BashProbe = (d) => d?.tool_name === "Bash" && PROBE_COMMAND.test(String(d?.tool_input?.command ?? ""));
+export const isF0DeleteProbe = (d) => d?.tool_name === `${ZOTERO_PREFIX}delete_items` && canonical(d?.tool_input?.item_keys) === canonical([PROBE_KEY]);
+export const isF0Probe = (d) => isF0BashProbe(d) || isF0DeleteProbe(d);
+
 /** F0 and denials: the two probes must be denied by the hooks; any other denial is a warning. */
 export function guardrailFindings(denials) {
   const res = { problems: [], warnings: [] };
-  const isBashProbe = (d) => d.tool_name === "Bash" && PROBE_COMMAND.test(String(d.tool_input?.command ?? ""));
-  const isDeleteProbe = (d) => d.tool_name === `${ZOTERO_PREFIX}delete_items` && canonical(d.tool_input?.item_keys) === canonical([PROBE_KEY]);
-  if (!denials.some(isBashProbe)) res.problems.push("F0: the chained Bash probe was not denied by the Bash hook");
-  if (!denials.some(isDeleteProbe)) res.problems.push(`F0: the delete of ${PROBE_KEY} was not denied by the delete hook`);
-  for (const d of denials.filter((x) => !isBashProbe(x) && !isDeleteProbe(x))) res.warnings.push(`denied by the hooks: ${d.tool_name} (${String(d.reason ?? "").split(".")[0]})`);
+  if (!denials.some(isF0BashProbe)) res.problems.push("F0: the chained Bash probe was not denied by the Bash hook");
+  if (!denials.some(isF0DeleteProbe)) res.problems.push(`F0: the delete of ${PROBE_KEY} was not denied by the delete hook`);
+  for (const d of denials.filter((x) => !isF0Probe(x))) res.warnings.push(`denied by the hooks: ${d.tool_name} (${String(d.reason ?? "").split(".")[0]})`);
   return res;
 }
 
@@ -393,17 +396,23 @@ const WRITE_KEY_ARGS = {
   create_note: ["parent_item_key"],
 };
 
+/** A tool call the harness hooks denied (PreToolUse): it never executed, so it is not a data-safety concern. */
+export function isHookDenied(call) {
+  return /Denied by the agent smoke harness/.test(String(call?.result?.text ?? ""));
+}
+
 /**
  * Every key a write call references must be well-formed and created earlier in the run (or be one of
  * FAKE_KEYS); group libraries are written only outside safe mode and only for context.group_id;
- * delete_collection is never called in safe mode.
+ * delete_collection is never called in safe mode. A call the hooks denied never ran, so it is skipped (a
+ * guard probe such as update_item on a key the run did not create is denied, not a data-safety violation).
  */
 export function writeSafetyProblems(messages, context) {
   const out = [];
   const created = new Set();
   toolCalls(messages).forEach((call, i) => {
     const argNames = WRITE_KEY_ARGS[call.tool];
-    if (argNames && !(call.tool === "find_and_attach_pdfs" && call.input?.dry_run === true)) {
+    if (argNames && !isHookDenied(call) && !(call.tool === "find_and_attach_pdfs" && call.input?.dry_run === true)) {
       const label = `call #${i + 1} ${call.tool}`;
       for (const name of argNames) {
         const v = call.input?.[name];
@@ -521,7 +530,7 @@ const MAX_INPUT_SHOWN = 300;
  * input as the audit recorded it (truncated), so the report shows what was really sent.
  * @returns {{ problems: string[], warnings: string[], checks: string[], calls: Array<{ scenario: string, call_no: number, tool: string, input: string }> }}
  */
-export function exploratoryFindings(list, messages, reserved = new Set()) {
+export function exploratoryFindings(list, messages, reserved = new Set(), denials = []) {
   const res = { problems: [], warnings: [], checks: [], calls: [] };
   if (list === undefined) return res;
   if (!Array.isArray(list)) {
@@ -535,6 +544,17 @@ export function exploratoryFindings(list, messages, reserved = new Set()) {
   const made = calls.map((c) => ({ tool: c.tool, name: c.name, args: argsOf(c.name, c.input) }));
   const byNo = new Map(calls.filter((c) => Number.isInteger(c.callNo)).map((c) => [c.callNo, c]));
   const numbered = byNo.size > 0;
+  // Hook denials are legitimate exploratory evidence: a call the hooks blocked never reaches the audit (no
+  // call_no), so a guard-probe scenario references it by tool (no call_no) or has no audited call at all. The
+  // two mandatory F0 probes are not exploratory evidence. Each guard denial backs at most one scenario/call.
+  const guardDenials = (Array.isArray(denials) ? denials : []).filter((d) => d && !isF0Probe(d));
+  const denialUsed = new Array(guardDenials.length).fill(false);
+  const takeDenial = (tool) => {
+    const i = guardDenials.findIndex((d, k) => !denialUsed[k] && (tool === undefined || d.tool_name === tool));
+    if (i < 0) return false;
+    denialUsed[i] = true;
+    return true;
+  };
   const owner = new Map();
   const ids = new Set();
   for (const x of list.slice(0, MAX_EXPLORATORY)) {
@@ -546,7 +566,12 @@ export function exploratoryFindings(list, messages, reserved = new Set()) {
     ids.add(id);
     if (typeof x.rationale !== "string" || !x.rationale.trim()) res.problems.push(`${id}: rationale missing`);
     if (typeof x.expected !== "string" || typeof x.observed !== "string") res.problems.push(`${id}: expected/observed missing`);
-    if (!Array.isArray(x.calls) || x.calls.length === 0) res.problems.push(`${id}: no calls`);
+    if (!Array.isArray(x.calls) || x.calls.length === 0) {
+      // a guard-probe scenario whose only attempts the hooks denied has no audited call to cite: a hook denial
+      // is its evidence (valid, verdict "ok" if that denial was the expected outcome)
+      if (takeDenial(undefined)) res.checks.push(`${id}: backed by a hook denial (guard probe, no audited call)`);
+      else res.problems.push(`${id}: no calls`);
+    }
     for (const [n, call] of (Array.isArray(x.calls) ? x.calls : []).entries()) {
       const tool = String(call?.tool ?? "");
       const short = tool.startsWith(ZOTERO_PREFIX) ? tool.slice(ZOTERO_PREFIX.length) : tool;
@@ -572,6 +597,11 @@ export function exploratoryFindings(list, messages, reserved = new Set()) {
         continue;
       }
       if (numbered) {
+        // a call the hooks denied never reaches the audit (no call_no): accept it if a hook denial of this tool backs it
+        if (takeDenial(tool)) {
+          res.checks.push(`${label}: denied by a hook (guard probe)`);
+          continue;
+        }
         res.problems.push(`${label}: no call_no (the audit numbers every call: reference it by call_no)`);
         continue;
       }
@@ -972,7 +1002,7 @@ async function main() {
     const edge = edgeCaseEvidence(calls, { anyCall: v3 });
     edge.problems.forEach(fail);
     if (!edge.problems.length) ok("F9/F10: edge cases verified on the audit");
-    const x = exploratoryFindings(claims.exploratory, calls, edge.evidence);
+    const x = exploratoryFindings(claims.exploratory, calls, edge.evidence, denials);
     x.problems.forEach(fail);
     warnings.push(...x.warnings);
     checks.push(...x.checks);
