@@ -57,7 +57,7 @@ export async function handleGetItemsDetails(
   if (items.length === 0) {
     return formatEmptyResult("No items found for the given keys", {
       item_keys,
-      suggestion: `None of these keys exists in this library (deleted, or from another library). ${ITEM_KEY_HINT}`,
+      suggestion: `None of these keys exists in this library as a live item (permanently deleted, in another library, or in the trash: restore it in Zotero, or remove it for good with delete_items permanent: true). ${ITEM_KEY_HINT}`,
     });
   }
 

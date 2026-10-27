@@ -18,7 +18,8 @@
     "Read(./agent-render/**)",
     "Edit(./agent-out/**)",
     "Bash(node test/live/agent/make-docx.mjs *)",
-    "Bash(node test/live/agent/inject.mjs *)"
+    "Bash(node test/live/agent/inject.mjs *)",
+    "Bash(node test/live/agent/prompts.mjs *)"
   ],
   "disallowedTools": [
     "WebFetch",

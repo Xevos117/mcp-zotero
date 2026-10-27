@@ -2181,12 +2181,12 @@ describe("delete_items", () => {
     expect(parsed.error).toContain("not allowed");
   });
 
-  it("deletes items successfully with 'items' mode", async () => {
+  it("moves items to the trash by default (post deleted:1) with 'items' mode", async () => {
     const itemsData = [
       { key: "KEYRZZZZ", version: 5, title: "Item 1" },
       { key: "KEY2ZZZZ", version: 3, title: "Item 2" },
     ];
-    const { mock, deleteStub } = createZoteroApiMock(itemsData);
+    const { mock, deleteStub, postStub } = createZoteroApiMock(itemsData);
     const result = await handleToolCall(
       "delete_items",
       { item_keys: ["KEYRZZZZ", "KEY2ZZZZ"] },
@@ -2199,7 +2199,33 @@ describe("delete_items", () => {
     expect(parsed.deleted_count).toBe(2);
     expect(parsed.deleted_keys).toEqual(expect.arrayContaining(["KEYRZZZZ", "KEY2ZZZZ"]));
     expect(parsed.not_found).toBeUndefined();
+    expect(parsed.mode).toBe("trash");
+    expect(postStub).toHaveBeenCalledWith([
+      { key: "KEYRZZZZ", version: 1, deleted: 1 },
+      { key: "KEY2ZZZZ", version: 1, deleted: 1 },
+    ]);
+    expect(deleteStub).not.toHaveBeenCalled();
+  });
+
+  it("permanently deletes items (permanent: true) with 'items' mode", async () => {
+    const itemsData = [
+      { key: "KEYRZZZZ", version: 5, title: "Item 1" },
+      { key: "KEY2ZZZZ", version: 3, title: "Item 2" },
+    ];
+    const { mock, deleteStub, postStub } = createZoteroApiMock(itemsData);
+    const result = await handleToolCall(
+      "delete_items",
+      { item_keys: ["KEYRZZZZ", "KEY2ZZZZ"], permanent: true },
+      mock,
+      TEST_USER_ID,
+      "items"
+    );
+
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.deleted_count).toBe(2);
+    expect(parsed.mode).toBe("permanent");
     expect(deleteStub).toHaveBeenCalled();
+    expect(postStub).not.toHaveBeenCalled();
   });
 
   it("deletes items successfully with 'all' mode", async () => {
@@ -2216,6 +2242,7 @@ describe("delete_items", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.deleted_count).toBe(1);
     expect(parsed.deleted_keys).toEqual(["KEYRZZZZ"]);
+    expect(parsed.mode).toBe("trash");
   });
 
   it("reports not_found keys in partial deletion", async () => {
@@ -2260,7 +2287,7 @@ describe("delete_items", () => {
 
     const result = await handleToolCall(
       "delete_items",
-      { item_keys: ["KEYRZZZZ"] },
+      { item_keys: ["KEYRZZZZ"], permanent: true },
       mock,
       TEST_USER_ID,
       "items"
@@ -2273,7 +2300,7 @@ describe("delete_items", () => {
     expect(deleteStub).toHaveBeenCalledTimes(2);
   });
 
-  it("passes correct keys to delete API call", async () => {
+  it("passes correct keys to delete API call (permanent)", async () => {
     const itemsData = [
       { key: "KEYRZZZZ", version: 10, title: "Item 1" },
       { key: "KEY2ZZZZ", version: 8, title: "Item 2" },
@@ -2281,7 +2308,7 @@ describe("delete_items", () => {
     const { mock, deleteStub } = createZoteroApiMock(itemsData);
     await handleToolCall(
       "delete_items",
-      { item_keys: ["KEYRZZZZ", "KEY2ZZZZ"] },
+      { item_keys: ["KEYRZZZZ", "KEY2ZZZZ"], permanent: true },
       mock,
       TEST_USER_ID,
       "items"

@@ -122,6 +122,26 @@ async function api(path) {
   }
 }
 
+/**
+ * Whether a claims.deleted entry is satisfied by the API response `r` for that key.
+ * - collections: only HTTP 404 counts (the Zotero Web API has no trash for collections).
+ * - items with `permanent: true` in the claim: only 404 counts — an item left in the trash (200 +
+ *   deleted:1) is a FAILURE, so a regression where permanent only trashes is caught (F8 permanent probe).
+ * - items otherwise: 404 (permanently gone) or 200 with deleted:1 (moved to the trash) are both valid.
+ */
+export function deletedClaimOutcome(dItem, r) {
+  const kind = dItem.kind === "collection" ? "collections" : "items";
+  if (r.status === 404) return { ok: true, message: `deleted ${dItem.key}` };
+  const trashed = kind === "items" && r.status === 200 && r.data?.data?.deleted === 1;
+  if (trashed && !dItem.permanent) return { ok: true, message: `trashed ${dItem.key}` };
+  const why = trashed
+    ? " but only in the trash (permanent deletion was claimed)"
+    : r.status === 200
+      ? " and not in the trash"
+      : "";
+  return { ok: false, message: `${dItem.kind ?? "item"} ${dItem.key} claimed deleted but HTTP ${r.status}${why}` };
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Transcript
 // ---------------------------------------------------------------------------------------------------
@@ -192,8 +212,16 @@ export function auditGaps(messages, entries, denials) {
   const known = new Set([...entries, ...denials].map((e) => e?.tool_use_id).filter(Boolean));
   return toolCalls(messages)
     .map((c, i) => ({ c, i }))
-    .filter(({ c }) => c.tool && !known.has(c.id))
+    // A call the client could not parse ({"__unparsedToolInput": …}, e.g. the model wrote `"permanent": yes`
+    // instead of `true`) never reaches the tool, so neither the PostToolUse audit hook nor a deny-hook can
+    // record it. It is the SDK rejecting malformed JSON, not a Zotero call that ran without an audit entry.
+    .filter(({ c }) => c.tool && !known.has(c.id) && !isUnparsedInput(c))
     .map(({ c, i }) => `call #${i + 1} ${c.tool} of the transcript has no audit entry (hooks not active, or no result)`);
+}
+
+/** A tool call whose arguments the client could not parse as JSON (SDK marks it with __unparsedToolInput). */
+export function isUnparsedInput(call) {
+  return !!call?.input && typeof call.input === "object" && "__unparsedToolInput" in call.input;
 }
 
 /**
@@ -1162,8 +1190,9 @@ async function main() {
     }
     const kind = dItem.kind === "collection" ? "collections" : "items";
     const r = await api(`${dItem.library_path}/${kind}/${dItem.key}`);
-    if (r.status !== 404) fail(`${dItem.kind ?? "item"} ${dItem.key} claimed deleted but HTTP ${r.status}`);
-    else ok(`deleted ${dItem.key}`);
+    const outcome = deletedClaimOutcome(dItem, r);
+    if (outcome.ok) ok(outcome.message);
+    else fail(outcome.message);
   }
 
   // Produced documents: valid structure/CSL/rendering, URIs pointing at created items

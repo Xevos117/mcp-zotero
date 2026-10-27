@@ -276,26 +276,43 @@ test normali. Non restano `it.fails` nella suite.
 | DC-10/11/12 | 403/429/500/503 su GET o DELETE, rete | errore strutturato con `http_status` e `hint` |
 | DC-13 | chiave mancante/vuota/numero | isError |
 
+`delete_collection` è sempre **permanente**: la Web API di Zotero non ha un cestino per le collezioni (solo DELETE). Verificato il 2026-10-27 sulla doc ufficiale `zotero.org/support/dev/web_api/v3/write_requests` (sezione "Deleting a collection": solo `DELETE …/collections/<key>`, nessuna proprietà `deleted`).
+
 ## delete_items (`delete-items.test.ts`)
+Per default `delete_items` **sposta nel cestino di Zotero** (scrittura multi-oggetto `{key, version, deleted:1}`, semantica PATCH del POST); l'output aggiunge `mode: "trash" | "permanent"` mantenendo `deleted_keys`/`deleted_count`. Con `permanent: true` torna il vecchio comportamento (DELETE definitivo). Lo stesso `UNSAFE_OPERATIONS` ('items'/'all') abilita entrambi i percorsi.
+
 | ID | Scenario | Atteso |
 |---|---|---|
 | DI-01 | **guard** none | errore strutturato "not allowed… UNSAFE_OPERATIONS is 'none'. Nothing was deleted."; `hint`: non aggirare il blocco, 'items' o 'all' e cosa abilitano, dove impostarli ("Deletions allowed" nell'estensione di Claude Desktop, `UNSAFE_OPERATIONS` in claude_desktop_config.json / .mcp.json), riavvio; nessuna chiamata HTTP |
-| DI-02 | items / all | consentito |
-| DI-03 | 2 chiavi | GET itemKey → DELETE `?itemKey=A,B` con la versione della libreria |
-| DI-04 | cancellazione parziale | not_found; cancellate solo le chiavi trovate |
-| DI-05 | nessuna trovata | errore strutturato con `hint` "Nothing was deleted…", nessuna DELETE |
-| DI-06 | 412 ripetuto | una nuova GET e un solo nuovo tentativo (2 GET, 2 DELETE), poi errore strutturato version_conflict con `http_status` 412 e `hint` "Retry the same call once.", senza `deleted_count` |
-| DI-06b | 412 poi successo | 2 GET, 2 DELETE, la seconda con `If-Unmodified-Since-Version` della nuova GET; tutte cancellate |
-| DI-06c | 412, nel frattempo una chiave sparita | la nuova GET chiede solo le chiavi da cancellare; seconda DELETE sulle rimaste, la sparita in `not_found` |
-| DI-06d | 412, nel frattempo sparite tutte | errore strutturato not_found, nessuna seconda DELETE |
-| DI-07 | versione assente | errore strutturato con `hint` di riprovare |
-| DI-08 | 20 chiavi | una GET + una DELETE |
-| DI-09 | 50 chiavi (massimo per chiamata) | tutte cancellate, GET di verifica con limit=50 |
+| DI-01b | none, sia cestino sia permanente | entrambi rifiutati, nessuna chiamata HTTP |
+| DI-02 | items / all (default = cestino) | consentito; `mode: "trash"` |
+| DI-18 | **cestino** (default), 2 chiavi | GET itemKey → POST `[{key,version,deleted:1}, …]` con `If-Unmodified-Since-Version`, nessuna DELETE; `mode: "trash"` |
+| DI-19 | cestino, cancellazione parziale | not_found; solo le chiavi trovate spostate nel cestino |
+| DI-20 | cestino, 412 sul POST poi successo | nuova GET, secondo POST con la nuova versione |
+| DI-21 | cestino, 412 ripetuto sul POST | errore version_conflict, al massimo 2 POST |
+| DI-22 | cestino, POST fallito su tutte le voci | errore "Could not move items to the trash", nessuna cancellazione |
+| DI-22b | cestino, fallimento **parziale** del POST (indice 1 fallito, 0 riuscito) | `{deleted_keys:[k0], deleted_count:1, mode:"trash", failed:[k1]}` |
+| DI-23 | cestino, voce **già nel cestino** (deleted:1), senza permanent | `already_in_trash:[k]`, `deleted_count:0`, `hint` su permanent:true, nessun POST |
+| DI-24 | cestino, mista viva + già nel cestino | cestina solo la viva, l'altra in `already_in_trash` |
+| DI-25 | **permanent** su una voce già nel cestino | DELETE, `mode:"permanent"` (il permanente raggiunge anche il cestino) |
+| DI-26 | chiave duplicata, cestino | deduplicata: un solo oggetto nel POST, non appare in `failed` |
+| DI-27 | chiave duplicata, permanent | deduplicata: una sola DELETE |
+| DI-03 | **permanent**, 2 chiavi | GET itemKey → DELETE `?itemKey=A,B` con la versione della libreria; `mode: "permanent"`, nessun POST |
+| DI-04 | permanent, cancellazione parziale | not_found; cancellate solo le chiavi trovate |
+| DI-05 | permanent, nessuna trovata | errore strutturato con `hint` "Nothing was deleted…", nessuna DELETE |
+| DI-06 | permanent, 412 ripetuto | una nuova GET e un solo nuovo tentativo (2 GET, 2 DELETE), poi errore strutturato version_conflict con `http_status` 412 e `hint` "Retry the same call once.", senza `deleted_count` |
+| DI-06b | permanent, 412 poi successo | 2 GET, 2 DELETE, la seconda con `If-Unmodified-Since-Version` della nuova GET; tutte cancellate |
+| DI-06c | permanent, 412, nel frattempo una chiave sparita | la nuova GET chiede solo le chiavi da cancellare; seconda DELETE sulle rimaste, la sparita in `not_found` |
+| DI-06d | permanent, 412, nel frattempo sparite tutte | errore strutturato not_found, nessuna seconda DELETE |
+| DI-07 | permanent, versione assente | errore strutturato con `hint` di riprovare |
+| DI-09 | permanent, 50 chiavi (massimo per chiamata) | tutte cancellate, GET di verifica con limit=50 |
 | DI-10/11/12 | 4xx/5xx su GET o DELETE, rete | errore strutturato con `http_status` e `hint` |
-| DI-13/14 | mancante, `[]`, stringa, 51 chiavi / esattamente 50 | isError / accettato |
+| DI-13 | mancante, `[]`, stringa, 51 chiavi, `permanent` non booleano | isError di validazione, nessuna chiamata |
 | DI-15 | validazione prima del guard | isError |
 | DI-16 | chiave malformata | errore di validazione, **nessuna richiesta** (prima della 2.0.1 l'API ignorava il filtro e delete_items cancellava voci estranee) |
-| DI-17 | API che restituisce più voci di quelle chieste (filtro ignorato) | cancellata solo la chiave richiesta |
+| DI-17 | cestino, API che restituisce più voci di quelle chieste (filtro ignorato) | spostata nel cestino solo la chiave richiesta |
+
+Nota: le chiavi `item_keys` sono deduplicate (ordine di prima comparsa) prima di qualsiasi scrittura, così una chiave ripetuta non viene scritta due volte nel POST/DELETE (prima finiva sia in `deleted_keys` sia in `failed`). La GET usa sempre `includeTrashed=1`. Il permanente raggiunge così anche le voci già nel cestino; il cestino riconosce le voci già cestinate (`already_in_trash`, non riscritte). Cestinare un genitore NON cestina i suoi figli (note/allegati), coerente con il client Zotero (`Zotero.Items.trash` marca solo le voci selezionate, verificato sul sorgente 2026-10-27); il permanente invece elimina anche i figli (cascata lato server).
 
 ## import_pdf_to_zotero (`import-pdf-to-zotero.test.ts`)
 | ID | Scenario | Atteso |
@@ -636,7 +653,7 @@ poi gli stessi scenari utente e gruppo di `npm run smoke`; inoltre: nessuna vari
 |---|---|---|
 | E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni (UNPAYWALL_EMAIL, regola UNSAFE_OPERATIONS, hint negli errori), 18 tool con schema object |
 | E2E-03 | argomenti non validi su ogni tool con campi obbligatori | isError con il campo, nessuna chiamata HTTP |
-| E2E-04..18 | una tools/call per ciascuno dei tool di lettura/scrittura, create_cited_document compreso (deletes con UNSAFE_OPERATIONS=all) | risultato atteso, richieste corrette alla FakeNet |
+| E2E-04..18 | una tools/call per ciascuno dei tool di lettura/scrittura, create_cited_document compreso (deletes con UNSAFE_OPERATIONS=all); E2E-17 delete_items nel cestino di default (POST `deleted:1`, `mode: "trash"`) poi `permanent: true` (DELETE, `mode: "permanent"`) | risultato atteso, richieste corrette alla FakeNet |
 | E2E-24/25 | update_item: version corretta → PATCH con If-Unmodified-Since-Version; version errata → version_conflict senza PATCH | nuova versione / `code: version_conflict` |
 | E2E-26 | create_note | POST `itemType: note` sotto il parent, HTML `<p>…</p>` |
 | E2E-27/28 | prompts/list e prompts/get | capability prompts, i 4 prompt; testo reso con gli argomenti (nessun `${arguments.}`) |
@@ -652,7 +669,7 @@ Server avviato con `ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID=777` (e `ZOTE
 | E2E-G01 | get_user_id | `library_type: "group"`, `library_path: "groups/777"`, `user_id` da `ZOTERO_USER_ID` |
 | E2E-G02/03 | lettura: search, collezioni, item, dettagli, fulltext | GET su `/groups/777/...` |
 | E2E-G04/05/06 | scrittura: create_collection, add_items, linked URL, import PDF, add_items_by_doi con PDF OA | POST item, auth/registrazione file e PUT fulltext su `/groups/777/...` |
-| E2E-G07 | delete_items, delete_collection | GET di verifica e DELETE su `/groups/777/...` |
+| E2E-G07 | delete_items (cestino), delete_collection | GET di verifica + POST `deleted:1` per il cestino (`mode: "trash"`) e DELETE della collezione su `/groups/777/...` |
 | E2E-G08 | inject_citations | URI `http://zotero.org/groups/777/items/{key}`, nessun `/users/` |
 | E2E-G09 | find_and_attach_pdfs dry_run | item e children dal gruppo |
 | E2E-G10 | tutte le richieste precedenti | solo path `/groups/777/`, nessuna richiesta senza route |
@@ -806,7 +823,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 | `create-note` | LIVE-CN-01 nota figlia in testo semplice → `<p>`/`<br/>`, sotto il genitore col tag della run (verifica via rawChildren); 02 override library_id; 03 genitore inesistente, nota vuota, genitore allegato |
 | `import-pdf-to-zotero` | LIVE-IP-01 PDF figlio: size, md5, fulltext, verificati via API; 02 standalone con filename/titolo/collezioni; 03 nome da Content-Disposition; 04 HTML come PDF → not_pdf, nessun allegato; 05 text/html (LIVE-STALE-5); 06 404; 07 genitore inesistente, URL non valido; 08 override |
 | `find-and-attach-pdfs` (soft per 04/05) | LIVE-FA-01 entrambi/nessuno; 02 chiave sconosciuta e senza DOI; 03 skipped e skip_if_attachment_exists false; 04 collezione dry_run → processed = voci regolari create (LIVE-STALE-2); 05 collezione reale (LIVE-STALE-4); 06 override |
-| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci cancellate definitivamente (non nel cestino); 03 solo sconosciute (LIVE-STALE-1); 04 mista; 05 51/0 chiavi; 06 genitore → anche il figlio (ogni asserzione riporta il testo del risultato); 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione |
+| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci con `permanent: true` cancellate definitivamente (non nel cestino); 02b default → nel cestino (`mode: "trash"`, `deleted:1`, presente in `items/trash`), poi `permanent: true` sulla stessa chiave → via anche dal cestino; 03 solo sconosciute (LIVE-STALE-1); 04 mista (permanent); 05 51/0 chiavi; 06 genitore → anche il figlio (permanent; ogni asserzione riporta il testo del risultato); 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione; 09 cestino di un genitore → genitore nel cestino, figlio NON cestinato (come il client), poi permanent → figlio sparisce; 10 voce già nel cestino + default → `already_in_trash`, `deleted_count` 0, resta, poi permanent la rimuove |
 | `delete-collection` | LIVE-DC-01 UNSAFE none/items rifiutato; 02-03 (solo fuori safe mode) cancellata con la voce che resta, chiave sconosciuta/vuota |
 | `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente (isError che la nomina, nessun output); 03 override |
 | `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations |
@@ -999,6 +1016,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-04b | delete_items su voce preesistente, allegato a voce preesistente, find_and_attach_pdfs reale su collezione estranea, chiave malformata a delete_items, scrittura nel gruppo in safe mode, delete_collection in safe mode | un problema per caso |
 | VC-04c | fuori safe mode, gruppo diverso da quello di test / uguale | problema / nessuno |
 | VC-04d | scrittura negata dall'hook (guard probe `update_item` su chiave non creata) / stessa chiamata eseguita | nessun problema (non eseguita) / problema |
+| VC-DEL-01..06 | `deletedClaimOutcome` (funzione pura): item 404 → ok; item nel cestino (200+`deleted:1`) senza `permanent` → ok; con `permanent:true` dichiarato → FALLISCE (impone 404); item presente non cestinato → fallisce; `permanent`+404 → ok; collezione solo 404 (200+`deleted:1` non basta, niente cestino per le collezioni) |
 | VC-05a | F9 e F10 completi con gli esiti attesi | nessun problema |
 | VC-05b | inject.js accetta la chiave malformata, nessun avviso per la chiave sconosciuta, documento senza zcite non provato, 51 chiavi accettate, 50 chiavi rifiutate, limit 101 con più di 100 voci, chiamata F10 mancante | un problema per caso |
 | VC-06a/b | esplorativi ok (ordine delle chiavi indifferente, comando Bash senza description), assenti, `unclear` | nessun problema; `unclear` = avviso |
@@ -1027,6 +1045,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-10b | chiamata Zotero della trascrizione assente da audit e negazioni / negata | problema / nessuno |
 | VC-10c | sonde F0 negate; altra negazione; nessuna negazione | nessun problema; avviso; due problemi |
 | VC-10d | numerazione dell'audit: assente, 1..3 in disordine, ripetuta, con un buco, voce senza numero | nessun problema / un problema per caso |
+| VC-10e | chiamata con input JSON non parsabile (`__unparsedToolInput`, es. `"permanent": yes`) assente da audit | NON è un buco (la chiamata non raggiunge il tool); una vera chiamata senza audit resta un problema |
 | VC-06d | esplorativi citati per `call_no` (tool con o senza prefisso, Bash, esito), argomento non ASCII mai ridigitato | nessun problema |
 | VC-06e | `call_no` inesistente o non intero, strumento diverso, Bash dichiarato come tool Zotero, `is_error` mancante o diverso, argomenti al posto di `call_no` con audit numerato | un problema per caso |
 | VC-06i | guard probe: negazione dell'hook come prova — scenario senza chiamate / chiamata senza `call_no` corrispondente a una negazione / senza negazioni / una F0 non vale | sostenuto / sostenuto / "no calls" / "no calls" |

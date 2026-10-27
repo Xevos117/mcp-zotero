@@ -536,6 +536,15 @@ describe("DeleteItemsSchema", () => {
     expect(result.item_keys).toHaveLength(1);
   });
 
+  it("defaults permanent to false (move to trash) and accepts an explicit boolean", () => {
+    expect(DeleteItemsSchema.parse({ item_keys: ["KEYRZZZZ"] }).permanent).toBe(false);
+    expect(DeleteItemsSchema.parse({ item_keys: ["KEYRZZZZ"], permanent: true }).permanent).toBe(true);
+  });
+
+  it("rejects a non-boolean permanent", () => {
+    expect(() => DeleteItemsSchema.parse({ item_keys: ["KEYRZZZZ"], permanent: "yes" })).toThrow();
+  });
+
   it("rejects missing item_keys", () => {
     expect(() => DeleteItemsSchema.parse({})).toThrow();
   });

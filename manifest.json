@@ -102,11 +102,11 @@
     },
     {
       "name": "delete_collection",
-      "description": "Delete a collection, keeping its items (needs deletions set to 'all')."
+      "description": "Permanently delete a collection (no trash), keeping its items (needs deletions set to 'all')."
     },
     {
       "name": "delete_items",
-      "description": "Permanently delete items (needs deletions set to 'items' or 'all')."
+      "description": "Move items to the Zotero trash; permanent: true deletes for good (needs deletions 'items' or 'all')."
     }
   ],
   "tools_generated": false,
@@ -213,7 +213,7 @@
     "unsafe_operations": {
       "type": "string",
       "title": "Deletions allowed",
-      "description": "'none' (default): deletions disabled. 'items': enables delete_items (permanent: deleted items do not go to the Zotero trash). 'all': enables delete_items and delete_collection (the items of a deleted collection stay in the library).",
+      "description": "'none' (default): deletions disabled. 'items': enables delete_items (items go to the Zotero trash by default, where you can restore them; permanent deletion only when the caller sets permanent: true). 'all': enables delete_items and delete_collection (a deleted collection is permanent — collections have no trash — and its items stay in the library).",
       "default": "none",
       "required": false
     }

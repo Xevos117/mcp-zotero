@@ -24,7 +24,7 @@ const EXPECTED: Record<string, { required: string[]; properties: string[] }> = {
   },
   create_collection: { required: ["name"], properties: ["name", "parent_collection"] },
   delete_collection: { required: ["collection_key"], properties: ["collection_key"] },
-  delete_items: { required: ["item_keys"], properties: ["item_keys"] },
+  delete_items: { required: ["item_keys"], properties: ["item_keys", "permanent"] },
   import_pdf_to_zotero: {
     required: ["url"],
     properties: ["url", "filename", "title", "content_type", "parent_item", "collections", "tags"],
@@ -78,6 +78,7 @@ describe("tools/list (MCP)", () => {
     expect(props("get_item_fulltext").max_characters.default).toBe(50000);
     expect(props("find_and_attach_pdfs").dry_run.default).toBe(false);
     expect(props("import_pdf_to_zotero").content_type.default).toBe("application/pdf");
+    expect(props("delete_items").permanent.default).toBe(false);
   });
 
   it("TL-08 library_type enum user/group e library_id numerico, mai obbligatori", () => {
