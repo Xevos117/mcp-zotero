@@ -187,9 +187,10 @@ async function verifiedRunItems(z: ZoteroWeb, runId: string, runTag: string, run
     }
   };
   await fetchData([...candidates]);
-  // figli (allegati creati dai tool) dei candidati
+  // figli (allegati/note creati dai tool) dei candidati; includeTrashed=1 così un figlio nel cestino
+  // (o il figlio di un genitore cestinato) non sfugge alla pulizia
   for (const key of [...data.keys()]) {
-    const r = await z.get<any[]>(`items/${key}/children?limit=100`);
+    const r = await z.get<any[]>(`items/${key}/children?limit=100&includeTrashed=1`);
     if (r.status === 200) for (const child of r.data) data.set(child.key, child.data);
   }
   const verified = new Set<string>();

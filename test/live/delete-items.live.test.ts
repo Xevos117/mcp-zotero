@@ -99,4 +99,37 @@ describe.skipIf(!live.enabled)("delete_items (live)", () => {
     const r = await items.call("delete_items", { item_keys: [own[31]], library_type: "user" });
     expect(r.json.deleted_count).toBe(1);
   });
+
+  const inTrash = async (key: string) => ((await rawItem(key)) ?? {}).deleted === 1;
+
+  it("LIVE-DI-09 cestino di un genitore con figlio: genitore nel cestino, figlio NON cestinato (come il client Zotero)", async () => {
+    const [p] = await createItems([{ itemType: "journalArticle", title: title("DI trash parent") }]);
+    const [c] = await createItems([
+      { itemType: "attachment", parentItem: p, linkMode: "linked_url", title: title("DI trash child"), url: "https://example.org/mzt-di-trash" },
+    ]);
+    const r = await items.call("delete_items", { item_keys: [p] });
+    expect(r.isError, r.text).toBe(false);
+    expect(r.json).toMatchObject({ deleted_count: 1, mode: "trash" });
+    expect(await inTrash(p), "il genitore è nel cestino").toBe(true);
+    expect(await inTrash(c), "il figlio NON è nel cestino (resta, come nel client)").toBe(false);
+    // permanente sul genitore → anche il figlio sparisce (cascata server)
+    const perm = await items.call("delete_items", { item_keys: [p], permanent: true });
+    expect(perm.json).toMatchObject({ deleted_count: 1, mode: "permanent" });
+    expect(await rawItem(p)).toBeNull();
+    expect(await rawItem(c)).toBeNull();
+  });
+
+  it("LIVE-DI-10 voce già nel cestino + default → already_in_trash, deleted_count 0, resta nel cestino", async () => {
+    const [k] = await createItems([{ itemType: "book", title: title("DI already trash") }]);
+    expect((await items.call("delete_items", { item_keys: [k] })).json).toMatchObject({ deleted_count: 1, mode: "trash" });
+    expect(await inTrash(k)).toBe(true);
+    const again = await items.call("delete_items", { item_keys: [k] });
+    expect(again.isError, again.text).toBe(false);
+    expect(again.json).toMatchObject({ deleted_count: 0, mode: "trash", already_in_trash: [k] });
+    expect(again.json.hint).toMatch(/permanent: true/);
+    expect(await inTrash(k)).toBe(true);
+    // permanent:true la rimuove dal cestino
+    expect((await items.call("delete_items", { item_keys: [k], permanent: true })).json).toMatchObject({ deleted_count: 1, mode: "permanent" });
+    expect(await rawItem(k)).toBeNull();
+  });
 });

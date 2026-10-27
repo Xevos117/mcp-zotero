@@ -114,6 +114,42 @@ describe("delete_items (MCP)", () => {
       const out = await h.call("delete_items", { item_keys: ["AAAARRRR"] });
       expectToolErrorMsg(out, "Could not move items to the trash");
     });
+
+    it("DI-22b fallimento parziale del POST: l'indice 1 fallisce, lo 0 riesce → deleted_keys=[k0], failed=[k1]", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR"), article("BBBB2222")], 88));
+      h.net.on("POST", ITEMS, zWrite({ fail: { 1: { code: 412, message: "conflict" } } }));
+      const out = await h.call("delete_items", { item_keys: ["AAAARRRR", "BBBB2222"] });
+      expect(out.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1, mode: "trash", failed: ["BBBB2222"] });
+    });
+
+    it("DI-23 voce già nel cestino (deleted:1), senza permanent → already_in_trash, nessun POST", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR", { deleted: 1 })], 88));
+      const out = await h.call("delete_items", { item_keys: ["AAAARRRR"] });
+      expect(out.isError, out.text).toBe(false);
+      expect(out.json).toMatchObject({ deleted_keys: [], deleted_count: 0, mode: "trash", already_in_trash: ["AAAARRRR"] });
+      expect(out.json.hint).toMatch(/permanent: true to delete them for good/);
+      expect(h.net.requests("POST", ITEMS)).toHaveLength(0);
+    });
+
+    it("DI-24 mista: una viva e una già nel cestino → cestina solo la viva, l'altra in already_in_trash", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR"), article("BBBB2222", { deleted: 1 })], 88));
+      h.net.on("POST", ITEMS, zWrite());
+      const out = await h.call("delete_items", { item_keys: ["AAAARRRR", "BBBB2222"] });
+      expect(out.json).toMatchObject({ deleted_keys: ["AAAARRRR"], deleted_count: 1, mode: "trash", already_in_trash: ["BBBB2222"] });
+      expect(trashed(h)).toEqual([{ key: "AAAARRRR", version: 88, deleted: 1 }]);
+    });
+
+    it("DI-25 permanent raggiunge una voce già nel cestino → DELETE, mode permanent", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR", { deleted: 1 })], 88));
+      h.net.on("DELETE", ITEMS, zDeleted());
+      const out = await h.call("delete_items", { item_keys: ["AAAARRRR"], permanent: true });
+      expect(out.json).toMatchObject({ deleted_keys: ["AAAARRRR"], deleted_count: 1, mode: "permanent" });
+      expect(deletedKeys(h)).toEqual(["AAAARRRR"]);
+    });
   });
 
   // Comportamento reale della Web API (verificato il 2026-10-11): se nessuna chiave di itemKey ha la forma

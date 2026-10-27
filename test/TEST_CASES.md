@@ -291,6 +291,10 @@ Per default `delete_items` **sposta nel cestino di Zotero** (scrittura multi-ogg
 | DI-20 | cestino, 412 sul POST poi successo | nuova GET, secondo POST con la nuova versione |
 | DI-21 | cestino, 412 ripetuto sul POST | errore version_conflict, al massimo 2 POST |
 | DI-22 | cestino, POST fallito su tutte le voci | errore "Could not move items to the trash", nessuna cancellazione |
+| DI-22b | cestino, fallimento **parziale** del POST (indice 1 fallito, 0 riuscito) | `{deleted_keys:[k0], deleted_count:1, mode:"trash", failed:[k1]}` |
+| DI-23 | cestino, voce **già nel cestino** (deleted:1), senza permanent | `already_in_trash:[k]`, `deleted_count:0`, `hint` su permanent:true, nessun POST |
+| DI-24 | cestino, mista viva + già nel cestino | cestina solo la viva, l'altra in `already_in_trash` |
+| DI-25 | **permanent** su una voce già nel cestino | DELETE, `mode:"permanent"` (il permanente raggiunge anche il cestino) |
 | DI-03 | **permanent**, 2 chiavi | GET itemKey → DELETE `?itemKey=A,B` con la versione della libreria; `mode: "permanent"`, nessun POST |
 | DI-04 | permanent, cancellazione parziale | not_found; cancellate solo le chiavi trovate |
 | DI-05 | permanent, nessuna trovata | errore strutturato con `hint` "Nothing was deleted…", nessuna DELETE |
@@ -306,7 +310,7 @@ Per default `delete_items` **sposta nel cestino di Zotero** (scrittura multi-ogg
 | DI-16 | chiave malformata | errore di validazione, **nessuna richiesta** (prima della 2.0.1 l'API ignorava il filtro e delete_items cancellava voci estranee) |
 | DI-17 | cestino, API che restituisce più voci di quelle chieste (filtro ignorato) | spostata nel cestino solo la chiave richiesta |
 
-Nota: il percorso **permanent** interroga la GET con `includeTrashed=1`, così può eliminare definitivamente anche voci già nel cestino.
+Nota: la GET usa sempre `includeTrashed=1`. Il permanente raggiunge così anche le voci già nel cestino; il cestino riconosce le voci già cestinate (`already_in_trash`, non riscritte). Cestinare un genitore NON cestina i suoi figli (note/allegati), coerente con il client Zotero (`Zotero.Items.trash` marca solo le voci selezionate, verificato sul sorgente 2026-10-27); il permanente invece elimina anche i figli (cascata lato server).
 
 ## import_pdf_to_zotero (`import-pdf-to-zotero.test.ts`)
 | ID | Scenario | Atteso |
@@ -817,7 +821,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 | `create-note` | LIVE-CN-01 nota figlia in testo semplice → `<p>`/`<br/>`, sotto il genitore col tag della run (verifica via rawChildren); 02 override library_id; 03 genitore inesistente, nota vuota, genitore allegato |
 | `import-pdf-to-zotero` | LIVE-IP-01 PDF figlio: size, md5, fulltext, verificati via API; 02 standalone con filename/titolo/collezioni; 03 nome da Content-Disposition; 04 HTML come PDF → not_pdf, nessun allegato; 05 text/html (LIVE-STALE-5); 06 404; 07 genitore inesistente, URL non valido; 08 override |
 | `find-and-attach-pdfs` (soft per 04/05) | LIVE-FA-01 entrambi/nessuno; 02 chiave sconosciuta e senza DOI; 03 skipped e skip_if_attachment_exists false; 04 collezione dry_run → processed = voci regolari create (LIVE-STALE-2); 05 collezione reale (LIVE-STALE-4); 06 override |
-| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci con `permanent: true` cancellate definitivamente (non nel cestino); 02b default → nel cestino (`mode: "trash"`, `deleted:1`, presente in `items/trash`), poi `permanent: true` sulla stessa chiave → via anche dal cestino; 03 solo sconosciute (LIVE-STALE-1); 04 mista (permanent); 05 51/0 chiavi; 06 genitore → anche il figlio (permanent; ogni asserzione riporta il testo del risultato); 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione |
+| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci con `permanent: true` cancellate definitivamente (non nel cestino); 02b default → nel cestino (`mode: "trash"`, `deleted:1`, presente in `items/trash`), poi `permanent: true` sulla stessa chiave → via anche dal cestino; 03 solo sconosciute (LIVE-STALE-1); 04 mista (permanent); 05 51/0 chiavi; 06 genitore → anche il figlio (permanent; ogni asserzione riporta il testo del risultato); 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione; 09 cestino di un genitore → genitore nel cestino, figlio NON cestinato (come il client), poi permanent → figlio sparisce; 10 voce già nel cestino + default → `already_in_trash`, `deleted_count` 0, resta, poi permanent la rimuove |
 | `delete-collection` | LIVE-DC-01 UNSAFE none/items rifiutato; 02-03 (solo fuori safe mode) cancellata con la voce che resta, chiave sconosciuta/vuota |
 | `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente (isError che la nomina, nessun output); 03 override |
 | `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations |
@@ -1010,6 +1014,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-04b | delete_items su voce preesistente, allegato a voce preesistente, find_and_attach_pdfs reale su collezione estranea, chiave malformata a delete_items, scrittura nel gruppo in safe mode, delete_collection in safe mode | un problema per caso |
 | VC-04c | fuori safe mode, gruppo diverso da quello di test / uguale | problema / nessuno |
 | VC-04d | scrittura negata dall'hook (guard probe `update_item` su chiave non creata) / stessa chiamata eseguita | nessun problema (non eseguita) / problema |
+| VC-DEL-01..06 | `deletedClaimOutcome` (funzione pura): item 404 → ok; item nel cestino (200+`deleted:1`) senza `permanent` → ok; con `permanent:true` dichiarato → FALLISCE (impone 404); item presente non cestinato → fallisce; `permanent`+404 → ok; collezione solo 404 (200+`deleted:1` non basta, niente cestino per le collezioni) |
 | VC-05a | F9 e F10 completi con gli esiti attesi | nessun problema |
 | VC-05b | inject.js accetta la chiave malformata, nessun avviso per la chiave sconosciuta, documento senza zcite non provato, 51 chiavi accettate, 50 chiavi rifiutate, limit 101 con più di 100 voci, chiamata F10 mancante | un problema per caso |
 | VC-06a/b | esplorativi ok (ordine delle chiavi indifferente, comando Bash senza description), assenti, `unclear` | nessun problema; `unclear` = avviso |

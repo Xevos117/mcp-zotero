@@ -26,6 +26,7 @@ import {
   metadataFindings,
   f1SkipEvidence,
   targetedFindings,
+  deletedClaimOutcome,
   // @ts-expect-error plain .mjs script without type declarations
 } from "../../test/live/verify-claims.mjs";
 import { startHarness } from "../helpers/mcp-harness.js";
@@ -967,5 +968,35 @@ describe("verify-claims: claims schema 2 giudicati come prima (VC-14)", () => {
     ]);
     expect(BEFORE.problems.filter((p) => !v.problems.includes(p))).toEqual(["F10: search_library with limit 1: 2 results (expected at most 1)"]);
     expect(v.warnings).toEqual(['deletion outside F8: delete_items call_no 2 deleted ITEM2222, not created as "… to delete"']);
+  });
+});
+
+describe("deletedClaimOutcome (VC-DEL): 404 vs cestino, e il flag permanent", () => {
+  const item = (o: Record<string, unknown> = {}) => ({ kind: "item", key: "ITEM2222", library_path: "users/1", ...o });
+  const trashedResp = { status: 200, data: { data: { deleted: 1 } } };
+
+  it("VC-DEL-01 item 404 → ok (eliminato)", () => {
+    expect(deletedClaimOutcome(item(), { status: 404 }).ok).toBe(true);
+  });
+  it("VC-DEL-02 item nel cestino (200 + deleted:1), senza permanent → ok", () => {
+    const o = deletedClaimOutcome(item(), trashedResp);
+    expect(o.ok).toBe(true);
+    expect(o.message).toMatch(/trashed/);
+  });
+  it("VC-DEL-03 item nel cestino ma permanent:true dichiarato → FALLISCE", () => {
+    const o = deletedClaimOutcome(item({ permanent: true }), trashedResp);
+    expect(o.ok).toBe(false);
+    expect(o.message).toMatch(/permanent deletion was claimed/);
+  });
+  it("VC-DEL-04 item presente e non nel cestino (200 senza deleted) → fallisce", () => {
+    expect(deletedClaimOutcome(item(), { status: 200, data: { data: {} } }).ok).toBe(false);
+  });
+  it("VC-DEL-05 permanent:true + 404 → ok", () => {
+    expect(deletedClaimOutcome(item({ permanent: true }), { status: 404 }).ok).toBe(true);
+  });
+  it("VC-DEL-06 collezione: solo 404; 200 + deleted:1 non basta (niente cestino per le collezioni)", () => {
+    const coll = { kind: "collection", key: "CCCC2222", library_path: "users/1" };
+    expect(deletedClaimOutcome(coll, { status: 404 }).ok).toBe(true);
+    expect(deletedClaimOutcome(coll, trashedResp).ok).toBe(false);
   });
 });

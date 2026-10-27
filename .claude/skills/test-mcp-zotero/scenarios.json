@@ -59,7 +59,7 @@
     {
       "id": "T-delete",
       "files": ["src/tools/delete-items.ts", "src/tools/delete-collection.ts", "src/utils/unsafe-operations.ts"],
-      "scenario": "add_items two books <prefix> T-delete to delete. First delete_items with book1 key + ZZZZZZZZ and no permanent (default = trash): deleted_count 1, mode trash, ZZZZZZZZ in not_found, book1 moved to the Zotero trash (still present with deleted:1). Then delete_items with book2 key and permanent: true: deleted_count 1, mode permanent, book2 gone (404). If unsafe_operations is all and not safe mode: create_collection <prefix> T-delete to delete and delete_collection on it (permanent, collections have no trash). Claim all under deleted"
+      "scenario": "add_items two books <prefix> T-delete to delete. First delete_items with book1 key + ZZZZZZZZ and no permanent (default = trash): deleted_count 1, mode trash, ZZZZZZZZ in not_found, book1 moved to the Zotero trash (still present with deleted:1). Then delete_items with book2 key and permanent: true: deleted_count 1, mode permanent, book2 gone (404). If unsafe_operations is all and not safe mode: create_collection <prefix> T-delete to delete and delete_collection on it (permanent, collections have no trash). Claim all under deleted, and mark the permanently deleted ones (book2, the collection) with \"permanent\": true so the verifier requires a 404; book1 (trash) stays a plain entry"
     },
     {
       "id": "T-inject",

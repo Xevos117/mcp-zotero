@@ -122,6 +122,26 @@ async function api(path) {
   }
 }
 
+/**
+ * Whether a claims.deleted entry is satisfied by the API response `r` for that key.
+ * - collections: only HTTP 404 counts (the Zotero Web API has no trash for collections).
+ * - items with `permanent: true` in the claim: only 404 counts — an item left in the trash (200 +
+ *   deleted:1) is a FAILURE, so a regression where permanent only trashes is caught (F8 permanent probe).
+ * - items otherwise: 404 (permanently gone) or 200 with deleted:1 (moved to the trash) are both valid.
+ */
+export function deletedClaimOutcome(dItem, r) {
+  const kind = dItem.kind === "collection" ? "collections" : "items";
+  if (r.status === 404) return { ok: true, message: `deleted ${dItem.key}` };
+  const trashed = kind === "items" && r.status === 200 && r.data?.data?.deleted === 1;
+  if (trashed && !dItem.permanent) return { ok: true, message: `trashed ${dItem.key}` };
+  const why = trashed
+    ? " but only in the trash (permanent deletion was claimed)"
+    : r.status === 200
+      ? " and not in the trash"
+      : "";
+  return { ok: false, message: `${dItem.kind ?? "item"} ${dItem.key} claimed deleted but HTTP ${r.status}${why}` };
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Transcript
 // ---------------------------------------------------------------------------------------------------
@@ -1162,12 +1182,9 @@ async function main() {
     }
     const kind = dItem.kind === "collection" ? "collections" : "items";
     const r = await api(`${dItem.library_path}/${kind}/${dItem.key}`);
-    // Permanent delete → gone (404). delete_items moves items to the trash by default: the item is still
-    // retrievable by key but carries deleted:1, which is a legitimate non-permanent deletion. Collections
-    // have no trash (Zotero Web API: DELETE only), so for them only 404 counts as deleted.
-    if (r.status === 404) ok(`deleted ${dItem.key}`);
-    else if (kind === "items" && r.status === 200 && r.data?.data?.deleted === 1) ok(`trashed ${dItem.key}`);
-    else fail(`${dItem.kind ?? "item"} ${dItem.key} claimed deleted but HTTP ${r.status}${r.status === 200 ? " and not in the trash" : ""}`);
+    const outcome = deletedClaimOutcome(dItem, r);
+    if (outcome.ok) ok(outcome.message);
+    else fail(outcome.message);
   }
 
   // Produced documents: valid structure/CSL/rendering, URIs pointing at created items
