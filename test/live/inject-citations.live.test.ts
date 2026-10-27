@@ -73,9 +73,8 @@ describe.skipIf(!live.enabled)("inject_citations (live)", () => {
 
   // Copre il percorso "Citation Key:" in Extra. La ricerca q=<citekey>&qmode=everything può non trovare una
   // voce appena creata (indice full-text in ritardo) o non coprire Extra: in quel caso il resolver ricade su
-  // una scansione paginata di items/top, che legge i dati delle voci e la trova comunque. Il campo NATIVO
-  // citationKey non è scrivibile dalla Web API senza Better BibTeX, quindi non è esercitato dal vivo (match
-  // lato client coperto dagli unit).
+  // una scansione paginata di items/top, che legge i dati delle voci e la trova comunque. Il campo nativo
+  // citationKey è coperto da LIVE-IC-P06.
   it("LIVE-IC-P02 citekey Better BibTeX (riga 'Citation Key:' in Extra) risolto via ricerca API", async () => {
     const citekey = `mztck${live.runId}`.replace(/[^A-Za-z0-9]/g, "");
     const [key] = await createItems([
@@ -96,6 +95,31 @@ describe.skipIf(!live.enabled)("inject_citations (live)", () => {
     expect(xml).toContain(`/items/${key}`);
     expect(xml).not.toContain(citekey);
     const report = await expectValidDocx(await readFile(r.json.output_path), { libraryPath: live.libraryPath });
+    await expectUrisResolve(report);
+  });
+
+  // Campo NATIVO citationKey (schema Zotero 42, scrivibile dalla Web API): la ricerca q non lo indicizza,
+  // quindi il citekey si risolve solo con la scansione di items/top.
+  it("LIVE-IC-P06 citekey nel campo nativo citationKey → risolto nella chiave Zotero, URI risolvibile", async () => {
+    const citekey = `mztnative${live.runId}`.replace(/[^A-Za-z0-9]/g, "");
+    const [key] = await createItems([
+      {
+        itemType: "journalArticle",
+        title: title("pandoc native citekey"),
+        creators: [{ creatorType: "author", firstName: "Bruno", lastName: "Ferri" }],
+        date: "2023",
+        citationKey: citekey,
+      },
+    ]);
+    const input = await dir.file("live-pandoc-native.docx", await makeDocx(para(`Native [@${citekey}, p. 3] and inline @${citekey}.`)));
+    const r = await s.call("inject_citations", { file_path: input });
+    expect(r.isError, r.text).toBe(false);
+    expect(r.json).toMatchObject({ citations_found: 2, citations_injected: 2 });
+    const xml = await readDocumentXml(await readFile(r.json.output_path));
+    expect(xml).toContain(`/items/${key}`);
+    expect(xml).not.toContain(`@${citekey}`);
+    const report = await expectValidDocx(await readFile(r.json.output_path), { libraryPath: live.libraryPath });
+    expect(report.citations[0].json.citationItems[0]).toMatchObject({ locator: "p. 3" });
     await expectUrisResolve(report);
   });
 
