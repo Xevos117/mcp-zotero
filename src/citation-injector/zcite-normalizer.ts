@@ -4,6 +4,11 @@ import { XMLParser, XMLBuilder } from "fast-xml-parser";
 // (processEntities: false keeps &lt; etc. as literals)
 const ZCITE_PATTERN = /&lt;zcite\s+[\s\S]*?\/&gt;/;
 
+// A complete Pandoc bracketed citation `[... @key ...]` within a single text node (no tag `<` inside).
+// Used by the Pandoc branch of inject_citations to merge a marker Word split across runs. The zcite
+// path keeps ZCITE_PATTERN, so its behaviour (and the golden Word output) is unchanged.
+const PANDOC_PATTERN = /\[[^\]<]*@[^\]<]*\]/;
+
 interface FxpNode {
   [tagName: string]: unknown;
   ":@"?: Record<string, string>;
@@ -113,7 +118,8 @@ function collectConsecutiveRunGroups(children: FxpChildren): RunGroup[] {
  * or null if no split zcite found.
  */
 function findSplitZcite(
-  group: RunGroup
+  group: RunGroup,
+  pattern: RegExp
 ): { startOffset: number; endOffset: number } | null {
   const { texts } = group;
 
@@ -125,7 +131,7 @@ function findSplitZcite(
       // Only interested in splits (spanning 2+ runs)
       if (end <= start) continue;
 
-      const m = ZCITE_PATTERN.exec(concat);
+      const m = pattern.exec(concat);
       if (m) {
         // Verify the match actually spans runs: the zcite must start before
         // the last run's text and end at or after the last run's start.
@@ -203,7 +209,7 @@ function mergeRunsInPlace(
  * Scan a paragraph's children for split zcite tags and merge them.
  * Returns true if any modifications were made.
  */
-function normalizeParagraphRuns(children: FxpChildren): boolean {
+function normalizeParagraphRuns(children: FxpChildren, pattern: RegExp): boolean {
   let modified = false;
 
   // Use a while loop since indices shift after each merge
@@ -213,7 +219,7 @@ function normalizeParagraphRuns(children: FxpChildren): boolean {
     const groups = collectConsecutiveRunGroups(children);
 
     for (const group of groups) {
-      const split = findSplitZcite(group);
+      const split = findSplitZcite(group, pattern);
       if (split) {
         mergeRunsInPlace(children, group, split.startOffset, split.endOffset);
         modified = true;
@@ -230,13 +236,13 @@ function normalizeParagraphRuns(children: FxpChildren): boolean {
  * Recursively walk the parsed tree, finding w:p elements and normalizing
  * their runs.
  */
-function walkAndNormalize(nodes: FxpChildren): boolean {
+function walkAndNormalize(nodes: FxpChildren, pattern: RegExp): boolean {
   let modified = false;
 
   for (const node of nodes) {
     if ("w:p" in node) {
       const pChildren = node["w:p"] as FxpChildren;
-      if (normalizeParagraphRuns(pChildren)) {
+      if (normalizeParagraphRuns(pChildren, pattern)) {
         modified = true;
       }
     }
@@ -246,7 +252,7 @@ function walkAndNormalize(nodes: FxpChildren): boolean {
       if (key === ":@" || key === "#text") continue;
       const value = node[key];
       if (Array.isArray(value)) {
-        if (walkAndNormalize(value as FxpChildren)) {
+        if (walkAndNormalize(value as FxpChildren, pattern)) {
           modified = true;
         }
       }
@@ -263,16 +269,16 @@ function walkAndNormalize(nodes: FxpChildren): boolean {
  * If no split zcites are found, returns the original string unchanged
  * (zero risk of round-trip encoding differences).
  */
-export function normalizeZciteTags(documentXml: string): string {
-  // Quick check: if no zcite at all, skip parsing entirely
-  if (!documentXml.includes("zcite")) {
+function normalizeMarkers(documentXml: string, pattern: RegExp, quick: string): string {
+  // Quick check: if the marker cannot be present, skip parsing entirely
+  if (!documentXml.includes(quick)) {
     return documentXml;
   }
 
   const parser = new XMLParser(PARSER_OPTIONS);
   const parsed = parser.parse(documentXml) as FxpChildren;
 
-  const modified = walkAndNormalize(parsed);
+  const modified = walkAndNormalize(parsed, pattern);
 
   if (!modified) {
     return documentXml; // Return original string, no changes
@@ -280,4 +286,17 @@ export function normalizeZciteTags(documentXml: string): string {
 
   const builder = new XMLBuilder(BUILDER_OPTIONS);
   return builder.build(parsed) as string;
+}
+
+export function normalizeZciteTags(documentXml: string): string {
+  return normalizeMarkers(documentXml, ZCITE_PATTERN, "zcite");
+}
+
+/**
+ * Merge Pandoc `[@…]` citation markers that Word split across runs, so the whole bracket is one run and
+ * the Pandoc branch can find and replace it. The quick-check requires both `[` and `@` to be present.
+ */
+export function normalizePandocMarkers(documentXml: string): string {
+  if (!documentXml.includes("[") || !documentXml.includes("@")) return documentXml;
+  return normalizeMarkers(documentXml, PANDOC_PATTERN, "[");
 }

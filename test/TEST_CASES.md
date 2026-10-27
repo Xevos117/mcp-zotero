@@ -458,6 +458,34 @@ Tool di sola lettura: non unisce né cancella nulla. Scansiona solo le voci rego
 
 Gli output di IC-01/02/03/04/07/19/23/25 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
 
+### Marcatori Pandoc (`test/tools/inject-citations-pandoc.test.ts`)
+Riconoscimento interno, senza un campo in ingresso: se il documento contiene `<zcite` è un documento zcite (percorso di oggi, golden Word invariato); se non ci sono `<zcite` ma marcatori Pandoc `[@…]`/inline `@…` si usa il ramo pandoc; nessuno dei due → copia invariata. I citekey Better BibTeX (case-sensitive) sono risolti in chiavi Zotero. I marcatori si leggono SOLO dal testo visibile (`<w:t>` in docx, contenuto degli elementi in odt): mai da `<w:instrText>`, attributi o JSON CSL di un campo esistente. Un inline `@parola` che non si risolve (handle, email, codice, o spezzato tra run) resta testo con un avviso, NON un errore; una forma tra parentesi `[@…]` sconosciuta o ambigua è un errore.
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| IC-P01 | `[@KEY]` con chiave Zotero (docx) | field code + bibliografia, testo intorno conservato, nessun `[@…]` residuo |
+| IC-P02 | inline `@KEY` e soppressione autore `-@KEY` | due citazioni iniettate |
+| IC-P03 | marcatore `[@KEY]` spezzato tra due run | unito dal normalizzatore e iniettato |
+| IC-P04 | citekey risolto dal campo nativo `citationKey` (ricerca `q=<citekey>` + conferma lato client) | URI con la chiave Zotero risolta |
+| IC-P05 | citekey risolto dalla riga `Citation Key:` in Extra, con locator | iniettato, URI con la chiave Zotero, `p. 12` |
+| IC-P06 | citekey sconosciuto | errore "not found in the library" con il citekey, nessun output |
+| IC-P07 | citekey ambiguo (due voci con lo stesso citekey) | errore "match more than one item", nessun output |
+| IC-P08 | una email `a@b.com` accanto a `[@KEY]` | solo una citazione, email intatta |
+| IC-P09 | stile `ieee` | numerazione per ordine di prima citazione ([1], [2]) |
+| IC-P10 | misto `<zcite>` + `[@…]` | vince zcite, i marcatori Pandoc restano testo, avviso "N Pandoc citation marker(s)" |
+| IC-P11 | seconda chiamata sul `_cited` (già con bibliografia) | inietta i Pandoc rimasti, **nessuna** seconda bibliografia (una sola `ZOTERO_BIBL`), avviso |
+| IC-P12 | ODT `[@KEY]` | reference mark + sezione bibliografia |
+| IC-P13 | ODT marcatore spezzato tra due `text:span` | unito e iniettato |
+| IC-P14 | nessun marcatore | copia invariata, avviso "No <zcite> placeholders found" |
+| IC-P15 | `[@K1; @K2]` più voci in una citazione | entrambe le URI nel field code |
+| IC-P16 | solo handle/codice inline (`@Component`, `@media`, `@app.route`), nessuna citazione | copia invariata, `citations_found` 0, avvisi "kept as text", **nessun errore** |
+| IC-P17 | handle non risolto accanto a un `[@KEY]` reale | inietta la citazione, l'handle resta testo con avviso |
+| IC-P18 | seconda chiamata: una `@` nel titolo di un campo esistente + un nuovo `[@KEY]` | inietta solo il nuovo, nessun falso positivo dal campo |
+| IC-P19 | inline spezzato tra due run (`@SMI`+`TH222`) | non ricucito → resta testo con avviso, nessun errore |
+| IC-P20 | citekey non trovato da `q` ma presente in `items/top` | risolto dalla scansione di fallback |
+
+Parser puro in `test/citation-injector/pandoc-body.test.ts` (PB: bracket/inline con flag `inline`, multi-chiave, prefix/locator, email, punteggiatura finale, `_`/`/`/`.` prima di `@` non è citazione, `@angular/core` si ferma a `/`, URL in bracket non è citazione; PB-B: solo testo visibile, mai instrText/attributi). Risoluzione citekey in `test/citation-injector/citekey-resolver.test.ts` (CK: `citationKey`+Extra, case-sensitive, suggerimento di variante di maiuscole, separazione citekey/chiavi Zotero, bracket sconosciuto → `missing_keys`, bracket ambiguo → `invalid_key`, inline non risolto → scartato con avviso senza errore). Parità tool ⇄ script sul ramo pandoc in `SK-P01` e sul caso misto + seconda chiamata in `SK-P02`. E2E `E2E-18c`. La ricerca citekey pagina fino a 5 pagine (`q`+`qmode=everything` include il full-text); se non trova nulla, ricade su una scansione paginata di `items/top` fino a 5000 voci (legge direttamente citationKey/extra, quindi trova anche una voce appena creata non ancora indicizzata — IC-P20). I lookup dei citekey SOLO-inline sono limitati a 25 token unici (CK-13: oltre il tetto restano testo con un avviso riassuntivo; CK-14: i bracket `[@…]` e le chiavi Zotero non contano nel tetto).
+
 ### LibreOffice ODT (`test/tools/inject-citations-odt.test.ts`, validatore `test/helpers/citation-validate.ts`)
 
 `inject_citations` su `.odt`: reference mark al posto dei field code, bibliografia in una `text:section`, preferenze in `meta.xml` (fieldType ReferenceMark). `validateOdt`/`expectValidOdt` controllano struttura ODF, mimetype primo e STORED, schema CSL, URI e rendering citeproc (la stessa macchina di docx-validate).
@@ -1076,6 +1104,8 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-06a/b | esplorativi ok (ordine delle chiavi indifferente, comando Bash senza description), assenti, `unclear` | nessun problema; `unclear` = avviso |
 | VC-06c | verdetto `bug`, 6 scenari, id non valido o ripetuto, chiamata mai fatta, argomenti diversi, rationale mancante, verdetto non previsto, non array | problema |
 | VC-07 | make-docx: tag in linea e spezzato riconosciuti dal sorgente, `num` su ogni tag, spazi e chiave ripetuta (F9), percorso fuori agent-out e `"` nei valori rifiutati | caratteristiche lette correttamente; exit 2 |
+| VC-07p | sorgente Pandoc (docx e odt): marcatori tra parentesi e in linea dal solo testo visibile; conteggio delle citazioni per ramo (zcite esatto, Pandoc tra parentesi ≤ citazioni ≤ parentesi + in linea) | conteggi e messaggi attesi |
+| VC-07q | documento Pandoc iniettato da inject_citations con un @key in linea non risolto | il conteggio del verificatore torna (3 citazioni per 2 + 2 marcatori) |
 | VC-08 | 5 stili: inject_citations (server con Zotero finto) e inject.js (via inject.mjs, metadata da get_items_details) sul documento di parità | docx validi, 5 citazioni, impronte identiche, copertura istituzionale/senza metadati/non ASCII, testo attorno ai tag in linea e spezzato conservato, una bibliografia |
 | VC-08b | impronta alterata: citationID diverso / locator / testo visibile / bibliografia | nessuna differenza / percorso della prima differenza |
 | VC-08c | schema 3 con i due produttori reali: sorgente make-docx con preferenze `chicago` (stile sconosciuto → exit 2), iniettato in `apa` | entrambi avvisano e conservano `chicago` (valido con `documentPrefsStyle`, errore senza), stessa impronta con le preferenze; documenti di parità con le preferenze del loro stile; impronta schema 2 senza preferenze |

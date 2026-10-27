@@ -17,6 +17,11 @@ export interface CitationRequest {
   num?: string;
   /** Sopprime l'autore (pandoc `-@chiave`): per ora passato attraverso, usato da G. */
   suppressAuthor?: boolean;
+  /**
+   * Marcatore Pandoc in linea (`@chiave`/`-@chiave`, senza parentesi). Un inline che non si risolve resta
+   * testo con un avviso (non è un errore), a differenza di una forma tra parentesi `[@…]` sconosciuta.
+   */
+  inline?: boolean;
   /** Testo originale del segnaposto nel corpo, per la sostituzione. */
   raw: string;
 }

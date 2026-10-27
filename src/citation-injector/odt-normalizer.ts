@@ -13,6 +13,8 @@ import { XMLParser, XMLBuilder } from "fast-xml-parser";
  */
 
 const ZCITE_PATTERN = /&lt;zcite\s+[\s\S]*?\/&gt;/;
+// A complete Pandoc bracketed citation inside one text node (no tag `<`); see zcite-normalizer.ts.
+const PANDOC_PATTERN = /\[[^\]<]*@[^\]<]*\]/;
 
 interface FxpNode {
   [tag: string]: unknown;
@@ -96,14 +98,14 @@ function collectConsecutiveSpanGroups(children: FxpChildren): SpanGroup[] {
 }
 
 /** Trova un <zcite> che attraversa più span del gruppo; ritorna l'intervalo [startOffset,endOffset]. */
-function findSplitZcite(group: SpanGroup): { startOffset: number; endOffset: number } | null {
+function findSplitZcite(group: SpanGroup, pattern: RegExp): { startOffset: number; endOffset: number } | null {
   const { texts } = group;
   for (let start = 0; start < texts.length; start++) {
     let concat = "";
     for (let end = start; end < texts.length; end++) {
       concat += texts[end];
       if (end <= start) continue;
-      const m = ZCITE_PATTERN.exec(concat);
+      const m = pattern.exec(concat);
       if (m) {
         const matchStart = m.index;
         const matchEnd = m.index + m[0].length;
@@ -128,13 +130,13 @@ function mergeSpansInPlace(children: FxpChildren, group: SpanGroup, startOffset:
   children.splice(absStart, count, newSpan);
 }
 
-function normalizeParagraph(children: FxpChildren): boolean {
+function normalizeParagraph(children: FxpChildren, pattern: RegExp): boolean {
   let modified = false;
   let changed = true;
   while (changed) {
     changed = false;
     for (const group of collectConsecutiveSpanGroups(children)) {
-      const split = findSplitZcite(group);
+      const split = findSplitZcite(group, pattern);
       if (split) {
         mergeSpansInPlace(children, group, split.startOffset, split.endOffset);
         modified = true;
@@ -146,26 +148,36 @@ function normalizeParagraph(children: FxpChildren): boolean {
   return modified;
 }
 
-function walk(nodes: FxpChildren): boolean {
+function walk(nodes: FxpChildren, pattern: RegExp): boolean {
   let modified = false;
   for (const node of nodes) {
     const tag = Object.keys(node).find((k) => k !== ":@" && k !== "#text");
     if (tag && MASKED.has(tag)) continue; // non toccare commenti e note
     if (tag === "text:p" || tag === "text:h") {
-      if (normalizeParagraph(node[tag] as FxpChildren)) modified = true;
+      if (normalizeParagraph(node[tag] as FxpChildren, pattern)) modified = true;
     }
     for (const key of Object.keys(node)) {
       if (key === ":@" || key === "#text") continue;
       const value = node[key];
-      if (Array.isArray(value) && walk(value as FxpChildren)) modified = true;
+      if (Array.isArray(value) && walk(value as FxpChildren, pattern)) modified = true;
     }
   }
   return modified;
 }
 
-export function normalizeOdtZciteTags(contentXml: string): string {
-  if (!contentXml.includes("zcite")) return contentXml;
+function normalizeOdt(contentXml: string, pattern: RegExp, quick: string): string {
+  if (!contentXml.includes(quick)) return contentXml;
   const parsed = new XMLParser(PARSER_OPTIONS).parse(contentXml) as FxpChildren;
-  if (!walk(parsed)) return contentXml;
+  if (!walk(parsed, pattern)) return contentXml;
   return new XMLBuilder(BUILDER_OPTIONS).build(parsed) as string;
+}
+
+export function normalizeOdtZciteTags(contentXml: string): string {
+  return normalizeOdt(contentXml, ZCITE_PATTERN, "zcite");
+}
+
+/** Merge Pandoc `[@…]` markers split across text:span in an ODT, mirror of normalizePandocMarkers. */
+export function normalizeOdtPandocMarkers(contentXml: string): string {
+  if (!contentXml.includes("[") || !contentXml.includes("@")) return contentXml;
+  return normalizeOdt(contentXml, PANDOC_PATTERN, "[");
 }

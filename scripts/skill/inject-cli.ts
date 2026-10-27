@@ -16,9 +16,12 @@ import { resolve } from "node:path";
 import JSZip from "jszip";
 import { writeFileAtomic } from "../../src/utils/atomic-write.js";
 import { parseZciteTags } from "../../src/citation-injector/zcite.js";
+import { parsePandocCitesInBody, countPandocMarkers } from "../../src/citation-injector/pandoc-body.js";
+import { CitekeyLookup, CitekeyMatch, itemCitekeys, resolveCitekeys } from "../../src/citation-injector/citekey-resolver.js";
+import { assignNumbers } from "../../src/cited-document/number.js";
 import { buildCitationItems } from "../../src/citation-injector/citation-json.js";
 import { formatCitationText } from "../../src/citation-injector/citation-formatter.js";
-import { PreparedCitation } from "../../src/citation-injector/model.js";
+import { CitationRequest, PreparedCitation } from "../../src/citation-injector/model.js";
 import { FormatWriter } from "../../src/citation-injector/formats/types.js";
 import { docxWriter } from "../../src/citation-injector/formats/docx.js";
 import { odtWriter } from "../../src/citation-injector/formats/odt.js";
@@ -259,18 +262,44 @@ async function main() {
   const bodyEntry = zip.file(writer.bodyPart);
   if (!bodyEntry) throw new Error(`Invalid ${format === "odt" ? ".odt" : ".docx"} file: ${writer.bodyPart} not found`);
 
-  let body = writer.normalize(await bodyEntry.async("string"));
-
+  const rawBody = await bodyEntry.async("string");
   const metadata = JSON.parse(await readFile(metadataPath, "utf-8"));
   const cslData = convertMetadataToCsl(metadata);
 
+  // Internal recognition, mirror of the server: a document with <zcite> takes the zcite path (unchanged);
+  // otherwise the Pandoc branch runs. Keeps the skill output in parity with inject_citations.
+  const out = rawBody.includes("zcite")
+    ? await injectZcite(zip, writer, rawBody, cslData, libType, userId, style)
+    : await injectPandoc(zip, writer, rawBody, cslData, metadataCitekeyLookup(metadata), libType, userId, style);
+
+  if (writer.finalize) await writer.finalize(zip);
+  const buffer = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
+  await writeFileAtomic(outputPath, buffer);
+
+  for (const w of out.warnings) console.error(`WARNING: ${w}`);
+  console.log(JSON.stringify({ output: outputPath, found: out.found, injected: out.injected }));
+}
+
+interface InjectOutcome {
+  found: number;
+  injected: number;
+  warnings: string[];
+}
+
+/** The zcite path: identical to before, plus a note when the document also carries Pandoc markers. */
+async function injectZcite(
+  zip: JSZip,
+  writer: FormatWriter,
+  rawBody: string,
+  cslData: Map<string, CslItemData>,
+  libType: string,
+  userId: string,
+  style: string
+): Promise<InjectOutcome> {
+  let body = writer.normalize(rawBody);
   const requests = parseZciteTags(body);
   if (requests.length === 0) {
-    if (writer.finalize) await writer.finalize(zip);
-    const buffer = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
-    await writeFileAtomic(outputPath, buffer);
-    console.log(JSON.stringify({ output: outputPath, found: 0, injected: 0 }));
-    return;
+    return { found: 0, injected: 0, warnings: [] };
   }
 
   const allKeys = [...new Set(requests.flatMap((r) => r.keys))];
@@ -281,10 +310,11 @@ async function main() {
     );
   }
 
+  const warnings: string[] = [];
   if (style === "ieee" || style === "vancouver") {
     const withNum = requests.filter((r) => r.num !== undefined).length;
     if (withNum < requests.length) {
-      console.error(`WARNING: Style '${style}' requires 'num' attribute on <zcite> tags. Found ${withNum}/${requests.length} tags with num.`);
+      warnings.push(`Style '${style}' requires 'num' attribute on <zcite> tags. Found ${withNum}/${requests.length} tags with num.`);
     }
   }
 
@@ -293,30 +323,121 @@ async function main() {
     throw new Error(`${missingKeys.length} cited key(s) not found in the metadata: ${missingKeys.join(", ")}`);
   }
 
+  const injected = injectRequests(writer, requests, cslData, libType, userId, style, (b) => (body = b), () => body);
+
+  body = writer.appendBibliography(body);
+  zip.file(writer.bodyPart, body);
+
+  const prefs = await writer.writePrefs(zip, style);
+  warnings.push(...writer.prefsWarnings(prefs));
+
+  const pandoc = countPandocMarkers(rawBody, writer.format);
+  if (pandoc > 0) {
+    warnings.push(
+      `The document also has ${pandoc} Pandoc citation marker(s) ([@key]): left as text, because a document with <zcite> ` +
+        "is treated as a zcite document. To cite them too, run inject again on the output."
+    );
+  }
+
+  return { found: requests.length, injected, warnings };
+}
+
+/** The Pandoc path: parse markers, resolve Better BibTeX citekeys from the metadata, reuse the writer. */
+async function injectPandoc(
+  zip: JSZip,
+  writer: FormatWriter,
+  rawBody: string,
+  cslData: Map<string, CslItemData>,
+  citekeyLookup: CitekeyLookup,
+  libType: string,
+  userId: string,
+  style: string
+): Promise<InjectOutcome> {
+  let body = writer.normalizePandoc ? writer.normalizePandoc(rawBody) : rawBody;
+  const parsed = parsePandocCitesInBody(body, writer.format);
+  if (parsed.length === 0) {
+    return { found: 0, injected: 0, warnings: [] };
+  }
+
+  // Unresolved inline markers drop out (kept as text) with a warning; an unknown bracketed key throws.
+  const { requests, warnings } = await resolveCitekeys(parsed, citekeyLookup);
+  if (requests.length === 0) {
+    return { found: 0, injected: 0, warnings };
+  }
+
+  if (style === "ieee" || style === "vancouver") {
+    const nums = assignNumbers(requests);
+    for (const r of requests) r.num = nums.get(r);
+  }
+
+  const missingKeys = [...new Set(requests.flatMap((r) => r.keys))].filter((k) => !cslData.has(k));
+  if (missingKeys.length > 0) {
+    throw new Error(`${missingKeys.length} cited key(s) not found in the metadata: ${missingKeys.join(", ")}`);
+  }
+
+  // Longer markers first (an inline `@KEY` is a substring of `-@KEY` / a longer citekey); see pipeline.ts.
+  const ordered = [...requests].sort((a, b) => b.raw.length - a.raw.length);
+  const injected = injectRequests(writer, ordered, cslData, libType, userId, style, (b) => (body = b), () => body);
+
+  if (body.includes("ZOTERO_BIBL")) {
+    warnings.push("The document already has a Zotero bibliography: no second one was written.");
+  } else {
+    body = writer.appendBibliography(body);
+  }
+  zip.file(writer.bodyPart, body);
+
+  const prefs = await writer.writePrefs(zip, style);
+  warnings.push(...writer.prefsWarnings(prefs));
+
+  return { found: requests.length, injected, warnings };
+}
+
+/** Replace each request's marker with its citation XML; returns how many were injected. */
+function injectRequests(
+  writer: FormatWriter,
+  requests: CitationRequest[],
+  cslData: Map<string, CslItemData>,
+  libType: string,
+  userId: string,
+  style: string,
+  setBody: (b: string) => void,
+  getBody: () => string
+): number {
   let injected = 0;
   for (const request of requests) {
     const items = buildCitationItems(request, cslData, libType, userId);
     const itemData = request.keys.map((k) => cslData.get(k) ?? { type: "article-journal" });
     const formattedText = formatCitationText(itemData, style, request);
     const prepared: PreparedCitation = { request, items, itemData, formattedText };
+    const body = getBody();
     const newBody = writer.replaceTag(body, request.raw, writer.citationXml(prepared));
     if (newBody !== body) {
-      body = newBody;
+      setBody(newBody);
       injected++;
     }
   }
+  return injected;
+}
 
-  body = writer.appendBibliography(body);
-  zip.file(writer.bodyPart, body);
-
-  const prefs = await writer.writePrefs(zip, style);
-  for (const w of writer.prefsWarnings(prefs)) console.error(`WARNING: ${w}`);
-
-  if (writer.finalize) await writer.finalize(zip);
-  const buffer = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
-  await writeFileAtomic(outputPath, buffer);
-
-  console.log(JSON.stringify({ output: outputPath, found: requests.length, injected }));
+/** Build a citekey→Zotero-key lookup from the get_items_details metadata (citationKey field or Extra line). */
+function metadataCitekeyLookup(metadata: Record<string, unknown>): CitekeyLookup {
+  return async (citekeys) => {
+    const out = new Map<string, CitekeyMatch>();
+    for (const ck of citekeys) {
+      const lower = ck.toLowerCase();
+      const keys = new Set<string>();
+      const similar = new Set<string>();
+      for (const [key, meta] of Object.entries(metadata)) {
+        if (!meta || typeof meta !== "object" || Array.isArray(meta)) continue;
+        for (const found of itemCitekeys(meta as Record<string, unknown>)) {
+          if (found === ck) keys.add(key);
+          else if (found.toLowerCase() === lower) similar.add(found);
+        }
+      }
+      out.set(ck, { keys: [...keys], similar: [...similar] });
+    }
+    return out;
+  };
 }
 
 main().catch((err) => {

@@ -6,6 +6,9 @@ import { ZOTERO_KEY } from "../utils/zotero-keys.js";
 import { writeFileAtomic } from "../utils/atomic-write.js";
 import { CitationRequest, InjectionError, PreparedCitation } from "./model.js";
 import { parseZciteTags } from "./zcite.js";
+import { parsePandocCitesInBody, countPandocMarkers } from "./pandoc-body.js";
+import { CitekeyLookup, resolveCitekeys } from "./citekey-resolver.js";
+import { assignNumbers } from "../cited-document/number.js";
 import { buildCitationItems } from "./citation-json.js";
 import { formatCitationText } from "./citation-formatter.js";
 import { FormatWriter } from "./formats/types.js";
@@ -29,6 +32,18 @@ export interface InjectOptions {
 const NO_ZCITE_WARNING =
   'No <zcite> placeholders found: the output is an unchanged copy. Write them in the document body as <zcite keys="ITEMKEY"/> ' +
   "(headers, footers, footnotes and comments are not scanned).";
+
+function mixedWarning(count: number): string {
+  return (
+    `The document also has ${count} Pandoc citation marker(s) ([@key]): they were left as text, because a document with ` +
+    "<zcite> placeholders is treated as a zcite document. To turn them into citations too, call inject_citations again " +
+    "on the output file."
+  );
+}
+
+const EXISTING_BIBLIOGRAPHY_WARNING =
+  "The document already has a Zotero bibliography: the new citations were added but no second bibliography was written " +
+  "(Zotero rebuilds the single bibliography on Refresh).";
 
 function numberedWarning(style: string, withNum: number, total: number, app: string): string {
   return (
@@ -92,10 +107,33 @@ export async function injectPackage(
   zip: JSZip,
   writer: FormatWriter,
   itemSource: ItemSource,
+  opts: InjectOptions,
+  citekeyLookup?: CitekeyLookup
+): Promise<{ found: number; injected: number; warnings: string[] }> {
+  const rawBody = await zip.file(writer.bodyPart)!.async("string");
+
+  // Internal recognition, no input flag. A document that contains <zcite> is a zcite document and takes
+  // exactly the path it does today (same code, same byte output); Pandoc markers in it, if any, are only
+  // reported. Otherwise, if it has Pandoc markers, the Pandoc branch runs. Neither: an unchanged copy.
+  if (rawBody.includes("zcite")) {
+    return injectZciteBranch(rawBody, zip, writer, itemSource, opts);
+  }
+  if (citekeyLookup) {
+    // The Pandoc branch itself returns an unchanged copy (found 0) if it finds no markers.
+    return injectPandocBranch(rawBody, zip, writer, itemSource, opts, citekeyLookup);
+  }
+  return { found: 0, injected: 0, warnings: [NO_ZCITE_WARNING] };
+}
+
+/** The zcite path, identical to before, plus a note when the document also carries Pandoc markers. */
+async function injectZciteBranch(
+  rawBody: string,
+  zip: JSZip,
+  writer: FormatWriter,
+  itemSource: ItemSource,
   opts: InjectOptions
 ): Promise<{ found: number; injected: number; warnings: string[] }> {
-  let body = await zip.file(writer.bodyPart)!.async("string");
-  body = writer.normalize(body);
+  let body = writer.normalize(rawBody);
 
   const requests = parseZciteTags(body);
   if (requests.length === 0) {
@@ -126,7 +164,80 @@ export async function injectPackage(
   const prefs = await writer.writePrefs(zip, opts.style);
   warnings.push(...writer.prefsWarnings(prefs));
 
+  // Mixed document: report the Pandoc markers left as text (counted on the unmodified body).
+  const pandoc = countPandocMarkers(rawBody, writer.format);
+  if (pandoc > 0) warnings.push(mixedWarning(pandoc));
+
   return { found: requests.length, injected, warnings };
+}
+
+/**
+ * The Pandoc path: merge split markers, parse `[@key]`/inline citations, resolve Better BibTeX citekeys to
+ * Zotero keys, then reuse the same resolve + writer machinery as zcite. If the document already has a
+ * Zotero bibliography (e.g. a second call on a once-injected file), no second one is written.
+ */
+async function injectPandocBranch(
+  rawBody: string,
+  zip: JSZip,
+  writer: FormatWriter,
+  itemSource: ItemSource,
+  opts: InjectOptions,
+  citekeyLookup: CitekeyLookup
+): Promise<{ found: number; injected: number; warnings: string[] }> {
+  let body = normalizePandocBody(writer, rawBody);
+
+  const parsed = parsePandocCitesInBody(body, writer.format);
+  if (parsed.length === 0) {
+    return { found: 0, injected: 0, warnings: [NO_ZCITE_WARNING] };
+  }
+
+  // Resolve Better BibTeX citekeys. Unresolved inline markers are dropped (kept as text) with a warning;
+  // an unknown/ambiguous bracketed key throws, so nothing is written.
+  const { requests, warnings } = await resolveCitekeys(parsed, citekeyLookup);
+  if (requests.length === 0) {
+    // every marker was an inline that did not resolve → unchanged copy, like a document with no markers
+    warnings.push(NO_ZCITE_WARNING);
+    return { found: 0, injected: 0, warnings };
+  }
+
+  // Numbered styles: number by order of first citation (Pandoc markers carry no num attribute).
+  if (opts.style === "ieee" || opts.style === "vancouver") {
+    const nums = assignNumbers(requests);
+    for (const r of requests) r.num = nums.get(r);
+  }
+
+  const prepared = await resolveCitations(requests, itemSource, opts);
+
+  let injected = 0;
+  // Replace longer markers first: an inline `@KEY` is a substring of `-@KEY` (and of a longer citekey), so
+  // replacing the shorter one first could match inside the longer. Length-descending removes that overlap;
+  // numbering was already assigned in document order above.
+  for (const p of [...prepared].sort((a, b) => b.request.raw.length - a.request.raw.length)) {
+    const citationXml = writer.citationXml(p);
+    const newBody = writer.replaceTag(body, p.request.raw, citationXml);
+    if (newBody !== body) {
+      body = newBody;
+      injected++;
+    }
+  }
+
+  // A once-injected document already has one bibliography; do not add a second (Zotero keeps one).
+  if (body.includes("ZOTERO_BIBL")) {
+    warnings.push(EXISTING_BIBLIOGRAPHY_WARNING);
+  } else {
+    body = writer.appendBibliography(body);
+  }
+  zip.file(writer.bodyPart, body);
+
+  const prefs = await writer.writePrefs(zip, opts.style);
+  warnings.push(...writer.prefsWarnings(prefs));
+
+  return { found: requests.length, injected, warnings };
+}
+
+/** Pandoc run/span merge for the writer's format; falls back to the body unchanged for an unknown format. */
+function normalizePandocBody(writer: FormatWriter, body: string): string {
+  return writer.normalizePandoc ? writer.normalizePandoc(body) : body;
 }
 
 /**
@@ -137,7 +248,8 @@ export async function injectFile(
   filePath: string,
   writer: FormatWriter,
   itemSource: ItemSource,
-  opts: InjectOptions
+  opts: InjectOptions,
+  citekeyLookup?: CitekeyLookup
 ): Promise<InjectionResult> {
   const { dir, name, ext } = parse(filePath);
   const outputPath = format({ dir, name: `${name}_cited`, ext });
@@ -155,7 +267,7 @@ export async function injectFile(
     throw new InjectionError("no_document", writer.bodyMissingMessage);
   }
 
-  const { found, injected, warnings } = await injectPackage(zip, writer, itemSource, opts);
+  const { found, injected, warnings } = await injectPackage(zip, writer, itemSource, opts, citekeyLookup);
 
   if (writer.finalize) await writer.finalize(zip);
   const buffer = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });

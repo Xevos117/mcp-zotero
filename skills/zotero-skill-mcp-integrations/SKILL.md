@@ -1,6 +1,6 @@
 ---
 name: zotero-mcp-integrations
-description: Inject Zotero-compatible citation field codes into a .docx document. Use when the user wants to generate a Word document with live Zotero citations and bibliography, or when writing an academic paper with references.
+description: Inject Zotero-compatible citations into a .docx (Word) or .odt (LibreOffice) document. Use when the user wants to generate a Word or LibreOffice document with live Zotero citations and bibliography, or when writing an academic paper with references.
 ---
 
 # Zotero Citation Injection Skill
@@ -306,6 +306,15 @@ The script outputs JSON to stdout:
 ```
 
 Warnings go to stderr: numbered styles without `num`. Invalid arguments exit with code 1 and write nothing, and so do a `<zcite>` key that is not a Zotero key (8 characters from `23456789ABCDEFGHIJKLMNPQRSTUVWXYZ`) and a cited key missing from `metadata.json` (same rules as `inject_citations`): include every cited key in the `get_items_details` call.
+
+### LibreOffice (.odt) and Pandoc citation markers
+
+The same script handles two extra cases, no new workflow needed:
+
+- **LibreOffice `.odt`.** Give the input (and output) an `.odt` extension, or pass `--format odt`, and the script writes LibreOffice reference marks and an ODF bibliography instead of Word field codes: `node inject.mjs input.odt output.odt metadata.json <library_path> [style]` (or `… input.docx output.docx … --format docx`). A format that disagrees with the file's extension or content is an error. Everything else — `metadata.json`, styles, the Refresh reminder — is identical; the user opens the `.odt` in LibreOffice with the Zotero plugin.
+- **Pandoc citation markers.** If the document has no `<zcite>` tags, the script instead recognises Pandoc markers in the visible text: `[@KEY]`, `[@K1; @K2]`, `[see @KEY, p. 12]`, `-@KEY`, and inline `@KEY`. `KEY` may be a Zotero 8-character key or a case-sensitive Better BibTeX citation key (e.g. `[@rossi2020]`). For citation keys to resolve, `metadata.json` must carry each item's `citationKey` field and/or its `extra` (both are returned by `get_items_details`, so request the items normally). An unknown or ambiguous key in a bracketed `[@…]` is an error; an inline `@word` that does not resolve (a handle, code, or a marker split across runs) is left as plain text with a warning, never an error.
+
+**`<zcite>` in a dedicated `TextRun` (Step 4) stays the recommended path** — it is unambiguous and robust. Use the Pandoc markers only for text that already carries them; prefer the bracketed `[@KEY]` form over bare inline `@KEY`.
 
 ### Step 6 — Present result
 

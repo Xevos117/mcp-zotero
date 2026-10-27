@@ -2,7 +2,7 @@ import JSZip from "jszip";
 import { FormatWriter } from "./types.js";
 import { InjectionError, PreparedCitation } from "../model.js";
 import { regexEscape } from "../xml-utils.js";
-import { normalizeZciteTags } from "../zcite-normalizer.js";
+import { normalizeZciteTags, normalizePandocMarkers } from "../zcite-normalizer.js";
 import { generateZoteroFieldCode, generateBibliographyFieldCode } from "../field-codes.js";
 import {
   DocumentPrefsOutcome,
@@ -73,6 +73,7 @@ export const docxWriter: FormatWriter = {
     }
   },
   normalize: (bodyXml) => normalizeZciteTags(bodyXml),
+  normalizePandoc: (bodyXml) => normalizePandocMarkers(bodyXml),
   citationXml: (prepared: PreparedCitation) => generateZoteroFieldCode(prepared.items, prepared.formattedText),
   replaceTag: (bodyXml, rawTag, citationXml) => replaceZciteInXml(bodyXml, rawTag, citationXml),
   appendBibliography: (bodyXml) => bodyXml.replace("</w:body>", `${generateBibliographyFieldCode()}</w:body>`),

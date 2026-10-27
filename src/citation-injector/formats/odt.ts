@@ -4,7 +4,7 @@ import { FormatWriter } from "./types.js";
 import { InjectionError, PreparedCitation } from "../model.js";
 import { escapeXml } from "../xml-utils.js";
 import { buildCslCitation } from "../citation-json.js";
-import { normalizeOdtZciteTags } from "../odt-normalizer.js";
+import { normalizeOdtZciteTags, normalizeOdtPandocMarkers } from "../odt-normalizer.js";
 import { DocumentPrefsOutcome, ZOTERO_STYLE_IDS, prefChunks, zoteroDocumentData } from "../document-prefs.js";
 
 /**
@@ -109,6 +109,7 @@ export const odtWriter: FormatWriter = {
     }
   },
   normalize: (bodyXml) => normalizeOdtZciteTags(bodyXml),
+  normalizePandoc: (bodyXml) => normalizeOdtPandocMarkers(bodyXml),
   citationXml,
   replaceTag: (bodyXml, rawTag, cite) => {
     const at = bodyXml.indexOf(rawTag);

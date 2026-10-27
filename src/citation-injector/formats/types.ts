@@ -27,6 +27,8 @@ export interface FormatWriter {
   sniff?(zip: JSZip): void;
   /** Unisce i tag <zcite> spezzati tra più run/span. */
   normalize(bodyXml: string): string;
+  /** Unisce i marcatori Pandoc `[@…]` spezzati tra più run/span (ramo pandoc di inject_citations). */
+  normalizePandoc?(bodyXml: string): string;
   /** XML della citazione (campo Word o reference mark ODT) per una citazione risolta. */
   citationXml(prepared: PreparedCitation): string;
   /** Sostituisce il segnaposto `rawTag` nel corpo con `citationXml`; ritorna il corpo invariato se non lo trova. */
