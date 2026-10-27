@@ -60,6 +60,11 @@ function serveSearch(h: Harness, items: Record<string, Record<string, unknown>>)
   });
 }
 
+/** GET /items/top → la scansione di fallback della risoluzione citekey (quando la ricerca q non trova nulla). */
+function serveTop(h: Harness, items: Record<string, Record<string, unknown>>) {
+  h.net.on("GET", `${ZBASE}/items/top`, () => zList(Object.entries(items).map(([key, it]) => ({ key, ...it }))));
+}
+
 describe("inject_citations: marcatori Pandoc (IC-P*)", () => {
   let h: Harness;
   let dir: TempDir;
@@ -135,6 +140,7 @@ describe("inject_citations: marcatori Pandoc (IC-P*)", () => {
   it("IC-P06 citekey sconosciuto → errore, nessun file", async () => {
     serveSearch(h, { RSSI2345: ROSSI });
     serveItems(h, { RSSI2345: ROSSI });
+    serveTop(h, { RSSI2345: ROSSI }); // fallback scan: nope9999 non c'è neanche qui
     const input = await dir.file("p.docx", await makeDocx(para("Missing [@nope9999].")));
     expectToolError(await h.call("inject_citations", { file_path: input }), /not found in the library.*nope9999|nope9999.*not found/);
     await expect(readFile(join(dir.path, "p_cited.docx"))).rejects.toThrow();
@@ -239,6 +245,7 @@ describe("inject_citations: marcatori Pandoc (IC-P*)", () => {
 
   it("IC-P16 solo handle/codice inline (nessuna citazione) → copia invariata, NESSUN errore", async () => {
     serveSearch(h, {}); // ogni ricerca citekey torna vuota
+    serveTop(h, {}); // e nemmeno la scansione di fallback trova nulla
     const input = await dir.file("p.docx", await makeDocx(para("Use @Component and @media and @app.route here.")));
     const out = await h.call("inject_citations", { file_path: input });
     expect(out.isError, out.text).toBe(false);
@@ -252,6 +259,7 @@ describe("inject_citations: marcatori Pandoc (IC-P*)", () => {
   it("IC-P17 handle non risolto accanto a un [@KEY] reale → inietta la citazione, l'handle resta testo", async () => {
     serveItems(h, { SMITH222: SMITH });
     serveSearch(h, {});
+    serveTop(h, {});
     const input = await dir.file("p.docx", await makeDocx(para("Ping @handle then cite [@SMITH222].")));
     const out = await h.call("inject_citations", { file_path: input });
     expect(out.json).toMatchObject({ citations_found: 1, citations_injected: 1 });
@@ -284,8 +292,21 @@ describe("inject_citations: marcatori Pandoc (IC-P*)", () => {
     expect(xml).not.toContain("[@DEEE2222]");
   });
 
+  it("IC-P20 citekey non trovato da q ma risolto dalla scansione di fallback su items/top", async () => {
+    serveSearch(h, {}); // la ricerca q non trova nulla (es. indice full-text in ritardo)
+    serveTop(h, { BNCH2345: BIANCHI }); // la scansione di items/top legge citationKey/extra e risolve
+    serveItems(h, { BNCH2345: BIANCHI });
+    const input = await dir.file("p.docx", await makeDocx(para("See [@bianchi2021].")));
+    const out = await h.call("inject_citations", { file_path: input });
+    expect(out.isError, out.text).toBe(false);
+    expect(out.json).toMatchObject({ citations_found: 1, citations_injected: 1 });
+    const xml = await readDocumentXml(await readFile(out.json.output_path));
+    expect(xml).toContain("/items/BNCH2345");
+  });
+
   it("IC-P19 inline spezzato tra due run non viene ricucito → resta testo con avviso, nessun errore", async () => {
     serveSearch(h, {});
+    serveTop(h, {});
     const input = await dir.file("p.docx", await makeDocx(para("See @SMI", "TH222 end.")));
     const out = await h.call("inject_citations", { file_path: input });
     expect(out.isError, out.text).toBe(false);
