@@ -58,7 +58,7 @@
     },
     {
       "id": "T-duplicates",
-      "files": ["src/tools/find-duplicates.ts", "src/utils/duplicates.ts"],
+      "files": ["src/tools/find-duplicates.ts", "src/utils/duplicates.ts", "src/utils/doi.ts"],
       "scenario": "in a run collection add two items with the same DOI and two more with the same title and year (one written with accents and punctuation), plus one unique item; find_duplicates with collection_key groups the first two under match \"doi\" and the next two under match \"title\" (not the unique one), with scanned and truncated reported and notes/attachments excluded; then find_duplicates with dois [one of those DOIs in https://doi.org/ form, a bare DOI not in the library] returns the existing item for the present DOI and an empty existing for the absent one. Read-only: nothing is created or deleted beyond the run items"
     },
     {
@@ -113,7 +113,7 @@
     },
     {
       "id": "T-retractions",
-      "files": ["src/tools/check-retractions.ts", "src/utils/crossref-retractions.ts"],
+      "files": ["src/tools/check-retractions.ts", "src/utils/crossref-retractions.ts", "src/utils/doi.ts"],
       "scenario": "add_items_by_doi the retracted DOI 10.1016/s0140-6736(97)11096-0 and a normal DOI 10.1038/s41586-023-06647-8 (run prefix + tag), plus add_items one book without a DOI (run prefix + tag); check_retractions on the three item_keys: the retracted one is status retracted with a notice (type retraction, source retraction-watch), the normal one ok, the book no_doi; the response opens with a summary of the counts and a failed lookup (if any) never fails the rest"
     }
   ]

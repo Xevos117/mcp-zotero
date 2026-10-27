@@ -5,7 +5,8 @@ import { formatJsonResult, formatErrorResponse, formatEmptyResult } from "../uti
 import { fetchItemsByKeys, fetchAllPages } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 import { mapWithConcurrency } from "../utils/concurrency.js";
-import { itemDoi, lookupRetraction, RetractionLookup, RetractionNotice, RetractionStatus } from "../utils/crossref-retractions.js";
+import { itemDoi } from "../utils/doi.js";
+import { lookupRetraction, RetractionLookup, RetractionNotice, RetractionStatus } from "../utils/crossref-retractions.js";
 import { isValidEmail } from "../utils/unpaywall.js";
 import { COLLECTION_KEY_HINT, ITEM_KEY_HINT } from "../utils/error-hints.js";
 

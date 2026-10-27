@@ -6,14 +6,8 @@ import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 import { COLLECTION_KEY_HINT } from "../utils/error-hints.js";
 import { asArray } from "../utils/pagination.js";
 import { firstCreatorName } from "../utils/item-formatter.js";
-import {
-  itemDoi,
-  normalizeDoi,
-  normalizeTitle,
-  itemYear,
-  titleSubgroups,
-  isTitleLongEnough,
-} from "../utils/duplicates.js";
+import { itemDoi, normalizeDoi } from "../utils/doi.js";
+import { normalizeTitle, itemYear, titleSubgroups, isTitleLongEnough } from "../utils/duplicates.js";
 
 /** Items per page; 100 is the real Web API maximum for a multi-object request. */
 const SCAN_PAGE = 100;

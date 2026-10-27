@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { toolConfig } from "./find-duplicates.js";
 import { handleToolCall } from "./index.js";
-import { normalizeDoi } from "../utils/duplicates.js";
+import { normalizeDoi } from "../utils/doi.js";
 import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
 
 const USER_ID = "12345";
