@@ -7,7 +7,11 @@ import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "inject_citations",
-  description: `Replace <zcite> placeholder tags in a .docx file with native Zotero field codes that Zotero for Word can recognize and manage. The tool fetches item metadata from Zotero automatically — you only need to provide the .docx file.
+  description: `Replace citation placeholders in a .docx (or .odt) file with native Zotero field codes that Zotero can recognize and manage. The tool fetches item metadata from Zotero automatically — you only need to provide the file.
+
+PLACEHOLDER SYNTAX — two kinds, recognized automatically (no flag):
+- <zcite keys="ITEMKEY"/> tags (see ZCITE TAG FORMAT below). If the document has any <zcite> tag, it is handled as a zcite document.
+- Pandoc citation markers when there are no <zcite> tags: [@KEY], [@K1; @K2], [see @KEY, p. 12], -@KEY to suppress the author, or inline @KEY. KEY may be a Zotero 8-character key or a Better BibTeX citation key (e.g. [@rossi2020]); citation keys are resolved against each item's citationKey field or a "Citation Key: <key>" line in Extra (an unknown or ambiguous key is an error, nothing is written). A document that mixes both is treated as zcite, and the Pandoc markers are reported so you can call the tool again on the output.
 
 WORKFLOW — how to create a Word document with live Zotero citations:
 1. Collect item keys: use add_items_by_doi or add_items (or search_library for existing items)

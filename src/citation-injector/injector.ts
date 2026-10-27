@@ -3,6 +3,7 @@ import { CslItemData } from "../types/csl-types.js";
 import { zoteroItemToCsl } from "../utils/csl-to-zotero.js";
 import { LibraryType } from "../utils/library-context.js";
 import { ItemSource, InjectionResult, injectFile } from "./pipeline.js";
+import { CitekeyLookup, itemMatchesCitekey } from "./citekey-resolver.js";
 import { FormatWriter } from "./formats/types.js";
 import { docxWriter } from "./formats/docx.js";
 import { odtWriter } from "./formats/odt.js";
@@ -36,9 +37,38 @@ export function zoteroItemSource(zoteroApi: ZoteroApiInterface, libraryType: Lib
 }
 
 /**
+ * CitekeyLookup per il server: per ogni citekey Pandoc interroga la libreria (`q=<citekey>` su tutti i
+ * campi, Extra compreso) e conferma lato client la corrispondenza esatta sul campo nativo `citationKey` o
+ * sulla riga `Citation Key:` di Extra, così un token che compare altrove non produce un falso positivo.
+ * Restituisce le chiavi Zotero che portano quel citekey (0 = assente, 2+ = ambiguo).
+ */
+export function zoteroCitekeyLookup(zoteroApi: ZoteroApiInterface, libraryType: LibraryType, userId: string): CitekeyLookup {
+  return async (citekeys) => {
+    const out = new Map<string, string[]>();
+    for (const citekey of citekeys) {
+      // Search all fields (Extra included) for the citekey; confirm the exact match client-side, so item
+      // type filtering is unnecessary (and its multi-negation syntax is avoided). One page (100) is ample
+      // for a specific citekey token.
+      const response = await zoteroApi
+        .library(libraryType, userId)
+        .items()
+        .get({ q: citekey, qmode: "everything", limit: 100 });
+      const items = (response.getData() as ZoteroItemData[]) ?? [];
+      const matched = items
+        .filter((it) => itemMatchesCitekey(it as Record<string, unknown>, citekey))
+        .map((it) => it.key)
+        .filter((k): k is string => typeof k === "string");
+      out.set(citekey, [...new Set(matched)]);
+    }
+    return out;
+  };
+}
+
+/**
  * Sostituisce i segnaposto <zcite> di un documento con le citazioni native di Zotero (field code Word per
  * docx, reference mark LibreOffice per odt) e aggiunge la bibliografia. Involucro del nucleo comune
- * (pipeline + scrittore di formato). `format` di default docx: il percorso Word non cambia.
+ * (pipeline + scrittore di formato). `format` di default docx: il percorso Word non cambia. Se il
+ * documento non ha <zcite> ma marcatori Pandoc `[@…]`, usa il ramo pandoc (risoluzione dei citekey inclusa).
  */
 export async function injectCitations(
   filePath: string,
@@ -48,9 +78,11 @@ export async function injectCitations(
   style: string,
   format: DocumentFormat = "docx"
 ): Promise<InjectionResult> {
-  return injectFile(filePath, WRITERS[format] ?? docxWriter, zoteroItemSource(zoteroApi, libraryType, userId), {
-    libraryType,
-    userId,
-    style,
-  });
+  return injectFile(
+    filePath,
+    WRITERS[format] ?? docxWriter,
+    zoteroItemSource(zoteroApi, libraryType, userId),
+    { libraryType, userId, style },
+    zoteroCitekeyLookup(zoteroApi, libraryType, userId)
+  );
 }

@@ -204,6 +204,45 @@ describe("skill inject.js (processo reale)", () => {
     }
   });
 
+  it("SK-P01 marcatori Pandoc [@KEY]: itemData, testo e bibliografia identici a inject_citations (ramo pandoc)", async () => {
+    const items = [
+      article("SMITH222", { title: "On Testing", date: "2023", creators: [{ creatorType: "author", firstName: "John", lastName: "Smith" }] }),
+      article("PAIR2222", { title: "Pair Paper", date: "2019-03-01", creators: [
+        { creatorType: "author", firstName: "Jane", lastName: "Doe" },
+        { creatorType: "author", firstName: "Rick", lastName: "Roe" },
+      ] }),
+    ];
+    const h = await startHarness();
+    try {
+      h.net.on("GET", `${ZBASE}/items`, zLibraryQuery(items));
+      for (const it of items) h.net.on("GET", `${ZBASE}/items/${it.key}`, zSingle(it));
+      const details = await h.call("get_items_details", { item_keys: items.map((i) => i.key) });
+      const metaPath = await dir.file("meta-pandoc.json", JSON.stringify(details.json));
+
+      const body = para("See [@SMITH222] and also [see @SMITH222; @PAIR2222, p. 3].");
+      const forTool = await dir.file("pan-tool.docx", await makeDocx(body));
+      const forScript = await dir.file("pan-script.docx", await makeDocx(body));
+
+      const tool = await h.call("inject_citations", { file_path: forTool });
+      expect(tool.isError, tool.text).toBe(false);
+      expect(tool.json).toMatchObject({ citations_found: 2, citations_injected: 2 });
+      const out = join(dir.path, "pan-script-out.docx");
+      const r = await run([forScript, out, metaPath, "424242"]);
+      expect(r.code, r.stderr).toBe(0);
+
+      const strip = (cites: Array<Record<string, any>>) =>
+        cites.map((c) => ({ text: c.properties.formattedCitation, items: c.citationItems.map((ci: any) => ({ uris: ci.uris, itemData: ci.itemData })) }));
+      const toolXml = await readDocumentXml(await readFile(tool.json.output_path));
+      const scriptXml = await readDocumentXml(await readFile(out));
+      expect(strip(citations(scriptXml))).toEqual(strip(citations(toolXml)));
+      expect(scriptXml).toContain("ADDIN ZOTERO_BIBL");
+      expect(toolXml).toContain("ADDIN ZOTERO_BIBL");
+      await expectValidDocx(await readFile(out));
+    } finally {
+      await h.close();
+    }
+  });
+
   it("SK-10 tesi, report, preprint, pagina web, libro: università, istituzione, repository, numero, genere, data di accesso, ISBN/ISSN/edizione/lingua/pagine, data non numerica → stessi itemData di inject_citations", async () => {
     const items = [
       { key: "THESIS22", itemType: "thesis", title: "A thesis", date: "2022", university: "University of Bologna", thesisType: "PhD thesis", numPages: "210", language: "en", creators: [{ creatorType: "author", firstName: "Ada", lastName: "Gualandi" }] },

@@ -101,6 +101,124 @@ function parseZciteTags(documentXml) {
   return requests;
 }
 
+// src/citation-injector/pandoc-body.ts
+var KEY = "[A-Za-z0-9_](?:[A-Za-z0-9_:.#$%&+?~/-]*[A-Za-z0-9_])?";
+var INLINE_RE = new RegExp(`\\[([^\\]<]*@[^\\]<]*)\\]|(?<![A-Za-z0-9])(-?)@(${KEY})`, "g");
+var KEY_RE = new RegExp(`(-?)@(${KEY})`);
+var LOCATOR_RE = /^(?:p{1,2}\.|pp?\b|pages?\b|chap\.?|ch\.|sec\.?|§|fig\.?|no\.?|vol\.?|art\.?)/i;
+function trimKey(key) {
+  return key.replace(/[.,;:!?]+$/, "");
+}
+function parseBracketInner(inner) {
+  const parts = inner.split(";");
+  const keys = [];
+  let prefix;
+  let suffix;
+  let locator;
+  let suppressAuthor = false;
+  for (const part of parts) {
+    const mm = KEY_RE.exec(part);
+    if (!mm) continue;
+    keys.push(trimKey(mm[2]));
+    if (parts.length === 1) {
+      const before = part.slice(0, mm.index).trim();
+      if (before) prefix = before;
+      suppressAuthor = mm[1] === "-";
+      const after = part.slice(mm.index + mm[0].length).replace(/^[.,;:]*\s*/, "").trim();
+      if (after) {
+        if (LOCATOR_RE.test(after)) locator = after;
+        else suffix = after;
+      }
+    }
+  }
+  if (keys.length === 0) return null;
+  return { keys, prefix, suffix, locator, suppressAuthor };
+}
+function countPandocMarkers(body) {
+  return parsePandocCitesInBody(body).length;
+}
+function parsePandocCitesInBody(body) {
+  const requests = [];
+  INLINE_RE.lastIndex = 0;
+  let m;
+  while ((m = INLINE_RE.exec(body)) !== null) {
+    if (m[1] !== void 0) {
+      const parsed = parseBracketInner(unescapeXml(m[1]));
+      if (parsed) requests.push({ ...parsed, raw: m[0] });
+    } else {
+      requests.push({ keys: [trimKey(m[3])], suppressAuthor: m[2] === "-", raw: m[0] });
+    }
+  }
+  return requests;
+}
+
+// src/citation-injector/model.ts
+var InjectionError = class extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+    this.name = "InjectionError";
+  }
+  code;
+};
+
+// src/citation-injector/citekey-resolver.ts
+var ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
+function itemMatchesCitekey(item, citekey) {
+  if (typeof item.citationKey === "string" && item.citationKey === citekey) return true;
+  if (typeof item.extra === "string") {
+    const re = /^[ \t]*citation ?key[ \t]*:[ \t]*(\S+)[ \t]*$/im;
+    let m;
+    const byLine = item.extra.split(/\r?\n/);
+    for (const line of byLine) {
+      m = re.exec(line);
+      if (m && m[1] === citekey) return true;
+    }
+  }
+  return false;
+}
+function citekeysOf(requests) {
+  const out = /* @__PURE__ */ new Set();
+  for (const r of requests) for (const k of r.keys) if (!ZOTERO_KEY.test(k)) out.add(k);
+  return out;
+}
+async function resolveCitekeys(requests, lookup) {
+  const citekeys = citekeysOf(requests);
+  if (citekeys.size === 0) return requests;
+  const found = await lookup(citekeys);
+  const unknown = [];
+  const ambiguous = [];
+  const map = /* @__PURE__ */ new Map();
+  for (const ck of citekeys) {
+    const keys = found.get(ck) ?? [];
+    if (keys.length === 0) unknown.push(ck);
+    else if (keys.length > 1) ambiguous.push(`${ck} \u2192 ${keys.join(", ")}`);
+    else map.set(ck, keys[0]);
+  }
+  if (unknown.length > 0) {
+    throw new InjectionError(
+      "missing_keys",
+      `${unknown.length} citation key(s) not found in the library: ${unknown.join(", ")}. No file was written. Pandoc citation keys are matched against each item's citationKey field or a "Citation Key: <key>" line in Extra (Better BibTeX). Fix these keys, or cite the item by its 8-character Zotero key, and call again; for a group library pass library_type and library_id.`
+    );
+  }
+  if (ambiguous.length > 0) {
+    throw new InjectionError(
+      "invalid_key",
+      `${ambiguous.length} citation key(s) match more than one item: ${ambiguous.join("; ")}. No file was written. Make the citation key unique in Zotero, or cite the item by its 8-character Zotero key, and call again.`
+    );
+  }
+  return requests.map((r) => ({ ...r, keys: r.keys.map((k) => map.get(k) ?? k) }));
+}
+
+// src/cited-document/number.ts
+function assignNumbers(requests) {
+  const order = /* @__PURE__ */ new Map();
+  for (const r of requests) for (const k of r.keys) if (!order.has(k)) order.set(k, order.size + 1);
+  const out = /* @__PURE__ */ new Map();
+  for (const r of requests) out.set(r, r.keys.map((k) => order.get(k)).join(","));
+  return out;
+}
+
 // src/citation-injector/citation-json.ts
 import { randomUUID } from "node:crypto";
 var CSL_SCHEMA_URL = "https://github.com/citation-style-language/schema/raw/master/csl-citation.json";
@@ -195,16 +313,6 @@ function formatCitationText(items, style, opts = {}) {
   return `(${parts.join("; ")})`;
 }
 
-// src/citation-injector/model.ts
-var InjectionError = class extends Error {
-  constructor(code, message) {
-    super(message);
-    this.code = code;
-    this.name = "InjectionError";
-  }
-  code;
-};
-
 // runtime-dep:fast-xml-parser
 var _N2 = "fast-xml-parser,node:module".split(",");
 var _fxp;
@@ -219,6 +327,7 @@ var XMLBuilder = _fxp.XMLBuilder;
 
 // src/citation-injector/zcite-normalizer.ts
 var ZCITE_PATTERN = /&lt;zcite\s+[\s\S]*?\/&gt;/;
+var PANDOC_PATTERN = /\[[^\]<]*@[^\]<]*\]/;
 var PARSER_OPTIONS = {
   preserveOrder: true,
   ignoreAttributes: false,
@@ -284,14 +393,14 @@ function collectConsecutiveRunGroups(children) {
   }
   return groups;
 }
-function findSplitZcite(group) {
+function findSplitZcite(group, pattern) {
   const { texts } = group;
   for (let start = 0; start < texts.length; start++) {
     let concat = "";
     for (let end = start; end < texts.length; end++) {
       concat += texts[end];
       if (end <= start) continue;
-      const m = ZCITE_PATTERN.exec(concat);
+      const m = pattern.exec(concat);
       if (m) {
         const matchStart = m.index;
         const matchEnd = m.index + m[0].length;
@@ -332,14 +441,14 @@ function mergeRunsInPlace(children, group, startOffset, endOffset) {
   }
   children.splice(absStart, count, newRun);
 }
-function normalizeParagraphRuns(children) {
+function normalizeParagraphRuns(children, pattern) {
   let modified = false;
   let changed = true;
   while (changed) {
     changed = false;
     const groups = collectConsecutiveRunGroups(children);
     for (const group of groups) {
-      const split = findSplitZcite(group);
+      const split = findSplitZcite(group, pattern);
       if (split) {
         mergeRunsInPlace(children, group, split.startOffset, split.endOffset);
         modified = true;
@@ -350,12 +459,12 @@ function normalizeParagraphRuns(children) {
   }
   return modified;
 }
-function walkAndNormalize(nodes) {
+function walkAndNormalize(nodes, pattern) {
   let modified = false;
   for (const node of nodes) {
     if ("w:p" in node) {
       const pChildren = node["w:p"];
-      if (normalizeParagraphRuns(pChildren)) {
+      if (normalizeParagraphRuns(pChildren, pattern)) {
         modified = true;
       }
     }
@@ -363,7 +472,7 @@ function walkAndNormalize(nodes) {
       if (key === ":@" || key === "#text") continue;
       const value = node[key];
       if (Array.isArray(value)) {
-        if (walkAndNormalize(value)) {
+        if (walkAndNormalize(value, pattern)) {
           modified = true;
         }
       }
@@ -371,18 +480,25 @@ function walkAndNormalize(nodes) {
   }
   return modified;
 }
-function normalizeZciteTags(documentXml) {
-  if (!documentXml.includes("zcite")) {
+function normalizeMarkers(documentXml, pattern, quick) {
+  if (!documentXml.includes(quick)) {
     return documentXml;
   }
   const parser = new XMLParser(PARSER_OPTIONS);
   const parsed = parser.parse(documentXml);
-  const modified = walkAndNormalize(parsed);
+  const modified = walkAndNormalize(parsed, pattern);
   if (!modified) {
     return documentXml;
   }
   const builder = new XMLBuilder(BUILDER_OPTIONS);
   return builder.build(parsed);
+}
+function normalizeZciteTags(documentXml) {
+  return normalizeMarkers(documentXml, ZCITE_PATTERN, "zcite");
+}
+function normalizePandocMarkers(documentXml) {
+  if (!documentXml.includes("[") || !documentXml.includes("@")) return documentXml;
+  return normalizeMarkers(documentXml, PANDOC_PATTERN, "[");
 }
 
 // src/citation-injector/field-codes.ts
@@ -539,6 +655,7 @@ var docxWriter = {
     }
   },
   normalize: (bodyXml) => normalizeZciteTags(bodyXml),
+  normalizePandoc: (bodyXml) => normalizePandocMarkers(bodyXml),
   citationXml: (prepared) => generateZoteroFieldCode(prepared.items, prepared.formattedText),
   replaceTag: (bodyXml, rawTag, citationXml2) => replaceZciteInXml(bodyXml, rawTag, citationXml2),
   appendBibliography: (bodyXml) => bodyXml.replace("</w:body>", `${generateBibliographyFieldCode()}</w:body>`),
@@ -584,6 +701,7 @@ import { randomBytes as randomBytes3 } from "node:crypto";
 
 // src/citation-injector/odt-normalizer.ts
 var ZCITE_PATTERN2 = /&lt;zcite\s+[\s\S]*?\/&gt;/;
+var PANDOC_PATTERN2 = /\[[^\]<]*@[^\]<]*\]/;
 var PARSER_OPTIONS2 = {
   preserveOrder: true,
   ignoreAttributes: false,
@@ -642,14 +760,14 @@ function collectConsecutiveSpanGroups(children) {
   flush();
   return groups;
 }
-function findSplitZcite2(group) {
+function findSplitZcite2(group, pattern) {
   const { texts } = group;
   for (let start = 0; start < texts.length; start++) {
     let concat = "";
     for (let end = start; end < texts.length; end++) {
       concat += texts[end];
       if (end <= start) continue;
-      const m = ZCITE_PATTERN2.exec(concat);
+      const m = pattern.exec(concat);
       if (m) {
         const matchStart = m.index;
         const matchEnd = m.index + m[0].length;
@@ -671,13 +789,13 @@ function mergeSpansInPlace(children, group, startOffset, endOffset) {
   if (firstAttrs) newSpan[":@"] = firstAttrs;
   children.splice(absStart, count, newSpan);
 }
-function normalizeParagraph(children) {
+function normalizeParagraph(children, pattern) {
   let modified = false;
   let changed = true;
   while (changed) {
     changed = false;
     for (const group of collectConsecutiveSpanGroups(children)) {
-      const split = findSplitZcite2(group);
+      const split = findSplitZcite2(group, pattern);
       if (split) {
         mergeSpansInPlace(children, group, split.startOffset, split.endOffset);
         modified = true;
@@ -688,27 +806,34 @@ function normalizeParagraph(children) {
   }
   return modified;
 }
-function walk(nodes) {
+function walk(nodes, pattern) {
   let modified = false;
   for (const node of nodes) {
     const tag = Object.keys(node).find((k) => k !== ":@" && k !== "#text");
     if (tag && MASKED.has(tag)) continue;
     if (tag === "text:p" || tag === "text:h") {
-      if (normalizeParagraph(node[tag])) modified = true;
+      if (normalizeParagraph(node[tag], pattern)) modified = true;
     }
     for (const key of Object.keys(node)) {
       if (key === ":@" || key === "#text") continue;
       const value = node[key];
-      if (Array.isArray(value) && walk(value)) modified = true;
+      if (Array.isArray(value) && walk(value, pattern)) modified = true;
     }
   }
   return modified;
 }
-function normalizeOdtZciteTags(contentXml) {
-  if (!contentXml.includes("zcite")) return contentXml;
+function normalizeOdt(contentXml, pattern, quick) {
+  if (!contentXml.includes(quick)) return contentXml;
   const parsed = new XMLParser(PARSER_OPTIONS2).parse(contentXml);
-  if (!walk(parsed)) return contentXml;
+  if (!walk(parsed, pattern)) return contentXml;
   return new XMLBuilder(BUILDER_OPTIONS2).build(parsed);
+}
+function normalizeOdtZciteTags(contentXml) {
+  return normalizeOdt(contentXml, ZCITE_PATTERN2, "zcite");
+}
+function normalizeOdtPandocMarkers(contentXml) {
+  if (!contentXml.includes("[") || !contentXml.includes("@")) return contentXml;
+  return normalizeOdt(contentXml, PANDOC_PATTERN2, "[");
 }
 
 // src/citation-injector/formats/odt.ts
@@ -778,6 +903,7 @@ var odtWriter = {
     }
   },
   normalize: (bodyXml) => normalizeOdtZciteTags(bodyXml),
+  normalizePandoc: (bodyXml) => normalizeOdtPandocMarkers(bodyXml),
   citationXml,
   replaceTag: (bodyXml, rawTag, cite) => {
     const at = bodyXml.indexOf(rawTag);
@@ -819,7 +945,7 @@ var odtWriter = {
 };
 
 // scripts/skill/inject-cli.ts
-var ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
+var ZOTERO_KEY2 = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
 var WRITERS = { docx: docxWriter, odt: odtWriter };
 var ZOTERO_TO_CSL_TYPE = {
   journalArticle: "article-journal",
@@ -998,54 +1124,110 @@ async function main() {
   writer.sniff?.(zip);
   const bodyEntry = zip.file(writer.bodyPart);
   if (!bodyEntry) throw new Error(`Invalid ${format === "odt" ? ".odt" : ".docx"} file: ${writer.bodyPart} not found`);
-  let body = writer.normalize(await bodyEntry.async("string"));
+  const rawBody = await bodyEntry.async("string");
   const metadata = JSON.parse(await readFile(metadataPath, "utf-8"));
   const cslData = convertMetadataToCsl(metadata);
+  const out = rawBody.includes("zcite") ? await injectZcite(zip, writer, rawBody, cslData, libType, userId, style) : await injectPandoc(zip, writer, rawBody, cslData, metadataCitekeyLookup(metadata), libType, userId, style);
+  if (writer.finalize) await writer.finalize(zip);
+  const buffer = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
+  await writeFileAtomic(outputPath, buffer);
+  for (const w of out.warnings) console.error(`WARNING: ${w}`);
+  console.log(JSON.stringify({ output: outputPath, found: out.found, injected: out.injected }));
+}
+async function injectZcite(zip, writer, rawBody, cslData, libType, userId, style) {
+  let body = writer.normalize(rawBody);
   const requests = parseZciteTags(body);
   if (requests.length === 0) {
-    if (writer.finalize) await writer.finalize(zip);
-    const buffer2 = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
-    await writeFileAtomic(outputPath, buffer2);
-    console.log(JSON.stringify({ output: outputPath, found: 0, injected: 0 }));
-    return;
+    return { found: 0, injected: 0, warnings: [] };
   }
   const allKeys = [...new Set(requests.flatMap((r) => r.keys))];
-  const invalidKeys = allKeys.filter((k) => !ZOTERO_KEY.test(k));
+  const invalidKeys = allKeys.filter((k) => !ZOTERO_KEY2.test(k));
   if (invalidKeys.length > 0) {
     throw new Error(
       `Invalid Zotero item key(s) in <zcite>: ${invalidKeys.join(", ")} (a key is 8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ)`
     );
   }
+  const warnings = [];
   if (style === "ieee" || style === "vancouver") {
     const withNum = requests.filter((r) => r.num !== void 0).length;
     if (withNum < requests.length) {
-      console.error(`WARNING: Style '${style}' requires 'num' attribute on <zcite> tags. Found ${withNum}/${requests.length} tags with num.`);
+      warnings.push(`Style '${style}' requires 'num' attribute on <zcite> tags. Found ${withNum}/${requests.length} tags with num.`);
     }
   }
   const missingKeys = allKeys.filter((k) => !cslData.has(k));
   if (missingKeys.length > 0) {
     throw new Error(`${missingKeys.length} cited key(s) not found in the metadata: ${missingKeys.join(", ")}`);
   }
+  const injected = injectRequests(writer, requests, cslData, libType, userId, style, (b) => body = b, () => body);
+  body = writer.appendBibliography(body);
+  zip.file(writer.bodyPart, body);
+  const prefs = await writer.writePrefs(zip, style);
+  warnings.push(...writer.prefsWarnings(prefs));
+  const pandoc = countPandocMarkers(rawBody);
+  if (pandoc > 0) {
+    warnings.push(
+      `The document also has ${pandoc} Pandoc citation marker(s) ([@key]): left as text, because a document with <zcite> is treated as a zcite document. To cite them too, run inject again on the output.`
+    );
+  }
+  return { found: requests.length, injected, warnings };
+}
+async function injectPandoc(zip, writer, rawBody, cslData, citekeyLookup, libType, userId, style) {
+  let body = writer.normalizePandoc ? writer.normalizePandoc(rawBody) : rawBody;
+  const parsed = parsePandocCitesInBody(body);
+  if (parsed.length === 0) {
+    return { found: 0, injected: 0, warnings: [] };
+  }
+  const requests = await resolveCitekeys(parsed, citekeyLookup);
+  if (style === "ieee" || style === "vancouver") {
+    const nums = assignNumbers(requests);
+    for (const r of requests) r.num = nums.get(r);
+  }
+  const missingKeys = [...new Set(requests.flatMap((r) => r.keys))].filter((k) => !cslData.has(k));
+  if (missingKeys.length > 0) {
+    throw new Error(`${missingKeys.length} cited key(s) not found in the metadata: ${missingKeys.join(", ")}`);
+  }
+  const ordered = [...requests].sort((a, b) => b.raw.length - a.raw.length);
+  const injected = injectRequests(writer, ordered, cslData, libType, userId, style, (b) => body = b, () => body);
+  const warnings = [];
+  if (body.includes("ZOTERO_BIBL")) {
+    warnings.push("The document already has a Zotero bibliography: no second one was written.");
+  } else {
+    body = writer.appendBibliography(body);
+  }
+  zip.file(writer.bodyPart, body);
+  const prefs = await writer.writePrefs(zip, style);
+  warnings.push(...writer.prefsWarnings(prefs));
+  return { found: parsed.length, injected, warnings };
+}
+function injectRequests(writer, requests, cslData, libType, userId, style, setBody, getBody) {
   let injected = 0;
   for (const request of requests) {
     const items = buildCitationItems(request, cslData, libType, userId);
     const itemData = request.keys.map((k) => cslData.get(k) ?? { type: "article-journal" });
     const formattedText = formatCitationText(itemData, style, request);
     const prepared = { request, items, itemData, formattedText };
+    const body = getBody();
     const newBody = writer.replaceTag(body, request.raw, writer.citationXml(prepared));
     if (newBody !== body) {
-      body = newBody;
+      setBody(newBody);
       injected++;
     }
   }
-  body = writer.appendBibliography(body);
-  zip.file(writer.bodyPart, body);
-  const prefs = await writer.writePrefs(zip, style);
-  for (const w of writer.prefsWarnings(prefs)) console.error(`WARNING: ${w}`);
-  if (writer.finalize) await writer.finalize(zip);
-  const buffer = await zip.generateAsync({ type: "nodebuffer", ...writer.generateOptions });
-  await writeFileAtomic(outputPath, buffer);
-  console.log(JSON.stringify({ output: outputPath, found: requests.length, injected }));
+  return injected;
+}
+function metadataCitekeyLookup(metadata) {
+  return async (citekeys) => {
+    const out = /* @__PURE__ */ new Map();
+    for (const ck of citekeys) {
+      const keys = [];
+      for (const [key, meta] of Object.entries(metadata)) {
+        if (!meta || typeof meta !== "object" || Array.isArray(meta)) continue;
+        if (itemMatchesCitekey(meta, ck)) keys.push(key);
+      }
+      out.set(ck, [...new Set(keys)]);
+    }
+    return out;
+  };
 }
 main().catch((err) => {
   console.error("Error:", err instanceof Error ? err.message : String(err));

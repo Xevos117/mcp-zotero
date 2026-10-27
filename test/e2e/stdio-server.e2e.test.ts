@@ -264,6 +264,18 @@ describe("e2e: build/server.js su stdio", () => {
     expect(xml).toContain("(Lovelace, 2023)");
   });
 
+  it("E2E-18c inject_citations su marcatori Pandoc [@KEY] in un .docx senza <zcite>", async () => {
+    fake.net.on("GET", `${ZBASE}/items/AAAARRRR`, zSingle(article("AAAARRRR")));
+    const input = join(cwd, "pandoc.docx");
+    await writeFile(input, await makeDocx(para("As shown [@AAAARRRR] here.")));
+    const out = await call(s, "inject_citations", { file_path: input });
+    expect(out.json).toMatchObject({ output_path: join(cwd, "pandoc_cited.docx"), citations_found: 1, citations_injected: 1 });
+    const xml = await readDocumentXml(await readFile(join(cwd, "pandoc_cited.docx")));
+    expect(xml).toContain("ADDIN ZOTERO_ITEM CSL_CITATION");
+    expect(xml).toContain("ADDIN ZOTERO_BIBL");
+    expect(xml).not.toContain("[@AAAARRRR]");
+  });
+
   it("E2E-18b create_cited_document da markdown su un .docx reale", async () => {
     fake.net.on("GET", `${ZBASE}/items/AAAARRRR`, zSingle(article("AAAARRRR")));
     const out = await call(s, "create_cited_document", { markdown: "# Title\n\nClaim [@AAAARRRR].", output_path: join(cwd, "new.docx") });

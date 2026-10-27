@@ -458,6 +458,29 @@ Tool di sola lettura: non unisce né cancella nulla. Scansiona solo le voci rego
 
 Gli output di IC-01/02/03/04/07/19/23/25 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
 
+### Marcatori Pandoc (`test/tools/inject-citations-pandoc.test.ts`)
+Riconoscimento interno, senza un campo in ingresso: se il documento contiene `<zcite` è un documento zcite (percorso di oggi, golden Word invariato); se non ci sono `<zcite` ma marcatori Pandoc `[@…]`/inline `@…` si usa il ramo pandoc; nessuno dei due → copia invariata. I citekey Better BibTeX sono risolti in chiavi Zotero.
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| IC-P01 | `[@KEY]` con chiave Zotero (docx) | field code + bibliografia, testo intorno conservato, nessun `[@…]` residuo |
+| IC-P02 | inline `@KEY` e soppressione autore `-@KEY` | due citazioni iniettate |
+| IC-P03 | marcatore `[@KEY]` spezzato tra due run | unito dal normalizzatore e iniettato |
+| IC-P04 | citekey risolto dal campo nativo `citationKey` (ricerca `q=<citekey>` + conferma lato client) | URI con la chiave Zotero risolta |
+| IC-P05 | citekey risolto dalla riga `Citation Key:` in Extra, con locator | iniettato, URI con la chiave Zotero, `p. 12` |
+| IC-P06 | citekey sconosciuto | errore "not found in the library" con il citekey, nessun output |
+| IC-P07 | citekey ambiguo (due voci con lo stesso citekey) | errore "match more than one item", nessun output |
+| IC-P08 | una email `a@b.com` accanto a `[@KEY]` | solo una citazione, email intatta |
+| IC-P09 | stile `ieee` | numerazione per ordine di prima citazione ([1], [2]) |
+| IC-P10 | misto `<zcite>` + `[@…]` | vince zcite, i marcatori Pandoc restano testo, avviso "N Pandoc citation marker(s)" |
+| IC-P11 | seconda chiamata sul `_cited` (già con bibliografia) | inietta i Pandoc rimasti, **nessuna** seconda bibliografia (una sola `ZOTERO_BIBL`), avviso |
+| IC-P12 | ODT `[@KEY]` | reference mark + sezione bibliografia |
+| IC-P13 | ODT marcatore spezzato tra due `text:span` | unito e iniettato |
+| IC-P14 | nessun marcatore | copia invariata, avviso "No <zcite> placeholders found" |
+| IC-P15 | `[@K1; @K2]` più voci in una citazione | entrambe le URI nel field code |
+
+Parser puro in `test/citation-injector/pandoc-body.test.ts` (PB-01..10: bracket, multi-chiave, prefix/locator, inline, email non-citazione, punteggiatura finale non inglobata, entità XML nel prefisso, nessun attraversamento di tag). Risoluzione citekey in `test/citation-injector/citekey-resolver.test.ts` (CK-01..09: campo `citationKey`, riga Extra case-insensitive, nessun falso positivo da sottostringa, separazione citekey/chiavi Zotero, sconosciuto → `missing_keys`, ambiguo → `invalid_key`). Parità tool ⇄ script della skill sul ramo pandoc in `SK-P01`. E2E `E2E-18c`.
+
 ### LibreOffice ODT (`test/tools/inject-citations-odt.test.ts`, validatore `test/helpers/citation-validate.ts`)
 
 `inject_citations` su `.odt`: reference mark al posto dei field code, bibliografia in una `text:section`, preferenze in `meta.xml` (fieldType ReferenceMark). `validateOdt`/`expectValidOdt` controllano struttura ODF, mimetype primo e STORED, schema CSL, URI e rendering citeproc (la stessa macchina di docx-validate).
