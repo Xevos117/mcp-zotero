@@ -86,8 +86,13 @@ describe("normalizeDoi", () => {
     expect(normalizeDoi("10.1000/abc")).toBe("10.1000/abc");
   });
 
-  it("strips a trailing parenthesis (a DOI ending in ')' loses it)", () => {
-    expect(normalizeDoi("10.1000/a(b)")).toBe("10.1000/a(b");
+  it("keeps balanced parentheses but strips an unbalanced trailing ')'", () => {
+    // Real DOIs contain parentheses (the SICI scheme, Elsevier S0140-6736(97)…): a balanced ')' stays.
+    expect(normalizeDoi("10.1000/a(b)")).toBe("10.1000/a(b)");
+    expect(normalizeDoi("(see 10.1000/abc)")).toBe("10.1000/abc");
+    expect(normalizeDoi("(10.1016/S0140-6736(97)11096-0)")).toBe("10.1016/s0140-6736(97)11096-0");
+    // Wakefield's retracted Lancet paper, cited inside parentheses with a trailing period
+    expect(normalizeDoi("(10.1016/S0140-6736(97)11096-0).")).toBe("10.1016/s0140-6736(97)11096-0");
   });
 });
 

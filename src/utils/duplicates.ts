@@ -18,13 +18,34 @@ const EXTRA_DOI_LINE = /^[ \t]*DOI:[ \t]*(\S+)/im;
  * trim trailing sentence punctuation, and keep only a value that has the DOI shape. Returns null when
  * the string carries no DOI, so callers never group on a non-DOI.
  */
+/**
+ * Strip trailing sentence punctuation from a DOI match: ".", "," and ";" always, and a ")" only when
+ * it is unbalanced (more ")" than "(") — so a DOI quoted inline ("(see 10.1000/abc)") loses the closer
+ * while a DOI that really contains parentheses (10.1016/S0140-6736(97)11096-0, the SICI scheme) keeps them.
+ */
+function stripTrailingDoiPunctuation(doi: string): string {
+  let end = doi.length;
+  for (; end > 0; end--) {
+    const ch = doi[end - 1];
+    if (ch === "." || ch === "," || ch === ";") continue;
+    if (ch === ")") {
+      const head = doi.slice(0, end);
+      const opens = (head.match(/\(/g) ?? []).length;
+      const closes = (head.match(/\)/g) ?? []).length;
+      if (closes > opens) continue;
+    }
+    break;
+  }
+  return doi.slice(0, end);
+}
+
 export function normalizeDoi(raw: string | undefined | null): string | null {
   if (!raw) return null;
   const stripped = raw.trim().replace(DOI_PREFIX, "");
   const match = DOI_CORE.exec(stripped);
-  // Strip trailing sentence punctuation from the match, not the whole string: a DOI quoted inline
-  // ("see 10.1000/abc, p.5") would otherwise keep the comma and never match a bare "10.1000/abc".
-  return match ? match[0].toLowerCase().replace(/[).,;]+$/, "") : null;
+  // Strip from the match, not the whole string: a DOI quoted inline ("see 10.1000/abc, p.5") would
+  // otherwise keep the comma and never match a bare "10.1000/abc".
+  return match ? stripTrailingDoiPunctuation(match[0].toLowerCase()) : null;
 }
 
 /** The comparable DOI of an item: its DOI field, else a "DOI:" line in Extra. Null when it has none. */

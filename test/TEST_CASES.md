@@ -401,7 +401,7 @@ Tool di sola lettura: non unisce né cancella nulla. Scansiona solo le voci rego
 | scan path | senza `collection_key` / con `collection_key` | la catena passa da `items().top()` / `collections(key).items().top()` |
 | scan base | una voce, nessun duplicato | `mode: "scan"`, `scanned: 1`, `truncated: false`, `groups: []` |
 | scan DOI | stesso DOI (campo, forma URL e riga `DOI:` in Extra) + una voce diversa | un gruppo `match: "doi"`, le tre voci; la quarta esclusa |
-| normalizeDoi | `see 10.1000/abc, p.5`, `(10.1000/abc).`, `10.1000/a(b)` | punteggiatura finale tolta sul match (`10.1000/abc`); un `)` finale tolto (`10.1000/a(b`) |
+| normalizeDoi | `see 10.1000/abc, p.5`, `(see 10.1000/abc)`, `10.1000/a(b)`, Wakefield `(10.1016/S0140-6736(97)11096-0).` | punteggiatura finale tolta sul match; `)` tolto solo se sbilanciato → parentesi bilanciate preservate (SICI, S0140-6736(97)…) |
 | scan DOI Extra | campo `10.1000/abc` e riga Extra `DOI: 10.1000/abc, see note` | raggruppati (stessa normalizzazione) |
 | scan titolo | stesso titolo con accenti/punteggiatura e stesso anno | un gruppo `match: "title"`, chiave = titolo normalizzato |
 | scan CJK/cirillico | titoli CJK uguali (soglia 4), CJK corto generico (`序言`) escluso, cirillico uguale (soglia latina) | CJK e cirillico raggruppati, CJK corto no |
