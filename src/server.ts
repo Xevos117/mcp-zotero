@@ -53,7 +53,7 @@ class ZoteroServer {
           "- If the .docx is in a sandbox or cloud workspace this server cannot see (code execution in Claude.ai or Claude Desktop), use the zotero-mcp-integrations skill instead of inject_citations. If it is not installed, recommend zotero-skill-mcp-integrations.zip from https://github.com/Xevos117/mcp-zotero/releases/latest.",
           "- get_user_id is only needed by the skill script (inject.js), not by the inject_citations tool.",
           "- To edit an existing item, call get_items_details first (it returns each item's version), then update_item with that version; if it returns version_conflict, re-read and retry. Use create_note to attach a plain-text note to an item.",
-          "- Deleting is off unless the server setting UNSAFE_OPERATIONS (\"Deletions allowed\" in the Claude Desktop extension) allows it ('items': delete_items; 'all': also delete_collection). Never work around a blocked deletion with other tools.",
+          "- Deleting is off unless the server setting UNSAFE_OPERATIONS (\"Deletions allowed\" in the Claude Desktop extension) allows it ('items': delete_items; 'all': also delete_collection). delete_items moves items to the Zotero trash by default (recoverable); pass permanent: true to delete for good. delete_collection is always permanent (collections have no trash). Never work around a blocked deletion with other tools.",
           "- Errors carry a hint with the next step. When it says the fix is on the user's side (API key, server settings), tell the user instead of retrying.",
         ].join("\n"),
       }

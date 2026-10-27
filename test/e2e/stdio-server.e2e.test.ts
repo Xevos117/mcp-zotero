@@ -58,7 +58,9 @@ describe("e2e: build/server.js su stdio", () => {
     expect(s.client.getInstructions()).toContain("inject_citations");
     // prerequisiti e regole che il modello deve conoscere prima di qualsiasi errore
     expect(s.client.getInstructions()).toContain("needs UNPAYWALL_EMAIL in the server settings");
-    expect(s.client.getInstructions()).toMatch(/UNSAFE_OPERATIONS \("Deletions allowed" in the Claude Desktop extension\) allows it \('items': delete_items; 'all': also delete_collection\)\. Never work around/);
+    expect(s.client.getInstructions()).toMatch(/UNSAFE_OPERATIONS \("Deletions allowed" in the Claude Desktop extension\) allows it \('items': delete_items; 'all': also delete_collection\)\./);
+    expect(s.client.getInstructions()).toMatch(/delete_items moves items to the Zotero trash by default \(recoverable\); pass permanent: true to delete for good\. delete_collection is always permanent/);
+    expect(s.client.getInstructions()).toMatch(/Never work around a blocked deletion with other tools/);
     expect(s.client.getInstructions()).toMatch(/Errors carry a hint.*tell the user instead of retrying/);
   });
 
@@ -194,11 +196,21 @@ describe("e2e: build/server.js su stdio", () => {
     expect(fake.net.requests("DELETE", `${ZBASE}/collections/CPLQQQQR`)[0].headers.get("if-unmodified-since-version")).toBe("12");
   });
 
-  it("E2E-17 delete_items (UNSAFE_OPERATIONS=all)", async () => {
+  it("E2E-17 delete_items nel cestino di default, poi permanente (UNSAFE_OPERATIONS=all)", async () => {
     fake.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")], 40));
+    fake.net.on("POST", ITEMS, zWrite());
+    const trash = await call(s, "delete_items", { item_keys: ["AAAARRRR", "GPNEQQQR"] });
+    expect(trash.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1, mode: "trash", not_found: ["GPNEQQQR"] });
+    const trashPost = fake.net
+      .requests("POST", ITEMS)
+      .map((r) => r.json<Array<Record<string, unknown>>>())
+      .find((b) => Array.isArray(b) && b[0]?.deleted === 1);
+    expect(trashPost).toEqual([{ key: "AAAARRRR", version: 40, deleted: 1 }]);
+
     fake.net.on("DELETE", ITEMS, zDeleted());
-    const out = await call(s, "delete_items", { item_keys: ["AAAARRRR", "GPNEQQQR"] });
-    expect(out.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1, not_found: ["GPNEQQQR"] });
+    const perm = await call(s, "delete_items", { item_keys: ["AAAARRRR"], permanent: true });
+    expect(perm.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1, mode: "permanent" });
+    expect(fake.net.requests("DELETE", ITEMS)).toHaveLength(1);
   });
 
   it("E2E-18 inject_citations su un .docx reale", async () => {
@@ -317,7 +329,7 @@ describe("e2e: configurazione del processo", () => {
     const s = await spawnServer(fake, cwd, { UNSAFE_OPERATIONS: " ITEMS " });
     try {
       fake.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
-      fake.net.on("DELETE", ITEMS, zDeleted());
+      fake.net.on("POST", ITEMS, zWrite());
       expect((await call(s, "delete_items", { item_keys: ["AAAARRRR"] })).json.deleted_count).toBe(1);
       expect((await call(s, "delete_collection", { collection_key: "CCCC2222" })).json.current_value).toBe("items");
     } finally {

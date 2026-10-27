@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { zoteroKey } from "../utils/zotero-keys.js";
-import { ZoteroApiInterface, isZoteroApiError } from "../types/zotero-types.js";
+import { ZoteroApiInterface, ZoteroWriteResponse, ZoteroWriteError, isZoteroApiError } from "../types/zotero-types.js";
 import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
+import { formatWriteErrors } from "../utils/write-results.js";
 import { UnsafeOperationsMode, canDeleteItems } from "../utils/unsafe-operations.js";
 import { fetchItemsByKeys } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
@@ -10,7 +11,7 @@ import { ITEM_KEY_HINT, unsafeOperationsHint, zoteroStatusHint } from "../utils/
 export const toolConfig = {
   name: "delete_items",
   description:
-    "Delete one or more items from your Zotero library: they are permanently deleted (not moved to the Zotero trash), so confirm with the user first. Accepts up to 50 item keys per call. Disabled unless the server setting UNSAFE_OPERATIONS is 'items' or 'all'.",
+    "Delete one or more items from your Zotero library. By default they are moved to the Zotero trash (recoverable by the user from Zotero → Trash); pass permanent: true to delete them for good (not recoverable), which is the old behaviour — confirm with the user first for a permanent delete. Accepts up to 50 item keys per call. Disabled unless the server setting UNSAFE_OPERATIONS is 'items' or 'all' (the same setting gates both trash and permanent deletion).",
   inputSchema: {
     item_keys: z
       .array(zoteroKey())
@@ -18,6 +19,13 @@ export const toolConfig = {
       .max(50)
       .describe(
         'Array of Zotero item keys to delete (e.g. ["EUHUT5K3", "F9UQM7N2"]). Max 50 per call.'
+      ),
+    permanent: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "false (default): move the items to the Zotero trash, where the user can restore them. true: delete them permanently (not recoverable)."
       ),
     ...libraryArgsSchema,
   },
@@ -31,7 +39,7 @@ export async function handleDeleteItems(
   args: Record<string, unknown>,
   unsafeOps: UnsafeOperationsMode = "none"
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { item_keys, library_type, library_id } = DeleteItemsSchema.parse(args);
+  const { item_keys, permanent, library_type, library_id } = DeleteItemsSchema.parse(args);
   const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (!canDeleteItems(unsafeOps)) {
@@ -51,7 +59,13 @@ export async function handleDeleteItems(
     let pending = item_keys;
     for (let attempt = 1; ; attempt++) {
       const { items, version: libraryVersion } = await fetchItemsByKeys(
-        (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
+        // A permanent delete must also reach items already in the trash (e.g. previously moved there by a
+        // default delete_items), which the Web API omits from listings unless includeTrashed is set.
+        (params) =>
+          zoteroApi
+            .library(libraryType, libraryId)
+            .items()
+            .get(permanent ? { ...params, includeTrashed: 1 } : params),
         pending
       );
 
@@ -78,14 +92,26 @@ export async function handleDeleteItems(
       // only keys the caller asked for, whatever the API returned
       const keysToDelete = pending.filter((k) => foundKeys.has(k));
 
+      // Default: move to the Zotero trash by setting deleted:1 in a multi-object write (POST has PATCH
+      // semantics, so only `deleted` changes). permanent: true keeps the old behaviour (DELETE). Both the
+      // library version from the GET header (If-Unmodified-Since-Version) and a per-object `version` guard
+      // the write against a concurrent change, exactly like the DELETE path.
+      let trashErrors: Record<string, ZoteroWriteError> | null = null;
       try {
-        await zoteroApi
-          .library(libraryType, libraryId)
-          .items()
-          .version(libraryVersion)
-          .delete(keysToDelete);
+        if (permanent) {
+          await zoteroApi.library(libraryType, libraryId).items().version(libraryVersion).delete(keysToDelete);
+        } else {
+          const payload = keysToDelete.map((key) => ({ key, version: libraryVersion, deleted: 1 }));
+          const response: ZoteroWriteResponse = await zoteroApi
+            .library(libraryType, libraryId)
+            .items()
+            .version(libraryVersion)
+            .post(payload);
+          const errors = response.getErrors();
+          if (Object.keys(errors).length > 0) trashErrors = errors;
+        }
       } catch (err) {
-        // 412: the library changed between the GET and the DELETE (another client, a sync). Read the new
+        // 412: the library changed between the GET and the write (another client, a sync). Read the new
         // version and the keys that still exist, and retry once with those.
         if (attempt === 1 && isZoteroApiError(err) && err.response.status === 412) {
           pending = keysToDelete;
@@ -94,13 +120,30 @@ export async function handleDeleteItems(
         throw err;
       }
 
+      // A per-object failure in the trash write (none succeeded) is reported; a partial failure cannot happen
+      // with a single library version, but is surfaced if it ever does.
+      const failedIndexes = trashErrors ? Object.keys(trashErrors).map(Number) : [];
+      const trashed = keysToDelete.filter((_, i) => !failedIndexes.includes(i));
+      if (!permanent && trashed.length === 0) {
+        return formatErrorResponse(`Could not move items to the trash: ${formatWriteErrors(trashErrors ?? {})}. Nothing was deleted.`, {
+          item_keys,
+          hint: "Retry the same call once.",
+        });
+      }
+      const deletedKeys = permanent ? keysToDelete : trashed;
+
       const result: Record<string, unknown> = {
-        deleted_keys: keysToDelete,
-        deleted_count: keysToDelete.length,
+        deleted_keys: deletedKeys,
+        deleted_count: deletedKeys.length,
+        mode: permanent ? "permanent" : "trash",
       };
 
       if (notFoundKeys.length > 0) {
         result.not_found = notFoundKeys;
+      }
+      const failedKeys = failedIndexes.map((i) => keysToDelete[i]);
+      if (failedKeys.length > 0) {
+        result.failed = failedKeys;
       }
 
       return formatJsonResult(result);

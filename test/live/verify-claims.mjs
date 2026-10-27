@@ -1162,8 +1162,12 @@ async function main() {
     }
     const kind = dItem.kind === "collection" ? "collections" : "items";
     const r = await api(`${dItem.library_path}/${kind}/${dItem.key}`);
-    if (r.status !== 404) fail(`${dItem.kind ?? "item"} ${dItem.key} claimed deleted but HTTP ${r.status}`);
-    else ok(`deleted ${dItem.key}`);
+    // Permanent delete → gone (404). delete_items moves items to the trash by default: the item is still
+    // retrievable by key but carries deleted:1, which is a legitimate non-permanent deletion. Collections
+    // have no trash (Zotero Web API: DELETE only), so for them only 404 counts as deleted.
+    if (r.status === 404) ok(`deleted ${dItem.key}`);
+    else if (kind === "items" && r.status === 200 && r.data?.data?.deleted === 1) ok(`trashed ${dItem.key}`);
+    else fail(`${dItem.kind ?? "item"} ${dItem.key} claimed deleted but HTTP ${r.status}${r.status === 200 ? " and not in the trash" : ""}`);
   }
 
   // Produced documents: valid structure/CSL/rendering, URIs pointing at created items

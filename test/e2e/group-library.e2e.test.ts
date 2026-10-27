@@ -128,8 +128,8 @@ describe("e2e: libreria di gruppo (ZOTERO_LIBRARY_TYPE=group, ZOTERO_LIBRARY_ID=
 
   it("E2E-G07 delete_items e delete_collection su /groups/777/", async () => {
     fake.net.on("GET", GITEMS, zLibraryQuery([article("AAAARRRR")], 40));
-    fake.net.on("DELETE", GITEMS, zDeleted());
-    expect((await call(s, "delete_items", { item_keys: ["AAAARRRR"] })).json).toMatchObject({ deleted_count: 1 });
+    fake.net.on("POST", GITEMS, zWrite());
+    expect((await call(s, "delete_items", { item_keys: ["AAAARRRR"] })).json).toMatchObject({ deleted_count: 1, mode: "trash" });
     fake.net.on("GET", `${GBASE}/collections/CPLQQQQR`, zSingle(collection("CPLQQQQR", "Team"), 9));
     fake.net.on("DELETE", `${GBASE}/collections/CPLQQQQR`, zDeleted());
     expect((await call(s, "delete_collection", { collection_key: "CPLQQQQR" })).json).toMatchObject({ deleted: true });
