@@ -20,9 +20,11 @@ const EXTRA_DOI_LINE = /^[ \t]*DOI:[ \t]*(\S+)/im;
  */
 export function normalizeDoi(raw: string | undefined | null): string | null {
   if (!raw) return null;
-  const stripped = raw.trim().replace(DOI_PREFIX, "").replace(/[).,;]+$/, "");
+  const stripped = raw.trim().replace(DOI_PREFIX, "");
   const match = DOI_CORE.exec(stripped);
-  return match ? match[0].toLowerCase() : null;
+  // Strip trailing sentence punctuation from the match, not the whole string: a DOI quoted inline
+  // ("see 10.1000/abc, p.5") would otherwise keep the comma and never match a bare "10.1000/abc".
+  return match ? match[0].toLowerCase().replace(/[).,;]+$/, "") : null;
 }
 
 /** The comparable DOI of an item: its DOI field, else a "DOI:" line in Extra. Null when it has none. */
@@ -53,6 +55,19 @@ export function normalizeTitle(title: string | undefined | null): string {
  * which would pair unrelated items; such titles are skipped in the title pass.
  */
 export const MIN_TITLE_LENGTH = 10;
+
+/**
+ * CJK and Hangul titles pack a whole title into a few characters ("深度学习" is 4), so the Latin
+ * threshold would drop every real duplicate; a shorter minimum applies when such a script is present.
+ */
+export const MIN_TITLE_LENGTH_CJK = 4;
+const CJK_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+/** Whether a normalised title is long enough to group on (a lower bar for CJK/Hangul titles). */
+export function isTitleLongEnough(normalizedTitle: string): boolean {
+  const min = CJK_SCRIPT.test(normalizedTitle) ? MIN_TITLE_LENGTH_CJK : MIN_TITLE_LENGTH;
+  return normalizedTitle.length >= min;
+}
 
 /** The 4-digit year of an item's date (Zotero dates are "2024-01-15", "2024", or free text), or null. */
 export function itemYear(item: ZoteroItemData): string | null {

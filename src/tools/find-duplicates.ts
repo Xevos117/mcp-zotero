@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { zoteroKey } from "../utils/zotero-keys.js";
-import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
-import { formatJsonResult } from "../utils/error-formatter.js";
+import { ZoteroApiInterface, ZoteroItemData, isZoteroApiError } from "../types/zotero-types.js";
+import { formatJsonResult, formatErrorResponse } from "../utils/error-formatter.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
+import { COLLECTION_KEY_HINT } from "../utils/error-hints.js";
 import { asArray } from "../utils/pagination.js";
 import { firstCreatorName } from "../utils/item-formatter.js";
 import {
@@ -11,7 +12,7 @@ import {
   normalizeTitle,
   itemYear,
   titleSubgroups,
-  MIN_TITLE_LENGTH,
+  isTitleLongEnough,
 } from "../utils/duplicates.js";
 
 /** Items per page; 100 is the real Web API maximum for a multi-object request. */
@@ -27,7 +28,7 @@ Two modes:
 - With 'dois' (up to 50): checks which of those DOIs are ALREADY in the library. Returns, per DOI, the matching items (item_key, title, year, first author, type). Run this before add_items_by_doi and skip the DOIs that already have an entry, to avoid creating duplicates.
 - Without 'dois': scans the library (or a single collection) for duplicate groups — items that share a normalized DOI, or a normalized title (ignoring case, accents and punctuation; same year required when both items have one; very short/generic titles skipped). Each group lists its items so the user decides which to keep.
 
-Only regular items are scanned: notes, attachments and the trash are skipped. The scan stops after a cap and the result reports 'scanned' (regular items examined) and 'truncated' (true if the cap was hit before the end). Pass 'collection_key' to limit the scan to one collection.`,
+Only regular items are scanned: notes, attachments and the trash are skipped, up to 5000 items (in both modes). The result reports 'scanned' (regular items examined) and 'truncated' (true if the cap was hit before the end; in 'dois' mode a DOI past the cap may then be missed). Pass 'collection_key' to limit the scan to one collection.`,
   inputSchema: {
     dois: z
       .array(z.string().trim().min(1, "DOI must not be empty"))
@@ -122,7 +123,22 @@ export async function handleFindDuplicates(
     return scope.top().get(params);
   };
 
-  const { items, scanned, truncated } = await scanRegularItems(buildRequest);
+  let items: ZoteroItemData[];
+  let scanned: number;
+  let truncated: boolean;
+  try {
+    ({ items, scanned, truncated } = await scanRegularItems(buildRequest));
+  } catch (err) {
+    if (collection_key && isZoteroApiError(err) && err.response?.status === 404) {
+      return formatErrorResponse(
+        "Collection not found: no collection with this key in this library, or the API key cannot access it.",
+        { collection_key, suggestion: COLLECTION_KEY_HINT, status: "not_found" }
+      );
+    }
+    throw err;
+  }
+
+  const byKey = (a: DuplicateEntry, b: DuplicateEntry) => (a.key ?? "").localeCompare(b.key ?? "");
 
   if (dois) {
     const byDoi = new Map<string, ZoteroItemData[]>();
@@ -130,10 +146,11 @@ export async function handleFindDuplicates(
       const doi = itemDoi(item);
       if (doi) pushGroup(byDoi, doi, item);
     }
+    // Deterministic output: results follow the input DOI order, each `existing` sorted by key.
     const results = dois.map((raw) => {
       const normalized = normalizeDoi(raw);
       const existing = normalized ? byDoi.get(normalized) ?? [] : [];
-      return { doi: raw, normalized, existing: existing.map(toEntry) };
+      return { doi: raw, normalized, existing: existing.map(toEntry).sort(byKey) };
     });
     return formatJsonResult({ mode: "dois", scanned, truncated, dois: results });
   }
@@ -157,7 +174,7 @@ export async function handleFindDuplicates(
   for (const item of items) {
     if (item.key && doiGroupedKeys.has(item.key)) continue;
     const title = normalizeTitle(item.title);
-    if (title.length < MIN_TITLE_LENGTH) continue;
+    if (!isTitleLongEnough(title)) continue;
     pushGroup(byTitle, title, item);
   }
   for (const [title, bucket] of byTitle) {
@@ -169,7 +186,7 @@ export async function handleFindDuplicates(
 
   // Deterministic order: DOI groups before title groups, then by key.
   groups.sort((a, b) => (a.match === b.match ? a.key.localeCompare(b.key) : a.match === "doi" ? -1 : 1));
-  for (const group of groups) group.items.sort((a, b) => (a.key ?? "").localeCompare(b.key ?? ""));
+  for (const group of groups) group.items.sort(byKey);
 
   return formatJsonResult({ mode: "scan", scanned, truncated, duplicate_groups: groups.length, groups });
 }

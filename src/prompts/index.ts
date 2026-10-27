@@ -89,7 +89,7 @@ export const PROMPTS: PromptDef[] = [
         `Import these references into Zotero by DOI: ${a.dois}`,
         "",
         "Please:",
-        "1. Call find_duplicates with these DOIs (strip any surrounding text, keep only the bare DOIs) to see which are already in the library.",
+        "1. Call find_duplicates once with all these DOIs in a single dois array (strip any surrounding text, keep only the bare DOIs) to see which are already in the library.",
         "2. Call add_items_by_doi with the DOIs that are not already present. It resolves the metadata automatically and attaches an open-access PDF when one is found.",
         "3. Call check_retractions with item_keys set to the keys of the items just added, to flag anything retracted or under an expression of concern (if the response has truncated: true, call again with start = next_start).",
         "4. For any imported item still without a PDF, try find_and_attach_pdfs.",

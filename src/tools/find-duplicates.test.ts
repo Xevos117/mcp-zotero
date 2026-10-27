@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { toolConfig } from "./find-duplicates.js";
 import { handleToolCall } from "./index.js";
+import { normalizeDoi } from "../utils/duplicates.js";
 import { ZoteroApiInterface, ZoteroItemData } from "../types/zotero-types.js";
 
 const USER_ID = "12345";
@@ -77,6 +78,19 @@ describe("FindDuplicatesSchema", () => {
   });
 });
 
+describe("normalizeDoi", () => {
+  it("strips a DOI quoted inline with trailing sentence punctuation", () => {
+    // Before the fix the comma stayed ("10.1000/abc,") and never matched a bare "10.1000/abc".
+    expect(normalizeDoi("see 10.1000/abc, p.5")).toBe("10.1000/abc");
+    expect(normalizeDoi("(10.1000/abc).")).toBe("10.1000/abc");
+    expect(normalizeDoi("10.1000/abc")).toBe("10.1000/abc");
+  });
+
+  it("strips a trailing parenthesis (a DOI ending in ')' loses it)", () => {
+    expect(normalizeDoi("10.1000/a(b)")).toBe("10.1000/a(b");
+  });
+});
+
 describe("find_duplicates scan mode", () => {
   it("scans the user library through items().top() and reports mode/scanned/truncated", async () => {
     const { json, path } = await run([article("AAAA0001")]);
@@ -87,6 +101,22 @@ describe("find_duplicates scan mode", () => {
   it("limits the scan to a collection when collection_key is given", async () => {
     const { path } = await run([article("AAAA0001")], { collection_key: "CPLQQRZZ" });
     expect(path).toEqual([`library:user:${USER_ID}`, "collections:CPLQQRZZ", "items", "top"]);
+  });
+
+  it("returns a specific not_found error when the collection does not exist (404)", async () => {
+    const err = Object.assign(new Error("404"), { response: { status: 404 } });
+    const api = {
+      library: () => api,
+      collections: () => api,
+      items: () => api,
+      top: () => api,
+      get: () => Promise.reject(err),
+    } as unknown as ZoteroApiInterface;
+    const result = await handleToolCall("find_duplicates", { collection_key: "CPLQQRZZ" }, api, USER_ID);
+    expect(result.isError).toBe(true);
+    const json = JSON.parse(result.content[0].text);
+    expect(json).toMatchObject({ status: "not_found", collection_key: "CPLQQRZZ" });
+    expect(json.suggestion).toContain("get_collections");
   });
 
   it("scans a group library when library_type/library_id are given", async () => {
@@ -181,7 +211,10 @@ describe("find_duplicates scan mode", () => {
     expect(json.groups).toEqual([]);
   });
 
-  it("excludes notes, attachments and trash (top-level filter) from the scan", async () => {
+  it("excludes standalone notes and attachments from the scan", async () => {
+    // The trash is excluded by the Web API (`/items/top` drops trashed items by default), which the
+    // chainable fake here cannot model; that exclusion is covered live in LIVE-FD-01 (a trashed
+    // same-DOI item does not appear). This case only checks the in-code note/attachment filter.
     const items = [
       article("RRRR0001", { title: "A Duplicated Full Title", date: "2020", DOI: "10.1000/a" }),
       article("RRRR0002", { title: "a duplicated full title", date: "2020", DOI: "10.1000/b" }),
@@ -192,6 +225,46 @@ describe("find_duplicates scan mode", () => {
     expect(json.scanned).toBe(2);
     expect(json.groups).toHaveLength(1);
     expect(json.groups[0].items.map((i: { key: string }) => i.key)).toEqual(["RRRR0001", "RRRR0002"]);
+  });
+
+  it("groups a DOI field value and a DOI from Extra that differ only by trailing punctuation", async () => {
+    const items = [
+      article("EEEE0001", { DOI: "10.1000/abc" }),
+      article("EEEE0002", { DOI: undefined, extra: "DOI: 10.1000/abc, see note\nfoo: bar" }),
+    ];
+    const { json } = await run(items);
+    expect(json.groups).toHaveLength(1);
+    expect(json.groups[0]).toMatchObject({ match: "doi", key: "10.1000/abc" });
+  });
+
+  it("groups duplicate CJK titles with the lower CJK length threshold", async () => {
+    const items = [
+      { key: "HANA0001", itemType: "journalArticle", title: "深度学习", date: "2021", creators: [] },
+      { key: "HANA0002", itemType: "journalArticle", title: "深度学习", date: "2021", creators: [] },
+    ];
+    const { json } = await run(items);
+    expect(json.groups).toHaveLength(1);
+    expect(json.groups[0]).toMatchObject({ match: "title", key: "深度学习" });
+    expect(json.groups[0].items.map((i: { key: string }) => i.key)).toEqual(["HANA0001", "HANA0002"]);
+  });
+
+  it("still skips a very short generic CJK title (below the CJK threshold)", async () => {
+    const items = [
+      { key: "HANB0001", itemType: "journalArticle", title: "序言", date: "2021", creators: [] },
+      { key: "HANB0002", itemType: "journalArticle", title: "序言", date: "2021", creators: [] },
+    ];
+    const { json } = await run(items);
+    expect(json.groups).toEqual([]);
+  });
+
+  it("groups duplicate Cyrillic titles (Latin threshold, letters preserved)", async () => {
+    const items = [
+      { key: "CYRA0001", itemType: "journalArticle", title: "Глубокое обучение", date: "2021", creators: [] },
+      { key: "CYRA0002", itemType: "journalArticle", title: "глубокое  обучение", date: "2021", creators: [] },
+    ];
+    const { json } = await run(items);
+    expect(json.groups).toHaveLength(1);
+    expect(json.groups[0]).toMatchObject({ match: "title", key: "глубокое обучение" });
   });
 
   it("does not also report title duplicates for items already grouped by DOI", async () => {

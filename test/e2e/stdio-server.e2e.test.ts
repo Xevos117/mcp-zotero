@@ -15,6 +15,7 @@ import {
   zPatch,
   zDeleted,
   zLibraryQuery,
+  zCollectionNotFound,
   article,
   collection,
   pdfAttachment,
@@ -217,6 +218,14 @@ describe("e2e: build/server.js su stdio", () => {
     expect(out.json.dois[0]).toMatchObject({ doi: "https://doi.org/10.7777/PRESENT", normalized: "10.7777/present" });
     expect(out.json.dois[0].existing.map((e: { key: string }) => e.key)).toEqual(["DOIAAAA2"]);
     expect(out.json.dois[1]).toMatchObject({ doi: "10.9999/absent", normalized: "10.9999/absent", existing: [] });
+  });
+
+  it("E2E-15d find_duplicates: collezione inesistente → not_found con hint", async () => {
+    fake.net.on("GET", `${ZBASE}/collections/ZZZZZZZZ/items/top`, zCollectionNotFound());
+    const out = await call(s, "find_duplicates", { collection_key: "ZZZZZZZZ" });
+    expect(out.isError).toBe(true);
+    expect(out.json).toMatchObject({ status: "not_found", collection_key: "ZZZZZZZZ" });
+    expect(out.json.suggestion).toContain("get_collections");
   });
 
   it("E2E-16 delete_collection (UNSAFE_OPERATIONS=all)", async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, createCollection, createItems, title, web } from "./helpers/live.js";
+import { live, startLive, LiveServer, createCollection, createItems, title, web, FAKE_KEY } from "./helpers/live.js";
 
 /** Sposta nel cestino una voce creata dalla run (PATCH deleted: 1), così lo scan via .top() deve ignorarla. */
 async function trashItem(key: string): Promise<void> {
@@ -113,5 +113,12 @@ describe.skipIf(!live.enabled)("find_duplicates (live)", () => {
     expect(r.json.mode).toBe("scan");
     expect(r.json.scanned).toBe(live.bulk.length); // >100: lo scan attraversa più pagine
     expect(r.json.truncated).toBe(false);
+  });
+
+  it("LIVE-FD-07 collezione inesistente → not_found con hint", async () => {
+    const r = await s.call("find_duplicates", { collection_key: FAKE_KEY });
+    expect(r.isError).toBe(true);
+    expect(r.json).toMatchObject({ status: "not_found", collection_key: FAKE_KEY });
+    expect(r.json.suggestion).toContain("get_collections");
   });
 });
