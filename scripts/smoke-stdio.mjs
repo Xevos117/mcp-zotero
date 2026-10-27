@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { XMLValidator } from "fast-xml-parser";
 
-const EXPECTED_TOOLS = 18;
+const EXPECTED_TOOLS = 19;
 const EXPECTED_PROMPTS = 4;
 const TIMEOUT_MS = 20_000;
 const root = fileURLToPath(new URL("..", import.meta.url));

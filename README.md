@@ -226,6 +226,7 @@ available in every project (the default `local` scope covers only the current pr
 | `search_library` | Search by query, or list items sorted by field (date, title, etc.) |
 | `get_items_details` | Batch metadata retrieval for multiple items — returns all type-specific fields (bookTitle, proceedingsTitle, university, etc.), the `authors` string, the structured `creators` and each item's current `version` (needed by `update_item`); keys not in the library are listed in `not_found` |
 | `get_item_fulltext` | Get full-text content of a PDF attachment via Zotero's fulltext index |
+| `check_retractions` | Check items (by `item_keys` or `collection_key`) for retractions, expressions of concern or corrections via Crossref (Retraction Watch data). Read-only; reports a `status` per item with any notices |
 
 ### Adding content
 

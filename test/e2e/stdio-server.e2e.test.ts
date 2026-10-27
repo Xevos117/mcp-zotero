@@ -64,9 +64,9 @@ describe("e2e: build/server.js su stdio", () => {
     expect(s.client.getInstructions()).toMatch(/Errors carry a hint.*tell the user instead of retrying/);
   });
 
-  it("E2E-02 tools/list: 18 tool, ognuno con inputSchema object", async () => {
+  it("E2E-02 tools/list: 19 tool, ognuno con inputSchema object", async () => {
     const { tools } = await s.client.listTools(undefined, { timeout: CALL_TIMEOUT_MS });
-    expect(tools).toHaveLength(18);
+    expect(tools).toHaveLength(19);
     for (const t of tools) {
       expect(t.inputSchema.type).toBe("object");
       expect(t.description).toBeTruthy();
@@ -281,6 +281,16 @@ describe("e2e: build/server.js su stdio", () => {
     expect(text).toContain("AAAARRRR");
     expect(text).toContain("create_note");
     expect(text).not.toContain("${arguments.");
+  });
+
+  it("E2E-29 check_retractions: DOI ritirato via Crossref", async () => {
+    fake.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR", { DOI: "10.1016/S0140-6736(97)11096-0" })]));
+    fake.net.on("GET", /^api\.crossref\.org\/works\//, jsonResponse({
+      message: { "updated-by": [{ type: "retraction", DOI: "10.1016/x", label: "Retraction", source: "retraction-watch", updated: { "date-parts": [[2010, 2, 6]] } }] },
+    }));
+    const out = await call(s, "check_retractions", { item_keys: ["AAAARRRR"] });
+    expect(out.json.summary).toMatchObject({ checked: 1, retracted: 1 });
+    expect(out.json.items[0]).toMatchObject({ key: "AAAARRRR", doi: "10.1016/s0140-6736(97)11096-0", status: "retracted" });
   });
 
   it("E2E-19 errore API Zotero (403) → isError al client", async () => {
