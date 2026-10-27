@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFile } from "node:fs/promises";
 import { live, startLive, LiveServer, FAKE_KEY, createItems, title } from "./helpers/live.js";
 import { expectUrisResolve } from "./helpers/docx.js";
-import { makeDocx, para, zcite, readDocumentXml, tempDir, TempDir } from "../helpers/fixtures.js";
+import { makeDocx, makeOdt, odtPara, para, zcite, readDocumentXml, tempDir, TempDir } from "../helpers/fixtures.js";
+import { expectValidOdt } from "../helpers/citation-validate.js";
 import { expectValidDocx, CitationStyle } from "../helpers/docx-validate.js";
 
 describe.skipIf(!live.enabled)("inject_citations (live)", () => {
@@ -96,6 +97,42 @@ describe.skipIf(!live.enabled)("inject_citations (live)", () => {
     expect(xml).not.toContain(citekey);
     const report = await expectValidDocx(await readFile(r.json.output_path), { libraryPath: live.libraryPath });
     await expectUrisResolve(report);
+  });
+
+  // Le forme che l'agent smoke non può scrivere (il ";" è vietato nei comandi Bash dell'harness): più chiavi in
+  // un marcatore, autore soppresso, @key in linea risolto e uno non risolto che resta testo.
+  const pandocText = (nobody: string): string => {
+    const f = live.fixtures;
+    return `Group [@${f.many}; @${f.book}], suppressed [-@${f.article}], inline @${f.inSub} and unresolved @${nobody}.`;
+  };
+
+  it("LIVE-IC-P04 Pandoc docx ieee: [@A; @B], [-@C], @D in linea, @sconosciuto in linea resta testo", async () => {
+    const nobody = `mztnobody${live.runId}`.replace(/[^A-Za-z0-9]/g, "");
+    const input = await dir.file("live-pandoc-forms.docx", await makeDocx(para(pandocText(nobody))));
+    const r = await s.call("inject_citations", { file_path: input, style: "ieee" });
+    expect(r.isError, r.text).toBe(false);
+    expect(r.json).toMatchObject({ citations_found: 3, citations_injected: 3 });
+    expect((r.json.warnings ?? []).join(" ")).toMatch(new RegExp(`@${nobody}.*kept as text`));
+    const xml = await readDocumentXml(await readFile(r.json.output_path));
+    expect(xml).toContain(`@${nobody}`);
+    expect(xml).not.toContain(`[@${live.fixtures.many}`);
+    const report = await expectValidDocx(await readFile(r.json.output_path), { style: "ieee", libraryPath: live.libraryPath });
+    // una citazione con due voci, poi una e una: 4 voci distinte in bibliografia
+    expect(report.citations.map((c) => c.json.citationItems.length)).toEqual([2, 1, 1]);
+    expect(report.citations[1].json.citationItems[0]).toMatchObject({ "suppress-author": true });
+    expect(report.rendered!.bibliography).toHaveLength(4);
+    await expectUrisResolve(report);
+  });
+
+  it("LIVE-IC-P05 Pandoc odt apa: stesse forme → reference mark validi", async () => {
+    const nobody = `mztnobody${live.runId}`.replace(/[^A-Za-z0-9]/g, "");
+    const input = await dir.file("live-pandoc-forms.odt", await makeOdt(odtPara(pandocText(nobody))));
+    const r = await s.call("inject_citations", { file_path: input });
+    expect(r.isError, r.text).toBe(false);
+    expect(r.json).toMatchObject({ output_path: input.replace(/\.odt$/, "_cited.odt"), citations_found: 3, citations_injected: 3 });
+    expect((r.json.warnings ?? []).join(" ")).toMatch(/kept as text/);
+    const report = await expectValidOdt(await readFile(r.json.output_path), { libraryPath: live.libraryPath });
+    expect(report.citations).toHaveLength(3);
   });
 
   it("LIVE-IC-P03 citekey sconosciuto → isError che lo nomina, nessun output", async () => {

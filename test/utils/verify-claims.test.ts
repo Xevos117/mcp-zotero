@@ -27,6 +27,7 @@ import {
   f1SkipEvidence,
   targetedFindings,
   deletedClaimOutcome,
+  citationCountProblem,
   // @ts-expect-error plain .mjs script without type declarations
 } from "../../test/live/verify-claims.mjs";
 import { startHarness } from "../helpers/mcp-harness.js";
@@ -408,6 +409,50 @@ describe("verify-claims: documento di parità con i due produttori reali (VC-07,
     expect(sourceFeatures(await readDocumentXml(await readFile(join(out, "edge.docx"))))).toMatchObject({ zcites: 2, spacedKeys: true, duplicateKey: true, inline: false, split: false });
     expect((await node(make, ["../escape.docx", edge], { cwd: dir.path })).code).toBe(2);
     expect((await node(make, ["agent-out/bad.docx", '[[{"zcite": {"keys": "A\\"B"}}]]'], { cwd: dir.path })).code).toBe(2);
+  });
+
+  it("VC-07p sorgente Pandoc: marcatori tra parentesi e in linea contati dal testo visibile (docx e odt); conteggio delle citazioni per ramo", async () => {
+    const text = "A [@RTCLQQRR] b [see @BKQQRRTT, p. 5] c -@RTCLQQRR, mail a@b.c, path x/@y, [no key], [@] and [@K1; @K2].";
+    const docx = `<w:body><w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p><w:p><w:r><w:instrText>@INSTR</w:instrText></w:r></w:p></w:body>`;
+    expect(sourceFeatures(docx)).toMatchObject({ zcites: 0, pandocBracket: 3, pandocInline: 1 });
+    const odt = `<office:text><text:p text:style-name="P1"><text:span>${text}</text:span></text:p></office:text>`;
+    expect(sourceFeatures(odt, true)).toMatchObject({ zcites: 0, pandocBracket: 3, pandocInline: 1 });
+    // zcite branch unchanged; a mixed document counts only its <zcite> tags
+    const mixed = sourceFeatures(`<w:p><w:r><w:t>&lt;zcite keys="RTCLQQRR"/&gt; and [@BKQQRRTT]</w:t></w:r></w:p>`);
+    expect(mixed).toMatchObject({ zcites: 1, pandocBracket: 1 });
+    expect(citationCountProblem(mixed, 1)).toBeNull();
+    expect(citationCountProblem(mixed, 2)).toBe("2 citations for 1 <zcite>");
+    const pandoc = { zcites: 0, pandocBracket: 2, pandocInline: 1 };
+    expect(citationCountProblem(pandoc, 2)).toBeNull();
+    expect(citationCountProblem(pandoc, 3)).toBeNull();
+    expect(citationCountProblem(pandoc, 1)).toBe("1 citations for 2 bracketed and 1 inline Pandoc markers");
+    expect(citationCountProblem(pandoc, 4)).toMatch(/^4 citations/);
+    expect(citationCountProblem({ zcites: 0, pandocBracket: 0, pandocInline: 0 }, 0)).toBeNull();
+    expect(citationCountProblem({ zcites: 0, pandocBracket: 0, pandocInline: 0 }, 1)).toBe("1 citations for 0 <zcite>");
+  });
+
+  it("VC-07q documento Pandoc iniettato da inject_citations: il conteggio del verificatore torna", async () => {
+    const make = join(ROOT, "test", "live", "agent", "make-docx.mjs");
+    const spec = JSON.stringify([["Bracketed [@RTCLQQRR], with locator [see @BKQQRRTT, p. 5] and inline @RTCLQQRR, unresolved @nobody."]]);
+    expect((await node(make, ["agent-out/pandoc.docx", spec], { cwd: dir.path })).code).toBe(0);
+    const h = await startHarness();
+    try {
+      h.net.on("GET", `${ZBASE}/items`, zLibraryQuery(ITEMS));
+      // the fallback scan for the unresolved inline @nobody
+      h.net.on("GET", `${ZBASE}/items/top`, zLibraryQuery(ITEMS));
+      for (const it of ITEMS) h.net.on("GET", `${ZBASE}/items/${it.key}`, zSingle(it));
+      const tool = await h.call("inject_citations", { file_path: join(out, "pandoc.docx"), style: "apa" });
+      expect(tool.isError, tool.text).toBe(false);
+      const report = await validateDocx(await readFile(tool.json.output_path), { style: "apa" });
+      expect(report.errors).toEqual([]);
+      const source = sourceFeatures(await readDocumentXml(await readFile(join(out, "pandoc.docx"))));
+      expect(source).toMatchObject({ zcites: 0, pandocBracket: 2, pandocInline: 2 });
+      expect(report.citations).toHaveLength(3);
+      expect(citationCountProblem(source, report.citations.length)).toBeNull();
+      expect(tool.text).toContain("@nobody");
+    } finally {
+      await h.close();
+    }
   });
 
   it.each<CitationStyle>(["apa", "harvard", "chicago", "ieee", "vancouver"])(

@@ -654,6 +654,14 @@ export function exploratoryFindings(list, messages, reserved = new Set(), denial
 
 const decode = (s) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
+// Pandoc markers of the inject_citations Pandoc branch, as src/citation-injector/pandoc-body.ts reads them
+// (that module cannot be imported from here: its relative imports end in .js). A bracketed marker must
+// resolve (else the tool fails); an inline @key that does not resolve is kept as text.
+const PANDOC_KEY = "[A-Za-z0-9_](?:[A-Za-z0-9_:.#$%&+?~/-]*[A-Za-z0-9_])?";
+const PANDOC_INLINE_KEY = "[A-Za-z0-9_](?:[A-Za-z0-9_:.-]*[A-Za-z0-9_])?";
+const PANDOC_RE = new RegExp(`\\[([^\\]<]*@[^\\]<]*)\\]|(?<![A-Za-z0-9_/.])(-?)@(${PANDOC_INLINE_KEY})`, "g");
+const PANDOC_BRACKET_KEY_RE = new RegExp(`(^|[\\s;])(-?)@(${PANDOC_KEY})`);
+
 /**
  * What the <zcite> tags of a source document exercise (tags are read across runs, as the normalizer does).
  * `odt`: the source is a LibreOffice document (content.xml, text:p/text:h with text:span), not a .docx;
@@ -661,7 +669,7 @@ const decode = (s) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(
  * document is never the required coverage document, which stays on docx).
  */
 export function sourceFeatures(documentXml, odt = false) {
-  const f = { zcites: 0, multiKey: false, locatorPrefixSuffix: false, inline: false, split: false, allNum: true, spacedKeys: false, duplicateKey: false, keys: [] };
+  const f = { zcites: 0, multiKey: false, locatorPrefixSuffix: false, inline: false, split: false, allNum: true, spacedKeys: false, duplicateKey: false, keys: [], pandocBracket: 0, pandocInline: 0 };
   const paraRe = odt ? /<text:(?:p|h)\b[\s\S]*?<\/text:(?:p|h)>/g : /<w:p[ >][\s\S]*?<\/w:p>/g;
   for (const p of documentXml.match(paraRe) ?? []) {
     const segments = odt ? [p.replace(/<[^>]*>/g, "")] : [...p.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]);
@@ -672,6 +680,11 @@ export function sourceFeatures(documentXml, odt = false) {
       joined += s;
     }
     const segAt = (offset) => starts.findLastIndex((st) => st <= offset);
+    for (const m of joined.matchAll(PANDOC_RE)) {
+      if (m[1] !== undefined) {
+        if (PANDOC_BRACKET_KEY_RE.test(decode(m[1]))) f.pandocBracket++;
+      } else f.pandocInline++;
+    }
     for (const m of joined.matchAll(/&lt;zcite\s[\s\S]*?\/&gt;/g)) {
       f.zcites++;
       if (!odt) {
@@ -693,6 +706,20 @@ export function sourceFeatures(documentXml, odt = false) {
   }
   if (f.zcites === 0) f.allNum = false;
   return f;
+}
+
+/**
+ * The number of citations of a document against its source: one per <zcite> tag (zcite branch, also when
+ * Pandoc markers are left over in a mixed document) or, for a source with only Pandoc markers, one per
+ * bracketed marker plus at most one per inline @key (an inline key that does not resolve stays text).
+ * @returns {string | null}
+ */
+export function citationCountProblem(source, cited) {
+  if (source.zcites === 0 && source.pandocBracket + source.pandocInline > 0) {
+    if (cited >= source.pandocBracket && cited <= source.pandocBracket + source.pandocInline) return null;
+    return `${cited} citations for ${source.pandocBracket} bracketed and ${source.pandocInline} inline Pandoc markers`;
+  }
+  return cited === source.zcites ? null : `${cited} citations for ${source.zcites} <zcite>`;
 }
 
 /**
@@ -1230,7 +1257,8 @@ async function main() {
     for (const e of report.errors) fail(`docx ${doc.path}: ${e}`);
     // the numbering is the agent's choice; for author-date styles the visible text must match citeproc
     if (!NUMBERED.has(doc.style)) for (const m of report.mismatches) fail(`docx ${doc.path}: ${m}`);
-    if (report.citations.length !== source.zcites) fail(`docx ${doc.path}: ${report.citations.length} citations for ${source.zcites} <zcite> in ${doc.source}`);
+    const countProblem = citationCountProblem(source, report.citations.length);
+    if (countProblem) fail(`docx ${doc.path}: ${countProblem} in ${doc.source}`);
     for (const cite of report.citations) {
       for (const ci of cite.json.citationItems ?? []) {
         const m = /^http:\/\/zotero\.org\/((?:users|groups)\/\d+)\/items\/([A-Z0-9]{8})$/.exec(ci.uris?.[0] ?? "");
