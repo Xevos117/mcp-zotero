@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { live, startLive, LiveServer, createCollection, createItems, title } from "./helpers/live.js";
+import { live, startLive, LiveServer, createCollection, createItems, title, web } from "./helpers/live.js";
+
+/** Sposta nel cestino una voce creata dalla run (PATCH deleted: 1), così lo scan via .top() deve ignorarla. */
+async function trashItem(key: string): Promise<void> {
+  const got = await web().get(`items/${key}`);
+  const version = got.data.version ?? got.data.data?.version;
+  const patch = await web().request("PATCH", `items/${key}`, { deleted: 1 }, { "If-Unmodified-Since-Version": String(version) });
+  if (patch.status !== 204) throw new Error(`trash ${key} → ${patch.status} ${patch.text.slice(0, 120)}`);
+}
 
 /**
  * find_duplicates dal vivo: tutte le voci sono create dalla run in collezioni dedicate, così i gruppi sono
@@ -35,6 +43,12 @@ describe.skipIf(!live.enabled)("find_duplicates (live)", () => {
       { itemType: "note", note: `<p>${title("FD note")}</p>`, collections: [coll] },
       { itemType: "attachment", linkMode: "linked_url", title: title("FD link"), url: "https://example.org/mzt-fd", collections: [coll] },
     ]);
+    // Una terza voce con lo stesso DOI condiviso, poi cestinata: il cestino va escluso, quindi il gruppo
+    // DOI resta di 2 e scanned resta 5 (se riapparisse, entrambi i conteggi salterebbero).
+    const [trashedDup] = await createItems([
+      { itemType: "journalArticle", title: title("FD trashed dup"), DOI: SHARED_DOI, date: "2022", collections: [coll] },
+    ]);
+    await trashItem(trashedDup);
     // La collezione "clean" contiene una sola voce: nessun duplicato.
     await createItems([{ itemType: "journalArticle", title: title("FD Clean Unique"), DOI: "10.9999/mzt-fd-clean", date: "2017", collections: [cleanColl] }]);
   });
@@ -44,11 +58,11 @@ describe.skipIf(!live.enabled)("find_duplicates (live)", () => {
 
   const keysOf = (items: Array<{ key: string }>) => items.map((i) => i.key).sort();
 
-  it("LIVE-FD-01 scan della collezione: gruppi per DOI e per titolo, note/allegati esclusi", async () => {
+  it("LIVE-FD-01 scan della collezione: gruppi per DOI e per titolo, note/allegati/cestino esclusi", async () => {
     const r = await s.call("find_duplicates", { collection_key: coll });
     expect(r.isError, r.text).toBe(false);
     expect(r.json.mode).toBe("scan");
-    expect(r.json.scanned).toBe(5); // 5 voci regolari; nota e allegato esclusi
+    expect(r.json.scanned).toBe(5); // 5 voci regolari; nota, allegato e la voce cestinata esclusi
     expect(r.json.truncated).toBe(false);
     expect(r.json.duplicate_groups).toBe(2);
 
@@ -83,5 +97,21 @@ describe.skipIf(!live.enabled)("find_duplicates (live)", () => {
     const r = await s.call("find_duplicates", { collection_key: coll, library_type: "user" });
     expect(r.isError, r.text).toBe(false);
     expect(r.json.duplicate_groups).toBe(2);
+  });
+
+  it("LIVE-FD-05 modo dois: stesso DOI due volte nell'input (forme diverse) → entrambe lo trovano", async () => {
+    const r = await s.call("find_duplicates", { collection_key: coll, dois: [SHARED_DOI, `https://doi.org/${SHARED_DOI.toUpperCase()}`] });
+    expect(r.isError, r.text).toBe(false);
+    expect(r.json.dois).toHaveLength(2);
+    expect(keysOf(r.json.dois[0].existing)).toEqual([doiA, doiB].sort());
+    expect(keysOf(r.json.dois[1].existing)).toEqual([doiA, doiB].sort());
+  });
+
+  it("LIVE-FD-06 collezione con oltre 100 voci: paginazione, scanned = totale, non troncato", async () => {
+    const r = await s.call("find_duplicates", { collection_key: live.bulkCollection });
+    expect(r.isError, r.text).toBe(false);
+    expect(r.json.mode).toBe("scan");
+    expect(r.json.scanned).toBe(live.bulk.length); // >100: lo scan attraversa più pagine
+    expect(r.json.truncated).toBe(false);
   });
 });

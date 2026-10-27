@@ -15,7 +15,8 @@ function fakeApi(items: ZoteroItemData[]) {
   const path: string[] = [];
   const pages: number[] = [];
   const api: Partial<ZoteroApiInterface> = {
-    library() {
+    library(type: string, id: number | string) {
+      path.push(`library:${type}:${id}`);
       return api as ZoteroApiInterface;
     },
     collections(key?: string) {
@@ -77,15 +78,55 @@ describe("FindDuplicatesSchema", () => {
 });
 
 describe("find_duplicates scan mode", () => {
-  it("scans through items().top() and reports mode/scanned/truncated", async () => {
+  it("scans the user library through items().top() and reports mode/scanned/truncated", async () => {
     const { json, path } = await run([article("AAAA0001")]);
-    expect(path).toEqual(["items", "top"]);
+    expect(path).toEqual([`library:user:${USER_ID}`, "items", "top"]);
     expect(json).toMatchObject({ mode: "scan", scanned: 1, truncated: false, duplicate_groups: 0, groups: [] });
   });
 
   it("limits the scan to a collection when collection_key is given", async () => {
     const { path } = await run([article("AAAA0001")], { collection_key: "CPLQQRZZ" });
-    expect(path).toEqual(["collections:CPLQQRZZ", "items", "top"]);
+    expect(path).toEqual([`library:user:${USER_ID}`, "collections:CPLQQRZZ", "items", "top"]);
+  });
+
+  it("scans a group library when library_type/library_id are given", async () => {
+    const { path, json } = await run([article("AAAA0001")], { library_type: "group", library_id: "777" });
+    expect(path).toEqual(["library:group:777", "items", "top"]);
+    expect(json.mode).toBe("scan");
+  });
+
+  it("does not group near-identical but distinct titles (Part I vs Part II)", async () => {
+    const items = [
+      article("PPPP0001", { title: "A Comprehensive Survey of Methods Part I", date: "2020", DOI: "10.1000/p1" }),
+      article("PPPP0002", { title: "A Comprehensive Survey of Methods Part II", date: "2020", DOI: "10.1000/p2" }),
+    ];
+    const { json } = await run(items);
+    expect(json.groups).toEqual([]);
+  });
+
+  it("treats DOIs that differ only in case or trailing punctuation as the same", async () => {
+    const items = [
+      article("CCCC0001", { DOI: "10.1234/AbC.2020.XyZ" }),
+      article("CCCC0002", { DOI: "https://doi.org/10.1234/abc.2020.xyz." }),
+    ];
+    const { json } = await run(items);
+    expect(json.groups).toHaveLength(1);
+    expect(json.groups[0]).toMatchObject({ match: "doi", key: "10.1234/abc.2020.xyz" });
+    expect(json.groups[0].items.map((i: { key: string }) => i.key)).toEqual(["CCCC0001", "CCCC0002"]);
+  });
+
+  it("with several distinct years under one title, groups only the items that share a year", async () => {
+    const title = "A Repeated Long Enough Title";
+    const items = [
+      article("YYYY0001", { title, date: "2019", DOI: "10.1000/y1" }),
+      article("YYYY0002", { title, date: "2019", DOI: "10.1000/y2" }),
+      article("YYYY0003", { title, date: "2020", DOI: "10.1000/y3" }),
+      article("YYYY0004", { title, date: undefined, DOI: "10.1000/y4" }),
+    ];
+    const { json } = await run(items);
+    expect(json.groups).toHaveLength(1);
+    expect(json.groups[0].match).toBe("title");
+    expect(json.groups[0].items.map((i: { key: string }) => i.key)).toEqual(["YYYY0001", "YYYY0002"]);
   });
 
   it("groups by normalized DOI, including a DOI in a URL form and one from the Extra field", async () => {
@@ -194,6 +235,25 @@ describe("find_duplicates dois mode", () => {
     expect(json.dois[0].existing.map((e: { key: string }) => e.key)).toEqual(["AAAA0001"]);
     expect(json.dois[1]).toMatchObject({ doi: "10.7000/missing", normalized: "10.7000/missing", existing: [] });
     expect(json.dois[2]).toMatchObject({ doi: "not-a-doi", normalized: null, existing: [] });
+  });
+
+  it("handles the same DOI passed twice in the input (different forms), reporting each", async () => {
+    const items = [article("AAAA0001", { DOI: "10.1234/same" })];
+    const { json } = await run(items, { dois: ["10.1234/same", "https://doi.org/10.1234/SAME"] });
+    expect(json.dois).toHaveLength(2);
+    expect(json.dois[0]).toMatchObject({ doi: "10.1234/same", normalized: "10.1234/same" });
+    expect(json.dois[1]).toMatchObject({ doi: "https://doi.org/10.1234/SAME", normalized: "10.1234/same" });
+    expect(json.dois[0].existing.map((e: { key: string }) => e.key)).toEqual(["AAAA0001"]);
+    expect(json.dois[1].existing.map((e: { key: string }) => e.key)).toEqual(["AAAA0001"]);
+  });
+
+  it("reports every matching item when the same DOI is on several library entries", async () => {
+    const items = [
+      article("AAAA0001", { DOI: "10.1234/dup" }),
+      article("AAAA0002", { DOI: "10.1234/dup" }),
+    ];
+    const { json } = await run(items, { dois: ["10.1234/dup"] });
+    expect(json.dois[0].existing.map((e: { key: string }) => e.key).sort()).toEqual(["AAAA0001", "AAAA0002"]);
   });
 
   it("carries title, year, first author, type and doi in each returned entry", async () => {

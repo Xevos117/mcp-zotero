@@ -154,6 +154,18 @@ describe("e2e: libreria di gruppo (ZOTERO_LIBRARY_TYPE=group, ZOTERO_LIBRARY_ID=
     expect(out.json.results[0]).toMatchObject({ status: "available" });
   });
 
+  it("E2E-G09b find_duplicates legge /groups/777/items/top e raggruppa per DOI", async () => {
+    const dupA = article("DUPGGGG2", { DOI: "10.5555/gdup", title: "Group DOI dup A" });
+    const dupB = article("DUPGGGG3", { DOI: "https://doi.org/10.5555/GDUP", title: "Group DOI dup B" });
+    fake.net.on("GET", `${GITEMS}/top`, zLibraryQuery([dupA, dupB]));
+    const out = await call(s, "find_duplicates", {});
+    expect(out.isError).toBe(false);
+    expect(out.json).toMatchObject({ mode: "scan", scanned: 2, duplicate_groups: 1 });
+    expect(out.json.groups[0]).toMatchObject({ match: "doi", key: "10.5555/gdup" });
+    expect(out.json.groups[0].items.map((i: { key: string }) => i.key)).toEqual(["DUPGGGG2", "DUPGGGG3"]);
+    expect(fake.net.requests("GET", `${GITEMS}/top`).length).toBeGreaterThan(0);
+  });
+
   it("E2E-G10 ogni richiesta a api.zotero.org finora ha usato solo /groups/777/", () => {
     const paths = zoteroPaths(fake);
     expect(paths.length).toBeGreaterThan(15);
