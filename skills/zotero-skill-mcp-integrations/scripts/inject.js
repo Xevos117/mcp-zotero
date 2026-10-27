@@ -191,10 +191,18 @@ function citekeysOf(requests) {
   for (const r of requests) for (const k of r.keys) if (!ZOTERO_KEY.test(k)) out.add(k);
   return out;
 }
+var INLINE_LOOKUP_CAP = 25;
 async function resolveCitekeys(requests, lookup) {
   const citekeys = citekeysOf(requests);
   if (citekeys.size === 0) return { requests, warnings: [] };
-  const found = await lookup(citekeys);
+  const bracketKeys = /* @__PURE__ */ new Set();
+  for (const r of requests) if (!r.inline) {
+    for (const k of r.keys) if (!ZOTERO_KEY.test(k)) bracketKeys.add(k);
+  }
+  const inlineOnly = [...citekeys].filter((k) => !bracketKeys.has(k));
+  const cappedOut = new Set(inlineOnly.slice(INLINE_LOOKUP_CAP));
+  const toLookup = /* @__PURE__ */ new Set([...bracketKeys, ...inlineOnly.slice(0, INLINE_LOOKUP_CAP)]);
+  const found = toLookup.size > 0 ? await lookup(toLookup) : /* @__PURE__ */ new Map();
   const status = (ck) => {
     const match = found.get(ck) ?? { keys: [] };
     if (match.keys.length === 1) return { ok: match.keys[0], detail: ck };
@@ -216,6 +224,10 @@ async function resolveCitekeys(requests, lookup) {
         resolvedKeys.push(k);
         continue;
       }
+      if (r.inline && cappedOut.has(k)) {
+        drop = true;
+        break;
+      }
       const s = status(k);
       if (s.ok) {
         resolvedKeys.push(s.ok);
@@ -230,6 +242,11 @@ async function resolveCitekeys(requests, lookup) {
       }
     }
     if (!drop && resolvedKeys.length === r.keys.length) out.push({ ...r, keys: resolvedKeys });
+  }
+  if (cappedOut.size > 0) {
+    warnings.push(
+      `${cappedOut.size} inline @ citation key(s) were left as text without a lookup (over the ${INLINE_LOOKUP_CAP}-key limit for inline markers); use the [@key] form for citations beyond that limit.`
+    );
   }
   if (unknownBracket.length > 0) {
     throw new InjectionError(

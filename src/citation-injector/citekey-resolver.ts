@@ -62,12 +62,27 @@ export interface ResolveResult {
  * ambiguous) is DROPPED and kept as text, with a warning — a stray handle or code like `@Component` must
  * not fail the whole document. A bracketed `[@key]` that is unknown or ambiguous is an error (nothing is
  * written), the same contract as a missing Zotero key.
+ *
+ * Inline-only citekeys are looked up at most INLINE_LOOKUP_CAP distinct tokens per call, so a technical
+ * document full of `@decorator`/`@media` does not fan out into unbounded API searches: tokens past the cap
+ * are left as text with one summary warning. Zotero 8-char keys (no lookup) and bracketed `[@…]` forms (a
+ * real citation) never count toward the cap.
  */
+export const INLINE_LOOKUP_CAP = 25;
+
 export async function resolveCitekeys(requests: CitationRequest[], lookup: CitekeyLookup): Promise<ResolveResult> {
   const citekeys = citekeysOf(requests);
   if (citekeys.size === 0) return { requests, warnings: [] };
 
-  const found = await lookup(citekeys);
+  // Citekeys used by a bracketed form must always be resolved (they error if unknown); inline-only
+  // citekeys are capped.
+  const bracketKeys = new Set<string>();
+  for (const r of requests) if (!r.inline) for (const k of r.keys) if (!ZOTERO_KEY.test(k)) bracketKeys.add(k);
+  const inlineOnly = [...citekeys].filter((k) => !bracketKeys.has(k)); // first-appearance order
+  const cappedOut = new Set(inlineOnly.slice(INLINE_LOOKUP_CAP));
+  const toLookup = new Set([...bracketKeys, ...inlineOnly.slice(0, INLINE_LOOKUP_CAP)]);
+
+  const found = toLookup.size > 0 ? await lookup(toLookup) : new Map();
   const status = (ck: string): { ok?: string; problem?: "unknown" | "ambiguous"; detail: string } => {
     const match = found.get(ck) ?? { keys: [] };
     if (match.keys.length === 1) return { ok: match.keys[0], detail: ck };
@@ -91,6 +106,11 @@ export async function resolveCitekeys(requests: CitationRequest[], lookup: Citek
         resolvedKeys.push(k);
         continue;
       }
+      if (r.inline && cappedOut.has(k)) {
+        // over the inline lookup cap: left as text, no per-key lookup (summary warning added below)
+        drop = true;
+        break;
+      }
       const s = status(k);
       if (s.ok) {
         resolvedKeys.push(s.ok);
@@ -106,6 +126,13 @@ export async function resolveCitekeys(requests: CitationRequest[], lookup: Citek
       }
     }
     if (!drop && resolvedKeys.length === r.keys.length) out.push({ ...r, keys: resolvedKeys });
+  }
+
+  if (cappedOut.size > 0) {
+    warnings.push(
+      `${cappedOut.size} inline @ citation key(s) were left as text without a lookup (over the ${INLINE_LOOKUP_CAP}-key ` +
+        "limit for inline markers); use the [@key] form for citations beyond that limit."
+    );
   }
 
   if (unknownBracket.length > 0) {

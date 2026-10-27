@@ -4,6 +4,7 @@ import {
   itemMatchesCitekey,
   citekeysOf,
   resolveCitekeys,
+  INLINE_LOOKUP_CAP,
   CitekeyLookup,
   CitekeyMatch,
 } from "../../src/citation-injector/citekey-resolver.js";
@@ -85,5 +86,37 @@ describe("citekeysOf / resolveCitekeys (CK)", () => {
     };
     const out = await resolveCitekeys([inline("SMITH222")], spy);
     expect(out.requests[0].keys).toEqual(["SMITH222"]);
+  });
+
+  it("CK-13 tetto sui lookup inline: oltre il limite restano testo, al massimo cap token cercati", async () => {
+    // cap+10 token inline unici, tutti non risolti; conta quanti citekey arrivano al lookup
+    const total = INLINE_LOOKUP_CAP + 10;
+    const reqs = Array.from({ length: total }, (_, i) => inline(`handle${i}`));
+    let lookedUp = 0;
+    const spy: CitekeyLookup = async (cks) => {
+      lookedUp += cks.size;
+      return new Map([...cks].map((ck) => [ck, { keys: [] as string[] }]));
+    };
+    const out = await resolveCitekeys(reqs, spy);
+    expect(lookedUp).toBe(INLINE_LOOKUP_CAP); // solo i primi cap token sono stati cercati
+    expect(out.requests).toEqual([]); // nessuna risolta → tutte testo
+    const summary = out.warnings.find((w) => w.includes("over the"));
+    expect(summary).toMatch(new RegExp(`${total - INLINE_LOOKUP_CAP} inline @ citation key`));
+  });
+
+  it("CK-14 il tetto NON conta i bracket: una forma [@…] oltre il limite viene comunque cercata", async () => {
+    const reqs = [
+      ...Array.from({ length: INLINE_LOOKUP_CAP }, (_, i) => inline(`h${i}`)),
+      bracket(["realkey"]),
+    ];
+    const looked = new Set<string>();
+    const spy: CitekeyLookup = async (cks) => {
+      for (const c of cks) looked.add(c);
+      return new Map([...cks].map((ck) => [ck, { keys: ck === "realkey" ? ["REAL2222"] : [] }]));
+    };
+    const out = await resolveCitekeys(reqs, spy);
+    expect(looked.has("realkey")).toBe(true); // il bracket è sempre cercato
+    expect(looked.size).toBe(INLINE_LOOKUP_CAP + 1);
+    expect(out.requests.map((r) => r.keys)).toEqual([["REAL2222"]]);
   });
 });
