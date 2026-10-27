@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
-import { formatJsonResult, formatEmptyResult } from "../utils/error-formatter.js";
+import { formatJsonResult } from "../utils/error-formatter.js";
 import { fetchAllPages } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "get_collections",
-  description: "List all collections (folders) in your Zotero library. Returns collection keys, names, and parent relationships. Use collection keys with get_collection_items or as parent_collection in create_collection. Trashed collections are excluded by default.",
+  description: "List all collections (folders) in your Zotero library. Returns an array of collection keys, names, and parent relationships (an empty array [] when the library has no collections — items can still be found with search_library, and create_collection makes one). Use collection keys with get_collection_items or as parent_collection in create_collection. Trashed collections are excluded by default.",
   inputSchema: {
     include_trashed: z
       .boolean()
@@ -31,26 +31,13 @@ export async function handleGetCollections(
     zoteroApi.library(libraryType, libraryId).collections().get(params)
   );
 
-  if (!Array.isArray(allCollections) || allCollections.length === 0) {
-    return formatEmptyResult("No collections found", {
-      suggestion:
-        "This library has no collections. Items can still be found with search_library; to organize them, create one with create_collection.",
-      helpUrl: "https://www.zotero.org/support/collections",
-    });
-  }
+  // Always return an array (never a message object), so the type is the same for an empty and a non-empty
+  // library — and for a user and a group library. An empty library (no collections, or all trashed and
+  // filtered out below) returns []. The guidance for that case lives in the tool description.
+  const list = Array.isArray(allCollections) ? allCollections : [];
 
-  // Zotero API returns deleted collections despite not requesting them —
-  // filter client-side as a workaround
-  const collections = include_trashed
-    ? allCollections
-    : allCollections.filter((c) => !(c as Record<string, unknown>).deleted);
-
-  if (collections.length === 0) {
-    return formatEmptyResult("No collections found", {
-      suggestion:
-        "All collections of this library are in the Zotero trash: call again with include_trashed=true to see them, or create a new one with create_collection.",
-    });
-  }
+  // Zotero API returns deleted collections despite not requesting them — filter client-side as a workaround.
+  const collections = include_trashed ? list : list.filter((c) => !(c as Record<string, unknown>).deleted);
 
   return formatJsonResult(collections);
 }

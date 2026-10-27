@@ -75,6 +75,10 @@ describe("GetItemsDetailsSchema", () => {
     expect(() => GetItemsDetailsSchema.parse({ item_keys: "ITEMQQRZ" })).toThrow();
   });
 
+  it("rejects an empty item_keys array (min 1), like delete_items/add_items", () => {
+    expect(() => GetItemsDetailsSchema.parse({ item_keys: [] })).toThrow();
+  });
+
   it("defaults include_abstract to false", () => {
     const result = GetItemsDetailsSchema.parse({ item_keys: ["ITEMQQRZ"] });
     expect(result.include_abstract).toBe(false);

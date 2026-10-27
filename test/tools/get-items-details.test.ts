@@ -3,7 +3,6 @@ import {
   Harness,
   startHarness,
   expectValidationError,
-  expectErrorJson,
   expectToolError,
   expectApiError,
   ZOTERO_ERROR_STATUSES,
@@ -106,8 +105,8 @@ describe("get_items_details (MCP)", () => {
     expect(out.json.not_found).toEqual(["CCCC3333"]);
   });
 
-  it("GID-04 array vuoto → errore strutturato senza chiamate di rete", async () => {
-    expectErrorJson(await h.call("get_items_details", { item_keys: [] }), "At least one item key is required");
+  it("GID-04 array vuoto → errore di validazione dello schema (come delete_items/add_items), nessuna rete", async () => {
+    expectValidationError(await h.call("get_items_details", { item_keys: [] }), "item_keys");
     expect(h.net.calls).toHaveLength(0);
   });
 

@@ -480,7 +480,9 @@ const F10_ROWS = [
   }],
   ["delete_items with 51 fake keys (max+1)", (c) => c.tool === "delete_items" && keysOf(c, "item_keys")?.length === 51 && c.input.item_keys.every((k) => FAKE_KEYS.has(k)), (c) => (c.result?.isError ? null : "accepted (expected a validation error, max 50)")],
   ["add_items with items []", (c) => c.tool === "add_items" && keysOf(c, "items")?.length === 0, (c) => (c.result?.isError ? null : "accepted (expected a validation error, min 1)")],
-  ["get_items_details with item_keys []", (c) => c.tool === "get_items_details" && keysOf(c, "item_keys")?.length === 0, () => null],
+  // Accept either form: a schema error (-32602, after the .min(1) added in PR O) or the older tool error — the
+  // agent reads the base-branch skill, so both are valid for O's run. Only a non-error acceptance is wrong.
+  ["get_items_details with item_keys []", (c) => c.tool === "get_items_details" && keysOf(c, "item_keys")?.length === 0, (c) => (c.result?.isError ? null : "accepted (expected a schema or tool error, min 1)")],
   ["get_items_details with a whitespace-only key", (c) => c.tool === "get_items_details" && (keysOf(c, "item_keys") ?? []).some((k) => typeof k === "string" && k.length > 0 && !k.trim()), (c) => (c.result?.isError ? null : "accepted (expected a validation error)")],
   ["search_library with a whitespace-only query", (c) => c.tool === "search_library" && typeof c.input?.query === "string" && c.input.query.length > 0 && !c.input.query.trim(), (c) => (c.result?.isError ? "error (expected a result, as without query)" : null)],
   ["search_library with limit 1", (c) => c.tool === "search_library" && c.input?.limit === 1, (c) => limitProblem(c, 1)],

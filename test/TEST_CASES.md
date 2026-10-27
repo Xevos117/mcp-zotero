@@ -66,7 +66,7 @@ test normali. Non restano `it.fails` nella suite.
 |---|---|---|
 | SL-01 | query | GET /items `q`, sort=dateAdded, direction=desc, limit=25, API key; lista formattata con dateAdded |
 | SL-02 | senza query | nessun `q` |
-| SL-03 | query di soli spazi / con spazi | `q` omesso / trimmato |
+| SL-03 | query di soli spazi / con spazi | trattata come nessuna query: elenca gli item (nessun errore), `q` omesso; query con spazi trimmata |
 | SL-04 | limit 500 | limit=100 |
 | SL-05 | sort=title, asc, limit 5 | parametri inoltrati; nessun dateAdded |
 | SL-06/07 | risultato vuoto con/senza query | risultato vuoto (`message`, non isError) "No results found" (con query) / "No items found"; `suggestion` con cosa provare (titolo/autore/anno, senza query) / come aggiungere voci |
@@ -87,7 +87,7 @@ test normali. Non restano `it.fails` nella suite.
 | GC-03 | Total-Results gonfiato | si ferma alla pagina vuota, nessun loop |
 | GC-04 | Total-Results assente | solo la prima pagina |
 | GC-05 | collezioni nel cestino | escluse di default, incluse con include_trashed |
-| GC-06/07 | tutte nel cestino / nessuna | risultato vuoto (suggestion include_trashed=true o create_collection / helpUrl, search_library e create_collection) |
+| GC-06/07 | tutte nel cestino / nessuna | **array vuoto `[]`** (mai un oggetto messaggio; stesso tipo per libreria piena/vuota, utente/gruppo; la guida è nella descrizione del tool) |
 | GC-08 | nomi unicode | preservati |
 | GC-09 | include_trashed non booleano | isError |
 | GC-10/11/12 | HTTP 4xx/5xx, errore sulla 2ª pagina, errore di rete | errore strutturato con `http_status` e `hint` (rete: "Network error") |
@@ -112,7 +112,7 @@ test normali. Non restano `it.fails` nella suite.
 | GID-01 | 2 chiavi | una sola GET `itemKey=A,B`; mappa chiave → campi specifici del tipo |
 | GID-02 | abstract | escluso di default, incluso con include_abstract |
 | GID-03 | campi strutturali/vuoti | omessi |
-| GID-04/05 | `[]` / nessun item | errore strutturato che dice dove prendere le chiavi (nessuna chiamata HTTP) / risultato vuoto con le chiavi richieste e suggestion |
+| GID-04/05 | `[]` / nessun item | **errore di validazione dello schema** (`-32602`, `min 1`, come delete_items/add_items; nessuna chiamata HTTP) / risultato vuoto con le chiavi richieste e suggestion |
 | GID-06 | chiavi in parte inesistenti (anche ripetute) | voci trovate più `not_found` con le mancanti (senza doppioni), senza isError |
 | GID-17 | tutte le chiavi trovate | nessun campo `not_found` |
 | GID-07/08 | fallback, unicode | ok |
