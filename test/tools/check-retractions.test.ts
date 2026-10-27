@@ -284,4 +284,14 @@ describe("check_retractions (CR)", () => {
     await h.call("check_retractions", { item_keys: ["MAILAAA2"] });
     expect(h.net.toHost("api.crossref.org")[0].url.searchParams.get("mailto")).toBe("me@example.org");
   });
+
+  it("CR-24 type Crossref con trattino (Expression-of-Concern) → normalizzato e classificato", async () => {
+    h = await startHarness();
+    h.net.on("GET", ITEMS, zLibraryQuery([article("HYPH2222", { DOI: "10.1234/hyphen" })]));
+    // Crossref returns both expression_of_concern and expression-of-concern; also mixed case / spaces
+    h.net.on("GET", CROSSREF, crossref({ "10.1234/hyphen": [{ type: "Expression-of-Concern", source: "publisher", updated: { "date-parts": [[2021, 1, 1]] } }] }));
+    const out = await h.call("check_retractions", { item_keys: ["HYPH2222"] });
+    expect(out.json.items[0].status).toBe("expression_of_concern");
+    expect(out.json.items[0].notices[0].type).toBe("expression_of_concern"); // stored normalized
+  });
 });

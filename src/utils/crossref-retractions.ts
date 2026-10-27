@@ -44,6 +44,15 @@ const CROSSREF_WORKS = "https://api.crossref.org/works/";
 const RETRACTED_TYPES = new Set(["retraction", "partial_retraction", "removal", "withdrawal"]);
 const CONCERN_TYPES = new Set(["expression_of_concern"]);
 
+/**
+ * Canonical form of a Crossref update `type`: lowercase, hyphens and spaces to underscores. Crossref returns both
+ * `expression_of_concern` and `expression-of-concern` (the hyphen form is rarer but real), so normalize before
+ * comparing with the Sets above, and store the normalized form in the notices.
+ */
+export function normalizeType(type: unknown): string {
+  return (typeof type === "string" ? type : "update").trim().toLowerCase().replace(/[-\s]+/g, "_");
+}
+
 /** The most severe status implied by a work's notices. */
 export function classifyNotices(notices: RetractionNotice[]): Exclude<RetractionStatus, "no_doi" | "not_in_crossref" | "lookup_failed"> {
   if (notices.some((n) => RETRACTED_TYPES.has(n.type))) return "retracted";
@@ -119,7 +128,7 @@ export async function lookupRetraction(doi: string, mailto?: string): Promise<Re
   }
 
   const notices: RetractionNotice[] = updatedBy.map((u) => ({
-    type: typeof u["type"] === "string" ? (u["type"] as string) : "update",
+    type: normalizeType(u["type"]),
     doi: typeof u["DOI"] === "string" ? (u["DOI"] as string).toLowerCase() : undefined,
     date: noticeDate(u["updated"]),
     source: typeof u["source"] === "string" ? (u["source"] as string) : undefined,

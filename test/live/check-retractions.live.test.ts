@@ -44,8 +44,12 @@ describe.skipIf(!live.enabled)("check_retractions (live)", () => {
       for (const it of r.json.items) statusByTitle[it.title] = it.status;
       expect(statusByTitle["mzt-retracted-check"]).toBe("retracted");
       expect(statusByTitle["mzt-corrected-check"]).toBe("corrected");
-      expect(statusByTitle["mzt-normal-check"]).toBe("ok");
       expect(statusByTitle["mzt-nodoi-check"]).toBe("no_doi");
+      // the "normal" DOI is clean today; if a correction is ever issued it becomes `corrected` — either is fine, as
+      // long as it is not flagged (not retracted / expression_of_concern)
+      expect(["ok", "corrected"]).toContain(statusByTitle["mzt-normal-check"]);
+      const normal = r.json.items.find((i: { title: string }) => i.title === "mzt-normal-check");
+      expect(["retracted", "expression_of_concern"]).not.toContain(normal.status);
       expect(r.json.summary.checked).toBe(4);
       expect(r.json.flagged_count).toBe(1); // only the retracted one is flagged; a correction is not
       const retracted = r.json.items.find((i: { status: string }) => i.status === "retracted");

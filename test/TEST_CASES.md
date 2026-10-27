@@ -340,6 +340,7 @@ Nota: le chiavi `item_keys` sono deduplicate (ordine di prima comparsa) prima di
 | CR-21 | collezione con >200 DOI unici | `truncated: true`, `next_start` 200, `checked` 200; richiamando con `start=next_start` continua (nessun truncated, le restanti) |
 | CR-22 | Crossref 500 poi 200 | ritentato (429/500/502/503/504) e risolto `ok` |
 | CR-23 | `UNPAYWALL_EMAIL` non valida / valida | niente `mailto` nella richiesta / `mailto` presente (validazione come unpaywall.ts) |
+| CR-24 | `type` Crossref col trattino / maiuscole (`Expression-of-Concern`) | normalizzato (minuscolo, `-`/spazi → `_`) prima del confronto e memorizzato così → `expression_of_concern` |
 
 ## import_pdf_to_zotero (`import-pdf-to-zotero.test.ts`)
 | ID | Scenario | Atteso |
