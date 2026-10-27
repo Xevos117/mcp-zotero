@@ -198,4 +198,90 @@ describe("check_retractions (CR)", () => {
     expect(out.json.summary.checked).toBe(1);
     expect(out.json.not_found).toHaveLength(49);
   });
+
+  it("CR-18 removal / withdrawal / partial_retraction → tutti retracted e flagged", async () => {
+    h = await startHarness();
+    h.net.on("GET", ITEMS, zLibraryQuery([
+      article("RMVL2222", { DOI: "10.1016/removal" }),
+      article("WDRW3333", { DOI: "10.1038/withdrawal" }),
+      article("PRTL4444", { DOI: "10.1371/partial" }),
+    ]));
+    h.net.on("GET", CROSSREF, crossref({
+      "10.1016/removal": [{ type: "removal", source: "retraction-watch", updated: { "date-parts": [[2021, 1, 1]] } }],
+      "10.1038/withdrawal": [{ type: "withdrawal", source: "publisher", updated: { "date-parts": [[2021, 2, 1]] } }],
+      "10.1371/partial": [{ type: "partial_retraction", source: "retraction-watch", updated: { "date-parts": [[2021, 3, 1]] } }],
+    }));
+    const out = await h.call("check_retractions", { item_keys: ["RMVL2222", "WDRW3333", "PRTL4444"] });
+    expect(out.json.items.every((i: { status: string }) => i.status === "retracted")).toBe(true);
+    expect(out.json.summary).toMatchObject({ checked: 3, retracted: 3 });
+    expect(out.json.flagged_count).toBe(3);
+  });
+
+  it("CR-19 tipo di avviso sconosciuto → almeno corrected, mai scartato in silenzio", async () => {
+    h = await startHarness();
+    h.net.on("GET", ITEMS, zLibraryQuery([article("UNKT2222", { DOI: "10.4444/newtype" })]));
+    h.net.on("GET", CROSSREF, crossref({ "10.4444/newtype": [{ type: "new_type", label: "Something New", source: "crossref", updated: { "date-parts": [[2022, 1, 1]] } }] }));
+    const out = await h.call("check_retractions", { item_keys: ["UNKT2222"] });
+    expect(out.json.items[0].status).toBe("corrected");
+    expect(out.json.items[0].notices).toEqual([expect.objectContaining({ type: "new_type" })]);
+  });
+
+  it("CR-20 stesso DOI su più voci → una sola richiesta a Crossref (deduplicato)", async () => {
+    h = await startHarness();
+    h.net.on("GET", ITEMS, zLibraryQuery([
+      article("DUPA2222", { DOI: "10.5555/dup" }),
+      article("DUPB3333", { DOI: "10.5555/DUP" }), // same DOI, different case
+    ]));
+    h.net.on("GET", CROSSREF, crossref({ "10.5555/dup": [RETRACTION] }));
+    const out = await h.call("check_retractions", { item_keys: ["DUPA2222", "DUPB3333"] });
+    expect(h.net.toHost("api.crossref.org")).toHaveLength(1); // one lookup for the shared DOI
+    expect(out.json.items.map((i: { status: string }) => i.status)).toEqual(["retracted", "retracted"]);
+  });
+
+  it("CR-21 tetto di 200 DOI unici: truncated + next_start, poi start continua", async () => {
+    h = await startHarness();
+    const A = "23456789ABCDEFGHIJKLMNPQRSTUVWXYZ";
+    // 205 items, each a distinct key (collection keys are not schema-validated) and a distinct valid DOI
+    const items = Array.from({ length: 205 }, (_, i) => {
+      const key = "C" + A[Math.floor(i / (A.length * A.length)) % A.length] + A[Math.floor(i / A.length) % A.length] + A[i % A.length] + "AAAA";
+      return article(key, { DOI: `10.1000/${i}` });
+    });
+    h.net.on("GET", COLL_ITEMS, zList(items));
+    h.net.on("GET", CROSSREF, crossref({})); // every DOI → ok
+    const first = await h.call("check_retractions", { collection_key: "CPLQQQQR" });
+    expect(first.json.truncated).toBe(true);
+    expect(first.json.next_start).toBe(200);
+    expect(first.json.summary.checked).toBe(200);
+    const second = await h.call("check_retractions", { collection_key: "CPLQQQQR", start: first.json.next_start });
+    expect(second.json.truncated).toBeUndefined();
+    expect(second.json.summary.checked).toBe(5);
+  });
+
+  it("CR-22 Crossref 500 poi 200 → ritentato e risolto (ok)", async () => {
+    h = await startHarness();
+    h.net.on("GET", ITEMS, zLibraryQuery([article("RTRY2222", { DOI: "10.8888/retry" })]));
+    let hits = 0;
+    h.net.on("GET", CROSSREF, () => {
+      hits++;
+      return hits < 2 ? statusResponse(500, "err") : jsonResponse({ message: {} });
+    });
+    const out = await h.call("check_retractions", { item_keys: ["RTRY2222"] });
+    expect(out.json.items[0].status).toBe("ok");
+    expect(hits).toBeGreaterThan(1); // retried the 500
+  });
+
+  it("CR-23 UNPAYWALL_EMAIL non valida → nessun mailto; valida → mailto nella richiesta", async () => {
+    h = await startHarness({ unpaywallEmail: "not-an-email" });
+    h.net.on("GET", ITEMS, zLibraryQuery([article("MAILAAA2", { DOI: "10.1234/m" })]));
+    h.net.on("GET", CROSSREF, crossref({ "10.1234/m": [] }));
+    await h.call("check_retractions", { item_keys: ["MAILAAA2"] });
+    expect(h.net.toHost("api.crossref.org")[0].url.searchParams.get("mailto")).toBeNull();
+    await h.close();
+
+    h = await startHarness({ unpaywallEmail: "me@example.org" });
+    h.net.on("GET", ITEMS, zLibraryQuery([article("MAILAAA2", { DOI: "10.1234/m" })]));
+    h.net.on("GET", CROSSREF, crossref({ "10.1234/m": [] }));
+    await h.call("check_retractions", { item_keys: ["MAILAAA2"] });
+    expect(h.net.toHost("api.crossref.org")[0].url.searchParams.get("mailto")).toBe("me@example.org");
+  });
 });

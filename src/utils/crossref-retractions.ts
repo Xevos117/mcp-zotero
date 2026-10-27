@@ -96,7 +96,13 @@ export async function lookupRetraction(doi: string, mailto?: string): Promise<Re
   const userAgent = `mcp-zotero/1.0 (retraction check${mailto ? `; mailto:${mailto}` : ""})`;
   let response: Response;
   try {
-    response = await fetchWithRetry(url, { headers: { Accept: "application/json", "User-Agent": userAgent } }, { label: "Crossref retraction lookup" });
+    response = await fetchWithRetry(
+      url,
+      { headers: { Accept: "application/json", "User-Agent": userAgent } },
+      // Retry the transient server statuses Crossref can return, a bounded number of times (per-attempt timeout
+      // and backoff come from fetchWithRetry); 404 and other 4xx are definitive and not retried.
+      { label: "Crossref retraction lookup", retryableStatuses: [429, 500, 502, 503, 504], maxRetries: 2 }
+    );
   } catch {
     return { status: "lookup_failed", notices: [] };
   }

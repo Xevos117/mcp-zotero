@@ -6,14 +6,17 @@ import { fetchItemsByKeys, fetchAllPages } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 import { mapWithConcurrency } from "../utils/concurrency.js";
 import { itemDoi, lookupRetraction, RetractionLookup, RetractionNotice, RetractionStatus } from "../utils/crossref-retractions.js";
+import { isValidEmail } from "../utils/unpaywall.js";
 import { COLLECTION_KEY_HINT, ITEM_KEY_HINT } from "../utils/error-hints.js";
 
 const MAX_ITEM_KEYS = 50;
+// Cap the Crossref lookups per call by the number of distinct DOIs; the rest is left for a follow-up call (start)
+const MAX_LOOKUPS = 200;
 
 export const toolConfig = {
   name: "check_retractions",
   description:
-    "Check whether Zotero items have been retracted, flagged with an expression of concern, or corrected. Pass EITHER item_keys (up to 50) OR collection_key, exactly one. Read-only: it never changes the library. For each item it reads the DOI (the DOI field, or a 'DOI: …' line in Extra) and looks it up on Crossref (Retraction Watch data), then reports a status: retracted, expression_of_concern, corrected, ok, no_doi (no DOI to check), not_in_crossref (the DOI is unknown to Crossref), or lookup_failed (a transient error — rerun just those). The response opens with a summary of the counts and then lists, per item, its key, title, doi, status and any notices (type, date, source, the notice's own DOI). A failed lookup never fails the rest; rerun the lookup_failed items.",
+    "Check whether Zotero items have been retracted, flagged with an expression of concern, or corrected. Pass EITHER item_keys (up to 50) OR collection_key, exactly one. Read-only: it never changes the library. For each item it reads the DOI (the DOI field, or a 'DOI: …' line in Extra) and looks it up on Crossref (Retraction Watch data), then reports a status: retracted, expression_of_concern, corrected, ok, no_doi (no DOI to check), not_in_crossref (the DOI is unknown to Crossref), or lookup_failed (a transient error — rerun just those). The response opens with a summary of the counts and then lists, per item, its key, title, doi, status and any notices (type, date, source, the notice's own DOI). A failed lookup never fails the rest; rerun the lookup_failed items. At most 200 distinct DOIs are looked up per call: if the response has truncated=true, call again with start=next_start to continue (useful for a large collection).",
   inputSchema: {
     item_keys: z
       .array(zoteroKey())
@@ -26,6 +29,15 @@ export const toolConfig = {
       .optional()
       .describe(
         "Check every item directly in this collection (not its subcollections). Provide this OR item_keys, not both. Get the key from get_collections."
+      ),
+    start: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .default(0)
+      .describe(
+        "Item offset to start from (default 0). Only needed to continue a truncated response: pass the next_start it returned."
       ),
     ...libraryArgsSchema,
   },
@@ -46,7 +58,7 @@ export async function handleCheckRetractions(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { item_keys, collection_key, library_type, library_id } = CheckRetractionsSchema.parse(args);
+  const { item_keys, collection_key, start, library_type, library_id } = CheckRetractionsSchema.parse(args);
   const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   const hasKeys = item_keys !== undefined && item_keys.length > 0;
@@ -95,26 +107,50 @@ export async function handleCheckRetractions(
     }
   }
 
-  // Crossref's polite pool: reuse the server's contact email if set (optional; Crossref works without it)
-  const mailto = process.env.UNPAYWALL_EMAIL?.trim() || undefined;
+  // Crossref's polite pool: reuse the server's contact email only if it is a valid address (as unpaywall.ts checks);
+  // optional, Crossref works without it.
+  const email = process.env.UNPAYWALL_EMAIL?.trim();
+  const mailto = email && isValidEmail(email) ? email : undefined;
 
   const prepared = items.map((item) => ({
     key: item.key as string,
     title: item.title || "Untitled",
     doi: itemDoi(item) ?? null,
   }));
-  const withDoi = prepared.filter((p) => p.doi);
-  const settled = await mapWithConcurrency(withDoi, (p) => lookupRetraction(p.doi as string, mailto));
 
-  const lookupByKey = new Map<string, RetractionLookup>();
-  withDoi.forEach((p, i) => {
+  // Cap the lookups per call by the number of DISTINCT DOIs (MAX_LOOKUPS): a large collection would otherwise make
+  // thousands of Crossref requests and the MCP client could time out and lose everything. `start` is the item
+  // offset; when the page fills the budget the rest is left for a follow-up call (truncated + next_start).
+  const page = prepared.slice(start);
+  const pageItems: typeof prepared = [];
+  const uniqueDois = new Set<string>();
+  let truncated = false;
+  let nextStart: number | undefined;
+  for (let i = 0; i < page.length; i++) {
+    const p = page[i];
+    if (p.doi && !uniqueDois.has(p.doi)) {
+      if (uniqueDois.size >= MAX_LOOKUPS) {
+        truncated = true;
+        nextStart = start + i;
+        break;
+      }
+      uniqueDois.add(p.doi);
+    }
+    pageItems.push(p);
+  }
+
+  // One lookup per distinct DOI (deduplicated), then remapped to every item that carries it
+  const dois = [...uniqueDois];
+  const settled = await mapWithConcurrency(dois, (doi) => lookupRetraction(doi, mailto));
+  const byDoi = new Map<string, RetractionLookup>();
+  dois.forEach((doi, i) => {
     const r = settled[i];
-    lookupByKey.set(p.key, r.status === "fulfilled" ? r.value : { status: "lookup_failed", notices: [] });
+    byDoi.set(doi, r.status === "fulfilled" ? r.value : { status: "lookup_failed", notices: [] });
   });
 
-  const results: ItemResult[] = prepared.map((p) => {
+  const results: ItemResult[] = pageItems.map((p) => {
     if (!p.doi) return { key: p.key, title: p.title, doi: null, status: "no_doi", notices: [] };
-    const l = lookupByKey.get(p.key) ?? { status: "lookup_failed", notices: [] };
+    const l = byDoi.get(p.doi) ?? { status: "lookup_failed", notices: [] };
     return { key: p.key, title: p.title, doi: p.doi, status: l.status, notices: l.notices };
   });
 
@@ -125,6 +161,7 @@ export async function handleCheckRetractions(
   return formatJsonResult({
     summary,
     flagged_count: flagged.length,
+    ...(truncated ? { truncated: true, next_start: nextStart } : {}),
     ...(notFound.length ? { not_found: notFound } : {}),
     items: results,
   });

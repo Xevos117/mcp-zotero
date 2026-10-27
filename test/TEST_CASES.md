@@ -334,6 +334,12 @@ Nota: le chiavi `item_keys` sono deduplicate (ordine di prima comparsa) prima di
 | CR-15 | DOI che è esso stesso una nota (solo `update-to`, nessun `updated-by`) | `ok`, nessuna nota (si guarda solo `updated-by`) |
 | CR-16 | collezione vuota | risultato vuoto (non un errore) |
 | CR-17 | esattamente 50 `item_keys` | accettato, nessun errore di validazione |
+| CR-18 | note `removal` / `withdrawal` / `partial_retraction` | tutte `retracted` e `flagged` (una regressione su RETRACTED_TYPES fa fallire qui) |
+| CR-19 | tipo di avviso sconosciuto (`new_type`) | almeno `corrected`, la nota resta in `notices` (mai scartata in silenzio) |
+| CR-20 | stesso DOI (anche con maiuscole diverse) su più voci | **una sola** richiesta a Crossref (deduplicato), stesso status su tutte |
+| CR-21 | collezione con >200 DOI unici | `truncated: true`, `next_start` 200, `checked` 200; richiamando con `start=next_start` continua (nessun truncated, le restanti) |
+| CR-22 | Crossref 500 poi 200 | ritentato (429/500/502/503/504) e risolto `ok` |
+| CR-23 | `UNPAYWALL_EMAIL` non valida / valida | niente `mailto` nella richiesta / `mailto` presente (validazione come unpaywall.ts) |
 
 ## import_pdf_to_zotero (`import-pdf-to-zotero.test.ts`)
 | ID | Scenario | Atteso |
