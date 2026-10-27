@@ -393,6 +393,29 @@ Nota: le chiavi `item_keys` sono deduplicate (ordine di prima comparsa) prima di
 | FA-29 | stesso scenario della pipeline condivisa | campi per PDF identici a `attachOpenAccessPdf` chiamata direttamente |
 | FA-30 | chiave malformata | errore di validazione, nessuna richiesta |
 
+## find_duplicates (`find-duplicates.test.ts`)
+Tool di sola lettura: non unisce né cancella nulla. Scansiona solo le voci regolari via `.top()` (niente note, allegati o cestino), 100 per pagina fino a un tetto, e dichiara `scanned`/`truncated`. Utilità in `src/utils/duplicates.ts`.
+| ID | Scenario | Atteso |
+|---|---|---|
+| schema | `dois` opzionale (≤50), `collection_key` opzionale | `dois` oltre 50 e chiave malformata rifiutati |
+| scan path | senza `collection_key` / con `collection_key` | la catena passa da `items().top()` / `collections(key).items().top()` |
+| scan base | una voce, nessun duplicato | `mode: "scan"`, `scanned: 1`, `truncated: false`, `groups: []` |
+| scan DOI | stesso DOI (campo, forma URL e riga `DOI:` in Extra) + una voce diversa | un gruppo `match: "doi"`, le tre voci; la quarta esclusa |
+| normalizeDoi | `see 10.1000/abc, p.5`, `(see 10.1000/abc)`, `10.1000/a(b)`, Wakefield `(10.1016/S0140-6736(97)11096-0).` | punteggiatura finale tolta sul match; `)` tolto solo se sbilanciato → parentesi bilanciate preservate (SICI, S0140-6736(97)…) |
+| scan DOI Extra | campo `10.1000/abc` e riga Extra `DOI: 10.1000/abc, see note` | raggruppati (stessa normalizzazione) |
+| scan titolo | stesso titolo con accenti/punteggiatura e stesso anno | un gruppo `match: "title"`, chiave = titolo normalizzato |
+| scan CJK/cirillico | titoli CJK uguali (soglia 4), CJK corto generico (`序言`) escluso, cirillico uguale (soglia latina) | CJK e cirillico raggruppati, CJK corto no |
+| scan collezione 404 | `collection_key` inesistente | isError `status: "not_found"` con hint get_collections (come get_collection_items) |
+| scan anni | stesso titolo ma anni diversi (entrambi presenti) | nessun gruppo |
+| scan senza anno | stesso titolo, uno con anno e uno senza | un gruppo `match: "title"` |
+| scan titolo corto | titolo normalizzato troppo corto | nessun gruppo (falsi positivi evitati) |
+| scan esclusioni | note e allegati con lo stesso titolo delle voci regolari | esclusi dallo scan e dai gruppi |
+| scan precedenza | due voci con stesso DOI e stesso titolo | un solo gruppo `match: "doi"` (non anche per titolo) |
+| scan paginazione | 150 voci, duplicati a cavallo di due pagine | due richieste (`start` 0 e 100), gruppo trovato |
+| scan tetto | oltre il tetto di voci | `scanned` al tetto, `truncated: true` |
+| dois | `dois` presente/assente/non-DOI/duplicato nell'input | per DOI le voci già presenti (forma URL normalizzata), `normalized` null per un non-DOI, `existing` vuoto per l'assente; risultati nell'ordine dei DOI in ingresso, `existing` ordinato per chiave |
+| dois entry | voce presente per un DOI | ogni voce con `key`, `title`, `year`, `first_author`, `item_type`, `doi` |
+
 ## Pipeline PDF open access condivisa (`test/utils/oa-pdf.test.ts`)
 `attachOpenAccessPdf` (src/utils/oa-pdf.ts) è l'unico percorso usato da add_items_by_doi e find_and_attach_pdfs.
 | ID | Scenario | Atteso |
@@ -603,7 +626,7 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 ## Prompt MCP (`test/utils/prompts.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| PR-01 | prompts/list | i prompt attesi in ordine (cite_word_document, write_cited_document, import_references, note_from_item), argomenti e flag `required` (opzionali da `.optional()` non obbligatori) |
+| PR-01 | prompts/list | i prompt attesi in ordine (cite_word_document, write_cited_document, import_references, note_from_item, check_bibliography), argomenti e flag `required` (opzionali da `.optional()` non obbligatori) |
 | PR-02 | prompts/get con argomenti | un messaggio `user` col testo reso (valori sostituiti, nessun `${arguments.}` residuo) |
 | PR-03 | prompts/get con opzionale omesso | default nel testo (es. style "apa") |
 | PR-04 | allineamento manifest.json | `prompts_generated: false`; nomi/ordine, `arguments` e `text` (con i placeholder `${arguments.x}`) uguali a `PROMPTS` |
@@ -679,12 +702,13 @@ poi gli stessi scenari utente e gruppo di `npm run smoke`; inoltre: nessuna vari
 ## E2E (`test/e2e/stdio-server.e2e.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni (UNPAYWALL_EMAIL, regola UNSAFE_OPERATIONS, hint negli errori), 18 tool con schema object |
+| E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni (UNPAYWALL_EMAIL, regola UNSAFE_OPERATIONS, hint negli errori), 20 tool con schema object |
 | E2E-03 | argomenti non validi su ogni tool con campi obbligatori | isError con il campo, nessuna chiamata HTTP |
 | E2E-04..18 | una tools/call per ciascuno dei tool di lettura/scrittura, create_cited_document compreso (deletes con UNSAFE_OPERATIONS=all); E2E-17 delete_items nel cestino di default (POST `deleted:1`, `mode: "trash"`) poi `permanent: true` (DELETE, `mode: "permanent"`) | risultato atteso, richieste corrette alla FakeNet |
+| E2E-15b/15c/15d | find_duplicates: scan (gruppo per DOI e per titolo via `/items/top`) / modo dois / collezione inesistente | gruppi attesi con `scanned`/`truncated`; per DOI le voci già presenti (forma URL normalizzata); 404 → `status: "not_found"` con hint |
 | E2E-24/25 | update_item: version corretta → PATCH con If-Unmodified-Since-Version; version errata → version_conflict senza PATCH | nuova versione / `code: version_conflict` |
 | E2E-26 | create_note | POST `itemType: note` sotto il parent, HTML `<p>…</p>` |
-| E2E-27/28 | prompts/list e prompts/get | capability prompts, i 4 prompt; testo reso con gli argomenti (nessun `${arguments.}`) |
+| E2E-27/28 | prompts/list e prompts/get | capability prompts, i 5 prompt (check_bibliography compreso); testo reso con gli argomenti (nessun `${arguments.}`) |
 | E2E-19 | 403 Zotero | isError al client |
 | E2E-20 | rete | nessuna richiesta del processo figlio senza route |
 | E2E-21/22 | UNSAFE_OPERATIONS assente / " ITEMS " | delete bloccati senza chiamate HTTP, con `hint` per l'utente / solo delete_items abilitato |
@@ -837,7 +861,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 
 | File | Casi |
 |---|---|
-| `get-user-id` | LIVE-GUI-01 libreria della chiave; 02 senza arguments / argomenti in più; 03 18 tool |
+| `get-user-id` | LIVE-GUI-01 libreria della chiave; 02 senza arguments / argomenti in più; 03 20 tool |
 | `search-library` | LIVE-SL-01 query sul titolo → solo quella voce; 02 sort title asc sul prefisso della run; 03 5 sort × 2 direzioni; 04 limit 500 → min(100, totale); 05 dateAdded desc ordinato; 06 nessun risultato senza isError; 07 argomenti non validi; 08 override utente, gruppo senza id, gruppo inesistente |
 | `get-collections` | LIVE-GC-01 collezione e sottocollezione con genitore; 02 include_trashed; 03 override e tipo sbagliato |
 | `get-collection-items` | LIVE-GCI-01 collezione con 3 voci note + inclusione delle fixture; 02 sottocollezione; 03 105 voci (paginazione >100); 04 allegato standalone escluso/incluso; 05 vuota; 06 inesistente / chiave mancante; 07 override |
@@ -851,6 +875,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 | `create-note` | LIVE-CN-01 nota figlia in testo semplice → `<p>`/`<br/>`, sotto il genitore col tag della run (verifica via rawChildren); 02 override library_id; 03 genitore inesistente, nota vuota, genitore allegato |
 | `import-pdf-to-zotero` | LIVE-IP-01 PDF figlio: size, md5, fulltext, verificati via API; 02 standalone con filename/titolo/collezioni; 03 nome da Content-Disposition; 04 HTML come PDF → not_pdf, nessun allegato; 05 text/html (LIVE-STALE-5); 06 404; 07 genitore inesistente, URL non valido; 08 override |
 | `find-and-attach-pdfs` (soft per 04/05) | LIVE-FA-01 entrambi/nessuno; 02 chiave sconosciuta e senza DOI; 03 skipped e skip_if_attachment_exists false; 04 collezione dry_run → processed = voci regolari create (LIVE-STALE-2); 05 collezione reale (LIVE-STALE-4); 06 override |
+| `find-duplicates` | LIVE-FD-01 collezione della run: gruppi per DOI e per titolo/anno, voce unica esclusa, note/allegati/cestino (voce cestinata stesso DOI) esclusi, `scanned`/`truncated`; 02 modo dois DOI presente/assente; 03 collezione pulita senza duplicati; 04 override library_type user; 05 dois stesso DOI due volte; 06 >100 voci (paginazione) su bulkCollection; 07 collezione inesistente → not_found |
 | `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci con `permanent: true` cancellate definitivamente (non nel cestino); 02b default → nel cestino (`mode: "trash"`, `deleted:1`, presente in `items/trash`), poi `permanent: true` sulla stessa chiave → via anche dal cestino; 03 solo sconosciute (LIVE-STALE-1); 04 mista (permanent); 05 51/0 chiavi; 06 genitore → anche il figlio (permanent; ogni asserzione riporta il testo del risultato); 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione; 09 cestino di un genitore → genitore nel cestino, figlio NON cestinato (come il client), poi permanent → figlio sparisce; 10 voce già nel cestino + default → `already_in_trash`, `deleted_count` 0, resta, poi permanent la rimuove |
 | `delete-collection` | LIVE-DC-01 UNSAFE none/items rifiutato; 02-03 (solo fuori safe mode) cancellata con la voce che resta, chiave sconosciuta/vuota |
 | `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente (isError che la nomina, nessun output); 03 override |

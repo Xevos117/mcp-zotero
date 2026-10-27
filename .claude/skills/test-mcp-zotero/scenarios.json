@@ -57,6 +57,11 @@
       "scenario": "a standalone linked attachment in both run collections"
     },
     {
+      "id": "T-duplicates",
+      "files": ["src/tools/find-duplicates.ts", "src/utils/duplicates.ts", "src/utils/doi.ts"],
+      "scenario": "in a run collection add two items with the same DOI and two more with the same title and year (one written with accents and punctuation), plus one unique item; find_duplicates with collection_key groups the first two under match \"doi\" and the next two under match \"title\" (not the unique one), with scanned and truncated reported and notes/attachments excluded; then find_duplicates with dois [one of those DOIs in https://doi.org/ form, a bare DOI not in the library] returns the existing item for the present DOI and an empty existing for the absent one. Read-only: nothing is created or deleted beyond the run items"
+    },
+    {
       "id": "T-delete",
       "files": ["src/tools/delete-items.ts", "src/tools/delete-collection.ts", "src/utils/unsafe-operations.ts"],
       "scenario": "add_items two books <prefix> T-delete to delete. First delete_items with book1 key + ZZZZZZZZ and no permanent (default = trash): deleted_count 1, mode trash, ZZZZZZZZ in not_found, book1 moved to the Zotero trash (still present with deleted:1). Then delete_items with book2 key and permanent: true: deleted_count 1, mode permanent, book2 gone (404). If unsafe_operations is all and not safe mode: create_collection <prefix> T-delete to delete and delete_collection on it (permanent, collections have no trash). Claim all under deleted, and mark the permanently deleted ones (book2, the collection) with \"permanent\": true so the verifier requires a 404; book1 (trash) stays a plain entry"
@@ -84,7 +89,7 @@
     {
       "id": "T-prompts",
       "files": ["src/prompts/index.ts"],
-      "scenario": "The agent's own MCP client exposes tools, not prompts, so exercise the prompts through the read-only Bash wrapper. Run `node test/live/agent/prompts.mjs list`: it lists cite_word_document, write_cited_document, import_references and note_from_item, each with its arguments. Then run `node test/live/agent/prompts.mjs get note_from_item '{\"item_key\": \"<ARTICLE>\"}'` with a run article key for <ARTICLE>: the rendered message names get_items_details and create_note and contains that key, with no leftover ${arguments.…} placeholder. Claim the scenario referencing those Bash call_no(s)."
+      "scenario": "The agent's own MCP client exposes tools, not prompts, so exercise the prompts through the read-only Bash wrapper. Run `node test/live/agent/prompts.mjs list`: it lists cite_word_document, write_cited_document, import_references, note_from_item and check_bibliography, each with its arguments. Then run `node test/live/agent/prompts.mjs get note_from_item '{\"item_key\": \"<ARTICLE>\"}'` with a run article key for <ARTICLE>: the rendered message names get_items_details and create_note and contains that key, with no leftover ${arguments.…} placeholder. Claim the scenario referencing those Bash call_no(s)."
     },
     {
       "id": "T-library",
@@ -108,7 +113,7 @@
     },
     {
       "id": "T-retractions",
-      "files": ["src/tools/check-retractions.ts", "src/utils/crossref-retractions.ts"],
+      "files": ["src/tools/check-retractions.ts", "src/utils/crossref-retractions.ts", "src/utils/doi.ts"],
       "scenario": "add_items_by_doi the retracted DOI 10.1016/s0140-6736(97)11096-0 and a normal DOI 10.1038/s41586-023-06647-8 (run prefix + tag), plus add_items one book without a DOI (run prefix + tag); check_retractions on the three item_keys: the retracted one is status retracted with a notice (type retraction, source retraction-watch), the normal one ok, the book no_doi; the response opens with a summary of the counts and a failed lookup (if any) never fails the rest"
     }
   ]

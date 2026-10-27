@@ -33,6 +33,10 @@ const EXPECTED: Record<string, { required: string[]; properties: string[] }> = {
     required: [],
     properties: ["item_keys", "collection_key", "skip_if_attachment_exists", "dry_run"],
   },
+  find_duplicates: {
+    required: [],
+    properties: ["dois", "collection_key"],
+  },
   inject_citations: { required: ["file_path"], properties: ["file_path", "style", "format"] },
   create_cited_document: { required: ["markdown", "output_path"], properties: ["markdown", "output_path", "style", "format"] },
   check_retractions: { required: [], properties: ["item_keys", "collection_key", "start"] },

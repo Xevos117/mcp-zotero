@@ -88,7 +88,12 @@ export const PROMPTS: PromptDef[] = [
       [
         `Import these references into Zotero by DOI: ${a.dois}`,
         "",
-        "Please call add_items_by_doi with the list of DOIs (strip any surrounding text, keep only the bare DOIs). It resolves the metadata automatically and attaches an open-access PDF when one is found. Report which DOIs were added and which failed, and suggest add_items for anything without a usable DOI.",
+        "Please:",
+        "1. Call find_duplicates once with all these DOIs in a single dois array (strip any surrounding text, keep only the bare DOIs) to see which are already in the library.",
+        "2. Call add_items_by_doi with the DOIs that are not already present. It resolves the metadata automatically and attaches an open-access PDF when one is found.",
+        "3. Call check_retractions with item_keys set to the keys of the items just added, to flag anything retracted or under an expression of concern (if the response has truncated: true, call again with start = next_start).",
+        "4. For any imported item still without a PDF, try find_and_attach_pdfs.",
+        "Report which DOIs were added, which were skipped as already present and which failed, and any retraction warnings; suggest add_items for anything without a usable DOI.",
       ].join("\n"),
   },
   {
@@ -105,6 +110,23 @@ export const PROMPTS: PromptDef[] = [
         "Please:",
         `1. Fetch the item with get_items_details (item_keys ["${a.item_key}"], include_abstract true); if it has a PDF, get_item_fulltext for more detail.`,
         `2. Write a concise plain-text summary (key points, method, findings) and attach it with create_note (parent_item_key "${a.item_key}"). Use blank lines between paragraphs; no HTML or Markdown.`,
+      ].join("\n"),
+  },
+  {
+    name: "check_bibliography",
+    title: "Check a collection before handing it in",
+    description: "Check a Zotero collection for retracted items and duplicates before using it in a document.",
+    argsSchema: {
+      collection_key: z.string().describe("The Zotero collection key to check (from get_collections)"),
+    },
+    template: (a) =>
+      [
+        `Check the Zotero collection ${a.collection_key} before I use it in a bibliography.`,
+        "",
+        "Please:",
+        `1. Call find_duplicates with collection_key "${a.collection_key}" to list duplicate items (same DOI or normalized title). Report each group and suggest which to keep; do not delete anything without asking.`,
+        `2. Call check_retractions with collection_key "${a.collection_key}" to flag any retracted items or expressions of concern (if the response has truncated: true, continue with start = next_start).`,
+        "3. Summarize what you found and what I should fix before handing the bibliography in.",
       ].join("\n"),
   },
 ];

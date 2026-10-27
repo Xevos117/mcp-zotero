@@ -73,31 +73,8 @@ function noticeDate(updated: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * Normalize a raw DOI value (from the item's DOI field or an "DOI: …" line in Extra): drop a doi.org/doi: prefix,
- * trim and lowercase (Crossref stores DOIs lowercase). Returns undefined when the value is not a DOI.
- */
-export function normalizeDoi(raw: string | undefined | null): string | undefined {
-  if (!raw) return undefined;
-  const doi = raw
-    .trim()
-    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, "")
-    .replace(/^doi:\s*/i, "")
-    .trim()
-    .toLowerCase();
-  return /^10\.\d{4,9}\/\S+$/.test(doi) ? doi : undefined;
-}
-
-/** The DOI of a Zotero item: the DOI field, else a "DOI: …" line in Extra (types without a DOI field). */
-export function itemDoi(item: { DOI?: unknown; extra?: unknown }): string | undefined {
-  const field = typeof item.DOI === "string" ? normalizeDoi(item.DOI) : undefined;
-  if (field) return field;
-  if (typeof item.extra === "string") {
-    const m = item.extra.match(/^\s*DOI:\s*(\S.*?)\s*$/im);
-    if (m) return normalizeDoi(m[1]);
-  }
-  return undefined;
-}
+// DOI normalisation and extraction (normalizeDoi / itemDoi) moved to ../utils/doi.ts, shared with
+// find_duplicates. check_retractions imports itemDoi from there.
 
 /** Look up one DOI on Crossref. Never throws: a network/timeout/parse error becomes `lookup_failed`. */
 export async function lookupRetraction(doi: string, mailto?: string): Promise<RetractionLookup> {
