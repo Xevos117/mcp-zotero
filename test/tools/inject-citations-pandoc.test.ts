@@ -236,4 +236,63 @@ describe("inject_citations: marcatori Pandoc (IC-P*)", () => {
     expect(xml).toContain("/items/SMITH222");
     expect(xml).toContain("/items/DEEE2222");
   });
+
+  it("IC-P16 solo handle/codice inline (nessuna citazione) → copia invariata, NESSUN errore", async () => {
+    serveSearch(h, {}); // ogni ricerca citekey torna vuota
+    const input = await dir.file("p.docx", await makeDocx(para("Use @Component and @media and @app.route here.")));
+    const out = await h.call("inject_citations", { file_path: input });
+    expect(out.isError, out.text).toBe(false);
+    expect(out.json).toMatchObject({ citations_found: 0, citations_injected: 0 });
+    expect((out.json.warnings ?? []).join(" ")).toMatch(/kept as text/);
+    const xml = await readDocumentXml(await readFile(out.json.output_path));
+    expect(xml).toContain("@Component");
+    expect(xml).not.toContain("ADDIN ZOTERO");
+  });
+
+  it("IC-P17 handle non risolto accanto a un [@KEY] reale → inietta la citazione, l'handle resta testo", async () => {
+    serveItems(h, { SMITH222: SMITH });
+    serveSearch(h, {});
+    const input = await dir.file("p.docx", await makeDocx(para("Ping @handle then cite [@SMITH222].")));
+    const out = await h.call("inject_citations", { file_path: input });
+    expect(out.json).toMatchObject({ citations_found: 1, citations_injected: 1 });
+    expect((out.json.warnings ?? []).join(" ")).toMatch(/@handle.*kept as text/);
+    const xml = await readDocumentXml(await readFile(out.json.output_path));
+    expect(xml).toContain("@handle");
+    expect(xml).toContain("(Smith, 2023)");
+  });
+
+  it("IC-P18 seconda chiamata: una '@' nel titolo di un campo esistente non blocca l'iniezione del nuovo [@KEY]", async () => {
+    const smithAt = article("SMITH222", {
+      title: "Note @handle in title",
+      creators: [{ creatorType: "author", firstName: "John", lastName: "Smith" }],
+      date: "2023",
+    });
+    serveItems(h, { SMITH222: smithAt, DEEE2222: DOE });
+    const body = para("Zotero ", zcite({ keys: "SMITH222" }), " and pandoc [@DEEE2222].");
+    const input = await dir.file("mix.docx", await makeDocx(body));
+    const first = await h.call("inject_citations", { file_path: input });
+    expect(first.json.citations_injected).toBe(1);
+    // il campo iniettato ora contiene "@handle" nel suo instrText (CSL JSON del titolo)
+    const firstXml = await readDocumentXml(await readFile(first.json.output_path));
+    expect(firstXml).toContain("@handle");
+
+    const second = await h.call("inject_citations", { file_path: first.json.output_path });
+    expect(second.isError, second.text).toBe(false);
+    expect(second.json).toMatchObject({ citations_found: 1, citations_injected: 1 });
+    const xml = await readDocumentXml(await readFile(second.json.output_path));
+    expect(xml).toContain("/items/DEEE2222");
+    expect(xml).not.toContain("[@DEEE2222]");
+  });
+
+  it("IC-P19 inline spezzato tra due run non viene ricucito → resta testo con avviso, nessun errore", async () => {
+    serveSearch(h, {});
+    const input = await dir.file("p.docx", await makeDocx(para("See @SMI", "TH222 end.")));
+    const out = await h.call("inject_citations", { file_path: input });
+    expect(out.isError, out.text).toBe(false);
+    expect(out.json).toMatchObject({ citations_found: 0, citations_injected: 0 });
+    expect((out.json.warnings ?? []).join(" ")).toMatch(/kept as text/);
+    const xml = await readDocumentXml(await readFile(out.json.output_path));
+    expect(xml).toContain("@SMI");
+    expect(xml).not.toContain("ADDIN ZOTERO");
+  });
 });

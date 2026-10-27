@@ -17,7 +17,7 @@ import JSZip from "jszip";
 import { writeFileAtomic } from "../../src/utils/atomic-write.js";
 import { parseZciteTags } from "../../src/citation-injector/zcite.js";
 import { parsePandocCitesInBody, countPandocMarkers } from "../../src/citation-injector/pandoc-body.js";
-import { CitekeyLookup, itemMatchesCitekey, resolveCitekeys } from "../../src/citation-injector/citekey-resolver.js";
+import { CitekeyLookup, CitekeyMatch, itemCitekeys, resolveCitekeys } from "../../src/citation-injector/citekey-resolver.js";
 import { assignNumbers } from "../../src/cited-document/number.js";
 import { buildCitationItems } from "../../src/citation-injector/citation-json.js";
 import { formatCitationText } from "../../src/citation-injector/citation-formatter.js";
@@ -331,7 +331,7 @@ async function injectZcite(
   const prefs = await writer.writePrefs(zip, style);
   warnings.push(...writer.prefsWarnings(prefs));
 
-  const pandoc = countPandocMarkers(rawBody);
+  const pandoc = countPandocMarkers(rawBody, writer.format);
   if (pandoc > 0) {
     warnings.push(
       `The document also has ${pandoc} Pandoc citation marker(s) ([@key]): left as text, because a document with <zcite> ` +
@@ -354,12 +354,16 @@ async function injectPandoc(
   style: string
 ): Promise<InjectOutcome> {
   let body = writer.normalizePandoc ? writer.normalizePandoc(rawBody) : rawBody;
-  const parsed = parsePandocCitesInBody(body);
+  const parsed = parsePandocCitesInBody(body, writer.format);
   if (parsed.length === 0) {
     return { found: 0, injected: 0, warnings: [] };
   }
 
-  const requests = await resolveCitekeys(parsed, citekeyLookup);
+  // Unresolved inline markers drop out (kept as text) with a warning; an unknown bracketed key throws.
+  const { requests, warnings } = await resolveCitekeys(parsed, citekeyLookup);
+  if (requests.length === 0) {
+    return { found: 0, injected: 0, warnings };
+  }
 
   if (style === "ieee" || style === "vancouver") {
     const nums = assignNumbers(requests);
@@ -375,7 +379,6 @@ async function injectPandoc(
   const ordered = [...requests].sort((a, b) => b.raw.length - a.raw.length);
   const injected = injectRequests(writer, ordered, cslData, libType, userId, style, (b) => (body = b), () => body);
 
-  const warnings: string[] = [];
   if (body.includes("ZOTERO_BIBL")) {
     warnings.push("The document already has a Zotero bibliography: no second one was written.");
   } else {
@@ -386,7 +389,7 @@ async function injectPandoc(
   const prefs = await writer.writePrefs(zip, style);
   warnings.push(...writer.prefsWarnings(prefs));
 
-  return { found: parsed.length, injected, warnings };
+  return { found: requests.length, injected, warnings };
 }
 
 /** Replace each request's marker with its citation XML; returns how many were injected. */
@@ -419,14 +422,19 @@ function injectRequests(
 /** Build a citekey→Zotero-key lookup from the get_items_details metadata (citationKey field or Extra line). */
 function metadataCitekeyLookup(metadata: Record<string, unknown>): CitekeyLookup {
   return async (citekeys) => {
-    const out = new Map<string, string[]>();
+    const out = new Map<string, CitekeyMatch>();
     for (const ck of citekeys) {
-      const keys: string[] = [];
+      const lower = ck.toLowerCase();
+      const keys = new Set<string>();
+      const similar = new Set<string>();
       for (const [key, meta] of Object.entries(metadata)) {
         if (!meta || typeof meta !== "object" || Array.isArray(meta)) continue;
-        if (itemMatchesCitekey(meta as Record<string, unknown>, ck)) keys.push(key);
+        for (const found of itemCitekeys(meta as Record<string, unknown>)) {
+          if (found === ck) keys.add(key);
+          else if (found.toLowerCase() === lower) similar.add(found);
+        }
       }
-      out.set(ck, [...new Set(keys)]);
+      out.set(ck, { keys: [...keys], similar: [...similar] });
     }
     return out;
   };

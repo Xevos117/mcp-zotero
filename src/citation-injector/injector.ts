@@ -3,7 +3,7 @@ import { CslItemData } from "../types/csl-types.js";
 import { zoteroItemToCsl } from "../utils/csl-to-zotero.js";
 import { LibraryType } from "../utils/library-context.js";
 import { ItemSource, InjectionResult, injectFile } from "./pipeline.js";
-import { CitekeyLookup, itemMatchesCitekey } from "./citekey-resolver.js";
+import { CitekeyLookup, CitekeyMatch, itemCitekeys } from "./citekey-resolver.js";
 import { FormatWriter } from "./formats/types.js";
 import { docxWriter } from "./formats/docx.js";
 import { odtWriter } from "./formats/odt.js";
@@ -44,21 +44,30 @@ export function zoteroItemSource(zoteroApi: ZoteroApiInterface, libraryType: Lib
  */
 export function zoteroCitekeyLookup(zoteroApi: ZoteroApiInterface, libraryType: LibraryType, userId: string): CitekeyLookup {
   return async (citekeys) => {
-    const out = new Map<string, string[]>();
+    const out = new Map<string, CitekeyMatch>();
     for (const citekey of citekeys) {
-      // Search all fields (Extra included) for the citekey; confirm the exact match client-side, so item
-      // type filtering is unnecessary (and its multi-negation syntax is avoided). One page (100) is ample
-      // for a specific citekey token.
-      const response = await zoteroApi
-        .library(libraryType, userId)
-        .items()
-        .get({ q: citekey, qmode: "everything", limit: 100 });
-      const items = (response.getData() as ZoteroItemData[]) ?? [];
-      const matched = items
-        .filter((it) => itemMatchesCitekey(it as Record<string, unknown>, citekey))
-        .map((it) => it.key)
-        .filter((k): k is string => typeof k === "string");
-      out.set(citekey, [...new Set(matched)]);
+      // Search all fields (Extra included) for the citekey and confirm the exact (case-sensitive) match
+      // client-side. qmode=everything also searches full text, so the right item can be past the first
+      // page: page until an exact match is found, at most 5 pages (500 results). Citekeys that differ only
+      // in case are collected as suggestions for the "not found" error.
+      const exact = new Set<string>();
+      const similar = new Set<string>();
+      const lower = citekey.toLowerCase();
+      for (let page = 0; page < 5; page++) {
+        const response = await zoteroApi
+          .library(libraryType, userId)
+          .items()
+          .get({ q: citekey, qmode: "everything", limit: 100, start: page * 100 });
+        const items = (response.getData() as ZoteroItemData[]) ?? [];
+        for (const it of items) {
+          for (const ck of itemCitekeys(it as Record<string, unknown>)) {
+            if (ck === citekey && typeof it.key === "string") exact.add(it.key);
+            else if (ck.toLowerCase() === lower) similar.add(ck);
+          }
+        }
+        if (exact.size > 0 || items.length < 100) break;
+      }
+      out.set(citekey, { keys: [...exact], similar: [...similar] });
     }
     return out;
   };

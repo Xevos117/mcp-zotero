@@ -11,7 +11,7 @@ export const toolConfig = {
 
 PLACEHOLDER SYNTAX — two kinds, recognized automatically (no flag):
 - <zcite keys="ITEMKEY"/> tags (see ZCITE TAG FORMAT below). If the document has any <zcite> tag, it is handled as a zcite document.
-- Pandoc citation markers when there are no <zcite> tags: [@KEY], [@K1; @K2], [see @KEY, p. 12], -@KEY to suppress the author, or inline @KEY. KEY may be a Zotero 8-character key or a Better BibTeX citation key (e.g. [@rossi2020]); citation keys are resolved against each item's citationKey field or a "Citation Key: <key>" line in Extra (an unknown or ambiguous key is an error, nothing is written). A document that mixes both is treated as zcite, and the Pandoc markers are reported so you can call the tool again on the output.
+- Pandoc citation markers when there are no <zcite> tags: bracketed [@KEY], [@K1; @K2], [see @KEY, p. 12], -@KEY to suppress the author, or inline @KEY. KEY may be a Zotero 8-character key or a Better BibTeX citation key (e.g. [@rossi2020]); citation keys are case-sensitive and resolved against each item's citationKey field or a "Citation Key: <key>" line in Extra. Prefer the bracketed form [@KEY] — it is the reliable one: an inline @word that does not resolve (a handle, an email, code like @media or @angular/core, or a marker Word split across runs) is left as plain text with a warning, never an error, whereas an unknown or ambiguous key in a bracketed [@…] IS an error and nothing is written. A document that mixes <zcite> and [@…] is treated as zcite, and the Pandoc markers are reported so you can call the tool again on the output.
 
 WORKFLOW — how to create a Word document with live Zotero citations:
 1. Collect item keys: use add_items_by_doi or add_items (or search_library for existing items)

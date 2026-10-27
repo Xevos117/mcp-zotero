@@ -103,12 +103,10 @@ function parseZciteTags(documentXml) {
 
 // src/citation-injector/pandoc-body.ts
 var KEY = "[A-Za-z0-9_](?:[A-Za-z0-9_:.#$%&+?~/-]*[A-Za-z0-9_])?";
-var INLINE_RE = new RegExp(`\\[([^\\]<]*@[^\\]<]*)\\]|(?<![A-Za-z0-9])(-?)@(${KEY})`, "g");
-var KEY_RE = new RegExp(`(-?)@(${KEY})`);
+var INLINE_KEY = "[A-Za-z0-9_](?:[A-Za-z0-9_:.-]*[A-Za-z0-9_])?";
+var INLINE_RE = new RegExp(`\\[([^\\]<]*@[^\\]<]*)\\]|(?<![A-Za-z0-9_/.])(-?)@(${INLINE_KEY})`, "g");
+var KEY_RE = new RegExp(`(^|[\\s;])(-?)@(${KEY})`);
 var LOCATOR_RE = /^(?:p{1,2}\.|pp?\b|pages?\b|chap\.?|ch\.|sec\.?|§|fig\.?|no\.?|vol\.?|art\.?)/i;
-function trimKey(key) {
-  return key.replace(/[.,;:!?]+$/, "");
-}
 function parseBracketInner(inner) {
   const parts = inner.split(";");
   const keys = [];
@@ -119,12 +117,13 @@ function parseBracketInner(inner) {
   for (const part of parts) {
     const mm = KEY_RE.exec(part);
     if (!mm) continue;
-    keys.push(trimKey(mm[2]));
+    const at = mm.index + mm[1].length;
+    keys.push(mm[3]);
     if (parts.length === 1) {
-      const before = part.slice(0, mm.index).trim();
+      const before = part.slice(0, at).trim();
       if (before) prefix = before;
-      suppressAuthor = mm[1] === "-";
-      const after = part.slice(mm.index + mm[0].length).replace(/^[.,;:]*\s*/, "").trim();
+      suppressAuthor = mm[2] === "-";
+      const after = part.slice(at + mm[2].length + 1 + mm[3].length).replace(/^[.,;:]*\s*/, "").trim();
       if (after) {
         if (LOCATOR_RE.test(after)) locator = after;
         else suffix = after;
@@ -132,24 +131,36 @@ function parseBracketInner(inner) {
     }
   }
   if (keys.length === 0) return null;
-  return { keys, prefix, suffix, locator, suppressAuthor };
+  return { keys, prefix, suffix, locator, suppressAuthor, inline: false };
 }
-function countPandocMarkers(body) {
-  return parsePandocCitesInBody(body).length;
-}
-function parsePandocCitesInBody(body) {
+function parsePandocCitesInText(text) {
   const requests = [];
-  INLINE_RE.lastIndex = 0;
+  const re = new RegExp(INLINE_RE.source, "g");
   let m;
-  while ((m = INLINE_RE.exec(body)) !== null) {
+  while ((m = re.exec(text)) !== null) {
     if (m[1] !== void 0) {
       const parsed = parseBracketInner(unescapeXml(m[1]));
       if (parsed) requests.push({ ...parsed, raw: m[0] });
     } else {
-      requests.push({ keys: [trimKey(m[3])], suppressAuthor: m[2] === "-", raw: m[0] });
+      requests.push({ keys: [m[3]], suppressAuthor: m[2] === "-", inline: true, raw: m[0] });
     }
   }
   return requests;
+}
+function visibleTexts(body, format) {
+  const out = [];
+  const re = format === "docx" ? /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g : />([^<]*)</g;
+  let m;
+  while ((m = re.exec(body)) !== null) out.push(m[1]);
+  return out;
+}
+function parsePandocCitesInBody(body, format) {
+  const requests = [];
+  for (const text of visibleTexts(body, format)) requests.push(...parsePandocCitesInText(text));
+  return requests;
+}
+function countPandocMarkers(body, format) {
+  return parsePandocCitesInBody(body, format).length;
 }
 
 // src/citation-injector/model.ts
@@ -164,18 +175,16 @@ var InjectionError = class extends Error {
 
 // src/citation-injector/citekey-resolver.ts
 var ZOTERO_KEY = /^[23456789ABCDEFGHIJKLMNPQRSTUVWXYZ]{8}$/;
-function itemMatchesCitekey(item, citekey) {
-  if (typeof item.citationKey === "string" && item.citationKey === citekey) return true;
+function itemCitekeys(item) {
+  const out = [];
+  if (typeof item.citationKey === "string" && item.citationKey) out.push(item.citationKey);
   if (typeof item.extra === "string") {
-    const re = /^[ \t]*citation ?key[ \t]*:[ \t]*(\S+)[ \t]*$/im;
-    let m;
-    const byLine = item.extra.split(/\r?\n/);
-    for (const line of byLine) {
-      m = re.exec(line);
-      if (m && m[1] === citekey) return true;
+    for (const line of item.extra.split(/\r?\n/)) {
+      const m = /^[ \t]*citation ?key[ \t]*:[ \t]*(\S+)[ \t]*$/i.exec(line);
+      if (m) out.push(m[1]);
     }
   }
-  return false;
+  return out;
 }
 function citekeysOf(requests) {
   const out = /* @__PURE__ */ new Set();
@@ -184,30 +193,57 @@ function citekeysOf(requests) {
 }
 async function resolveCitekeys(requests, lookup) {
   const citekeys = citekeysOf(requests);
-  if (citekeys.size === 0) return requests;
+  if (citekeys.size === 0) return { requests, warnings: [] };
   const found = await lookup(citekeys);
-  const unknown = [];
-  const ambiguous = [];
-  const map = /* @__PURE__ */ new Map();
-  for (const ck of citekeys) {
-    const keys = found.get(ck) ?? [];
-    if (keys.length === 0) unknown.push(ck);
-    else if (keys.length > 1) ambiguous.push(`${ck} \u2192 ${keys.join(", ")}`);
-    else map.set(ck, keys[0]);
+  const status = (ck) => {
+    const match = found.get(ck) ?? { keys: [] };
+    if (match.keys.length === 1) return { ok: match.keys[0], detail: ck };
+    if (match.keys.length === 0) {
+      const sim = match.similar && match.similar.length ? ` (case-sensitive; did you mean ${match.similar.join(", ")}?)` : "";
+      return { problem: "unknown", detail: `${ck}${sim}` };
+    }
+    return { problem: "ambiguous", detail: `${ck} \u2192 ${match.keys.join(", ")}` };
+  };
+  const unknownBracket = [];
+  const ambiguousBracket = [];
+  const warnings = [];
+  const out = [];
+  for (const r of requests) {
+    const resolvedKeys = [];
+    let drop = false;
+    for (const k of r.keys) {
+      if (ZOTERO_KEY.test(k)) {
+        resolvedKeys.push(k);
+        continue;
+      }
+      const s = status(k);
+      if (s.ok) {
+        resolvedKeys.push(s.ok);
+      } else if (r.inline) {
+        drop = true;
+        warnings.push(`"${r.raw}" did not match any item (citation key or Zotero key); kept as text.`);
+        break;
+      } else if (s.problem === "ambiguous") {
+        ambiguousBracket.push(s.detail);
+      } else {
+        unknownBracket.push(s.detail);
+      }
+    }
+    if (!drop && resolvedKeys.length === r.keys.length) out.push({ ...r, keys: resolvedKeys });
   }
-  if (unknown.length > 0) {
+  if (unknownBracket.length > 0) {
     throw new InjectionError(
       "missing_keys",
-      `${unknown.length} citation key(s) not found in the library: ${unknown.join(", ")}. No file was written. Pandoc citation keys are matched against each item's citationKey field or a "Citation Key: <key>" line in Extra (Better BibTeX). Fix these keys, or cite the item by its 8-character Zotero key, and call again; for a group library pass library_type and library_id.`
+      `${unknownBracket.length} citation key(s) not found in the library: ${unknownBracket.join("; ")}. No file was written. Citation keys are case-sensitive and matched against each item's citationKey field or a "Citation Key: <key>" line in Extra (Better BibTeX). Fix these keys, or cite the item by its 8-character Zotero key, and call again; for a group library pass library_type and library_id.`
     );
   }
-  if (ambiguous.length > 0) {
+  if (ambiguousBracket.length > 0) {
     throw new InjectionError(
       "invalid_key",
-      `${ambiguous.length} citation key(s) match more than one item: ${ambiguous.join("; ")}. No file was written. Make the citation key unique in Zotero, or cite the item by its 8-character Zotero key, and call again.`
+      `${ambiguousBracket.length} citation key(s) match more than one item: ${ambiguousBracket.join("; ")}. No file was written. Make the citation key unique in Zotero, or cite the item by its 8-character Zotero key, and call again.`
     );
   }
-  return requests.map((r) => ({ ...r, keys: r.keys.map((k) => map.get(k) ?? k) }));
+  return { requests: out, warnings };
 }
 
 // src/cited-document/number.ts
@@ -1163,7 +1199,7 @@ async function injectZcite(zip, writer, rawBody, cslData, libType, userId, style
   zip.file(writer.bodyPart, body);
   const prefs = await writer.writePrefs(zip, style);
   warnings.push(...writer.prefsWarnings(prefs));
-  const pandoc = countPandocMarkers(rawBody);
+  const pandoc = countPandocMarkers(rawBody, writer.format);
   if (pandoc > 0) {
     warnings.push(
       `The document also has ${pandoc} Pandoc citation marker(s) ([@key]): left as text, because a document with <zcite> is treated as a zcite document. To cite them too, run inject again on the output.`
@@ -1173,11 +1209,14 @@ async function injectZcite(zip, writer, rawBody, cslData, libType, userId, style
 }
 async function injectPandoc(zip, writer, rawBody, cslData, citekeyLookup, libType, userId, style) {
   let body = writer.normalizePandoc ? writer.normalizePandoc(rawBody) : rawBody;
-  const parsed = parsePandocCitesInBody(body);
+  const parsed = parsePandocCitesInBody(body, writer.format);
   if (parsed.length === 0) {
     return { found: 0, injected: 0, warnings: [] };
   }
-  const requests = await resolveCitekeys(parsed, citekeyLookup);
+  const { requests, warnings } = await resolveCitekeys(parsed, citekeyLookup);
+  if (requests.length === 0) {
+    return { found: 0, injected: 0, warnings };
+  }
   if (style === "ieee" || style === "vancouver") {
     const nums = assignNumbers(requests);
     for (const r of requests) r.num = nums.get(r);
@@ -1188,7 +1227,6 @@ async function injectPandoc(zip, writer, rawBody, cslData, citekeyLookup, libTyp
   }
   const ordered = [...requests].sort((a, b) => b.raw.length - a.raw.length);
   const injected = injectRequests(writer, ordered, cslData, libType, userId, style, (b) => body = b, () => body);
-  const warnings = [];
   if (body.includes("ZOTERO_BIBL")) {
     warnings.push("The document already has a Zotero bibliography: no second one was written.");
   } else {
@@ -1197,7 +1235,7 @@ async function injectPandoc(zip, writer, rawBody, cslData, citekeyLookup, libTyp
   zip.file(writer.bodyPart, body);
   const prefs = await writer.writePrefs(zip, style);
   warnings.push(...writer.prefsWarnings(prefs));
-  return { found: parsed.length, injected, warnings };
+  return { found: requests.length, injected, warnings };
 }
 function injectRequests(writer, requests, cslData, libType, userId, style, setBody, getBody) {
   let injected = 0;
@@ -1219,12 +1257,17 @@ function metadataCitekeyLookup(metadata) {
   return async (citekeys) => {
     const out = /* @__PURE__ */ new Map();
     for (const ck of citekeys) {
-      const keys = [];
+      const lower = ck.toLowerCase();
+      const keys = /* @__PURE__ */ new Set();
+      const similar = /* @__PURE__ */ new Set();
       for (const [key, meta] of Object.entries(metadata)) {
         if (!meta || typeof meta !== "object" || Array.isArray(meta)) continue;
-        if (itemMatchesCitekey(meta, ck)) keys.push(key);
+        for (const found of itemCitekeys(meta)) {
+          if (found === ck) keys.add(key);
+          else if (found.toLowerCase() === lower) similar.add(found);
+        }
       }
-      out.set(ck, [...new Set(keys)]);
+      out.set(ck, { keys: [...keys], similar: [...similar] });
     }
     return out;
   };

@@ -70,6 +70,10 @@ describe.skipIf(!live.enabled)("inject_citations (live)", () => {
     await expectUrisResolve(report);
   });
 
+  // Questo copre il percorso "Citation Key:" in Extra, che la ricerca q=<citekey>&qmode=everything indicizza
+  // di sicuro (Extra è un campo cercato). Il campo NATIVO citationKey non è scrivibile dalla Web API su un
+  // account senza Better BibTeX, quindi non è esercitato qui: se la ricerca q indicizzi anche quel campo va
+  // confermato dal run CI e annotato (vedi registro). Il match lato client su citationKey è coperto dagli unit.
   it("LIVE-IC-P02 citekey Better BibTeX (riga 'Citation Key:' in Extra) risolto via ricerca API", async () => {
     const citekey = `mztck${live.runId}`.replace(/[^A-Za-z0-9]/g, "");
     const [key] = await createItems([

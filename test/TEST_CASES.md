@@ -459,7 +459,7 @@ Tool di sola lettura: non unisce né cancella nulla. Scansiona solo le voci rego
 Gli output di IC-01/02/03/04/07/19/23/25 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
 
 ### Marcatori Pandoc (`test/tools/inject-citations-pandoc.test.ts`)
-Riconoscimento interno, senza un campo in ingresso: se il documento contiene `<zcite` è un documento zcite (percorso di oggi, golden Word invariato); se non ci sono `<zcite` ma marcatori Pandoc `[@…]`/inline `@…` si usa il ramo pandoc; nessuno dei due → copia invariata. I citekey Better BibTeX sono risolti in chiavi Zotero.
+Riconoscimento interno, senza un campo in ingresso: se il documento contiene `<zcite` è un documento zcite (percorso di oggi, golden Word invariato); se non ci sono `<zcite` ma marcatori Pandoc `[@…]`/inline `@…` si usa il ramo pandoc; nessuno dei due → copia invariata. I citekey Better BibTeX (case-sensitive) sono risolti in chiavi Zotero. I marcatori si leggono SOLO dal testo visibile (`<w:t>` in docx, contenuto degli elementi in odt): mai da `<w:instrText>`, attributi o JSON CSL di un campo esistente. Un inline `@parola` che non si risolve (handle, email, codice, o spezzato tra run) resta testo con un avviso, NON un errore; una forma tra parentesi `[@…]` sconosciuta o ambigua è un errore.
 
 | ID | Scenario | Atteso |
 |---|---|---|
@@ -478,8 +478,12 @@ Riconoscimento interno, senza un campo in ingresso: se il documento contiene `<z
 | IC-P13 | ODT marcatore spezzato tra due `text:span` | unito e iniettato |
 | IC-P14 | nessun marcatore | copia invariata, avviso "No <zcite> placeholders found" |
 | IC-P15 | `[@K1; @K2]` più voci in una citazione | entrambe le URI nel field code |
+| IC-P16 | solo handle/codice inline (`@Component`, `@media`, `@app.route`), nessuna citazione | copia invariata, `citations_found` 0, avvisi "kept as text", **nessun errore** |
+| IC-P17 | handle non risolto accanto a un `[@KEY]` reale | inietta la citazione, l'handle resta testo con avviso |
+| IC-P18 | seconda chiamata: una `@` nel titolo di un campo esistente + un nuovo `[@KEY]` | inietta solo il nuovo, nessun falso positivo dal campo |
+| IC-P19 | inline spezzato tra due run (`@SMI`+`TH222`) | non ricucito → resta testo con avviso, nessun errore |
 
-Parser puro in `test/citation-injector/pandoc-body.test.ts` (PB-01..10: bracket, multi-chiave, prefix/locator, inline, email non-citazione, punteggiatura finale non inglobata, entità XML nel prefisso, nessun attraversamento di tag). Risoluzione citekey in `test/citation-injector/citekey-resolver.test.ts` (CK-01..09: campo `citationKey`, riga Extra case-insensitive, nessun falso positivo da sottostringa, separazione citekey/chiavi Zotero, sconosciuto → `missing_keys`, ambiguo → `invalid_key`). Parità tool ⇄ script della skill sul ramo pandoc in `SK-P01`. E2E `E2E-18c`.
+Parser puro in `test/citation-injector/pandoc-body.test.ts` (PB: bracket/inline con flag `inline`, multi-chiave, prefix/locator, email, punteggiatura finale, `_`/`/`/`.` prima di `@` non è citazione, `@angular/core` si ferma a `/`, URL in bracket non è citazione; PB-B: solo testo visibile, mai instrText/attributi). Risoluzione citekey in `test/citation-injector/citekey-resolver.test.ts` (CK: `citationKey`+Extra, case-sensitive, suggerimento di variante di maiuscole, separazione citekey/chiavi Zotero, bracket sconosciuto → `missing_keys`, bracket ambiguo → `invalid_key`, inline non risolto → scartato con avviso senza errore). Parità tool ⇄ script sul ramo pandoc in `SK-P01` e sul caso misto + seconda chiamata in `SK-P02`. E2E `E2E-18c`. La ricerca citekey pagina fino a 5 pagine (`q`+`qmode=everything` include il full-text).
 
 ### LibreOffice ODT (`test/tools/inject-citations-odt.test.ts`, validatore `test/helpers/citation-validate.ts`)
 

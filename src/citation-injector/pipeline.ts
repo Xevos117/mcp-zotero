@@ -165,7 +165,7 @@ async function injectZciteBranch(
   warnings.push(...writer.prefsWarnings(prefs));
 
   // Mixed document: report the Pandoc markers left as text (counted on the unmodified body).
-  const pandoc = countPandocMarkers(rawBody);
+  const pandoc = countPandocMarkers(rawBody, writer.format);
   if (pandoc > 0) warnings.push(mixedWarning(pandoc));
 
   return { found: requests.length, injected, warnings };
@@ -186,12 +186,19 @@ async function injectPandocBranch(
 ): Promise<{ found: number; injected: number; warnings: string[] }> {
   let body = normalizePandocBody(writer, rawBody);
 
-  const parsed = parsePandocCitesInBody(body);
+  const parsed = parsePandocCitesInBody(body, writer.format);
   if (parsed.length === 0) {
     return { found: 0, injected: 0, warnings: [NO_ZCITE_WARNING] };
   }
 
-  const requests = await resolveCitekeys(parsed, citekeyLookup);
+  // Resolve Better BibTeX citekeys. Unresolved inline markers are dropped (kept as text) with a warning;
+  // an unknown/ambiguous bracketed key throws, so nothing is written.
+  const { requests, warnings } = await resolveCitekeys(parsed, citekeyLookup);
+  if (requests.length === 0) {
+    // every marker was an inline that did not resolve → unchanged copy, like a document with no markers
+    warnings.push(NO_ZCITE_WARNING);
+    return { found: 0, injected: 0, warnings };
+  }
 
   // Numbered styles: number by order of first citation (Pandoc markers carry no num attribute).
   if (opts.style === "ieee" || opts.style === "vancouver") {
@@ -201,7 +208,6 @@ async function injectPandocBranch(
 
   const prepared = await resolveCitations(requests, itemSource, opts);
 
-  const warnings: string[] = [];
   let injected = 0;
   // Replace longer markers first: an inline `@KEY` is a substring of `-@KEY` (and of a longer citekey), so
   // replacing the shorter one first could match inside the longer. Length-descending removes that overlap;
@@ -226,7 +232,7 @@ async function injectPandocBranch(
   const prefs = await writer.writePrefs(zip, opts.style);
   warnings.push(...writer.prefsWarnings(prefs));
 
-  return { found: parsed.length, injected, warnings };
+  return { found: requests.length, injected, warnings };
 }
 
 /** Pandoc run/span merge for the writer's format; falls back to the body unchanged for an unknown format. */
