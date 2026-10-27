@@ -64,9 +64,9 @@ describe("e2e: build/server.js su stdio", () => {
     expect(s.client.getInstructions()).toMatch(/Errors carry a hint.*tell the user instead of retrying/);
   });
 
-  it("E2E-02 tools/list: 19 tool, ognuno con inputSchema object", async () => {
+  it("E2E-02 tools/list: 20 tool, ognuno con inputSchema object", async () => {
     const { tools } = await s.client.listTools(undefined, { timeout: CALL_TIMEOUT_MS });
-    expect(tools).toHaveLength(19);
+    expect(tools).toHaveLength(20);
     for (const t of tools) {
       expect(t.inputSchema.type).toBe("object");
       expect(t.description).toBeTruthy();
@@ -188,6 +188,37 @@ describe("e2e: build/server.js su stdio", () => {
     expect(out.json.results[0]).toMatchObject({ status: "available", pdf_url: "https://oa.example.org/a.pdf" });
   });
 
+  it("E2E-15b find_duplicates: gruppi per DOI e per titolo (accenti/punteggiatura, anno compatibile)", async () => {
+    const dupA = article("DUPAAAA2", { DOI: "10.5555/dup", title: "Shared DOI paper" });
+    const dupB = article("DUPAAAA3", { DOI: "https://doi.org/10.5555/DUP", title: "Shared DOI paper (v2)" });
+    const titA = article("TITAAAA2", { DOI: "10.1/t1", title: "A Study of Café Métabolisme!", date: "2021-03-02" });
+    const titB = article("TITAAAA3", { DOI: "10.1/t2", title: "a study of cafe metabolisme", date: "2021" });
+    const uniq = article("UNIQAAA2", { DOI: "10.1/u", title: "Totally unique title here", date: "2019" });
+    fake.net.on("GET", `${ZBASE}/items/top`, zLibraryQuery([dupA, dupB, titA, titB, uniq]));
+    const out = await call(s, "find_duplicates", {});
+    expect(out.isError).toBe(false);
+    expect(out.json).toMatchObject({ mode: "scan", scanned: 5, truncated: false, duplicate_groups: 2 });
+    const doiGroup = out.json.groups.find((g: { match: string }) => g.match === "doi");
+    expect(doiGroup.key).toBe("10.5555/dup");
+    expect(doiGroup.items.map((i: { key: string }) => i.key)).toEqual(["DUPAAAA2", "DUPAAAA3"]);
+    const titleGroup = out.json.groups.find((g: { match: string }) => g.match === "title");
+    expect(titleGroup.key).toBe("a study of cafe metabolisme");
+    expect(titleGroup.items.map((i: { key: string }) => i.key)).toEqual(["TITAAAA2", "TITAAAA3"]);
+    // the top request is used (child notes/attachments and trash excluded server-side)
+    expect(fake.net.requests("GET", `${ZBASE}/items/top`).length).toBeGreaterThan(0);
+  });
+
+  it("E2E-15c find_duplicates: modo dois (prima di add_items_by_doi)", async () => {
+    const present = article("DOIAAAA2", { DOI: "10.7777/present" });
+    fake.net.on("GET", `${ZBASE}/items/top`, zLibraryQuery([present]));
+    const out = await call(s, "find_duplicates", { dois: ["https://doi.org/10.7777/PRESENT", "10.9999/absent"] });
+    expect(out.isError).toBe(false);
+    expect(out.json.mode).toBe("dois");
+    expect(out.json.dois[0]).toMatchObject({ doi: "https://doi.org/10.7777/PRESENT", normalized: "10.7777/present" });
+    expect(out.json.dois[0].existing.map((e: { key: string }) => e.key)).toEqual(["DOIAAAA2"]);
+    expect(out.json.dois[1]).toMatchObject({ doi: "10.9999/absent", normalized: "10.9999/absent", existing: [] });
+  });
+
   it("E2E-16 delete_collection (UNSAFE_OPERATIONS=all)", async () => {
     fake.net.on("GET", `${ZBASE}/collections/CPLQQQQR`, zSingle(collection("CPLQQQQR", "ML"), 12));
     fake.net.on("DELETE", `${ZBASE}/collections/CPLQQQQR`, zDeleted());
@@ -272,6 +303,7 @@ describe("e2e: build/server.js su stdio", () => {
       "write_cited_document",
       "import_references",
       "note_from_item",
+      "check_bibliography",
     ]);
   });
 

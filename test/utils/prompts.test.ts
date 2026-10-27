@@ -31,6 +31,7 @@ describe("prompts MCP (PR)", () => {
     write_cited_document: ["topic", "output_path"],
     import_references: ["dois"],
     note_from_item: ["item_key"],
+    check_bibliography: ["collection_key"],
   };
 
   it("PR-01 prompts/list: i prompt attesi con i loro argomenti e obbligatorietà", () => {
@@ -79,7 +80,7 @@ describe("prompts MCP (PR)", () => {
   });
 
   it("PR-05 ogni template nomina almeno un tool del server", () => {
-    const toolNames = ["inject_citations", "create_cited_document", "add_items_by_doi", "add_items", "search_library", "get_items_details", "get_item_fulltext", "create_note"];
+    const toolNames = ["inject_citations", "create_cited_document", "add_items_by_doi", "add_items", "search_library", "get_items_details", "get_item_fulltext", "create_note", "find_duplicates"];
     for (const def of PROMPTS) {
       const text = def.template(Object.fromEntries(promptArgumentNames(def).map((k) => [k, "X"])));
       expect(toolNames.some((t) => text.includes(t)), def.name).toBe(true);

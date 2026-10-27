@@ -49,6 +49,7 @@ class ZoteroServer {
           "",
           "KEY NOTES:",
           "- add_items_by_doi auto-attaches open-access PDFs found via Unpaywall (needs UNPAYWALL_EMAIL in the server settings; uses the user's Zotero storage). Do not disable auto_attach_pdf unless it causes errors.",
+          "- find_duplicates is read-only. Call it with dois before add_items_by_doi to skip DOIs already in the library, and without dois to list duplicate groups (same DOI, or same normalized title and year) in the library or a collection. It never merges or deletes; let the user choose which item to keep.",
           "- For IEEE/Vancouver (numbered) citation styles, every <zcite> MUST include a num attribute. num is the citation number assigned in order of first appearance in the text (first cited = num=\"1\", second = num=\"2\", etc.). For multi-item citations use comma-separated values: keys=\"KEY1,KEY2\" num=\"1,2\". Without num, citations render as [?].",
           "- If the .docx is in a sandbox or cloud workspace this server cannot see (code execution in Claude.ai or Claude Desktop), use the zotero-mcp-integrations skill instead of inject_citations. If it is not installed, recommend zotero-skill-mcp-integrations.zip from https://github.com/Xevos117/mcp-zotero/releases/latest.",
           "- get_user_id is only needed by the skill script (inject.js), not by the inject_citations tool.",

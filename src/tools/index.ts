@@ -17,6 +17,7 @@ import { handleUpdateItem, toolConfig as updateItemConfig } from "./update-item.
 import { handleCreateNote, toolConfig as createNoteConfig } from "./create-note.js";
 import { handleImportPdfToZotero, toolConfig as importPdfToZoteroConfig } from "./import-pdf-to-zotero.js";
 import { handleFindAndAttachPdfs, toolConfig as findAndAttachPdfsConfig } from "./find-and-attach-pdfs.js";
+import { handleFindDuplicates, toolConfig as findDuplicatesConfig } from "./find-duplicates.js";
 import { handleDeleteCollection, toolConfig as deleteCollectionConfig } from "./delete-collection.js";
 import { handleDeleteItems, toolConfig as deleteItemsConfig } from "./delete-items.js";
 import { handleCheckRetractions, toolConfig as checkRetractionsConfig } from "./check-retractions.js";
@@ -50,6 +51,7 @@ const tools: Array<{ config: { name: string; description: string; inputSchema: Z
   { config: createNoteConfig, handler: handleCreateNote },
   { config: importPdfToZoteroConfig, handler: handleImportPdfToZotero },
   { config: findAndAttachPdfsConfig, handler: handleFindAndAttachPdfs },
+  { config: findDuplicatesConfig, handler: handleFindDuplicates },
   { config: deleteCollectionConfig, handler: handleDeleteCollection },
   { config: deleteItemsConfig, handler: handleDeleteItems },
   { config: checkRetractionsConfig, handler: handleCheckRetractions },

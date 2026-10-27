@@ -23,6 +23,7 @@ export interface ZoteroItemData {
   title?: string;
   creators?: ZoteroCreator[];
   abstractNote?: string;
+  extra?: string;
   date?: string;
   dateAdded?: string;
   dateModified?: string;

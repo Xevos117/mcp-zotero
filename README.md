@@ -227,6 +227,7 @@ available in every project (the default `local` scope covers only the current pr
 | `get_items_details` | Batch metadata retrieval for multiple items — returns all type-specific fields (bookTitle, proceedingsTitle, university, etc.), the `authors` string, the structured `creators` and each item's current `version` (needed by `update_item`); keys not in the library are listed in `not_found` |
 | `get_item_fulltext` | Get full-text content of a PDF attachment via Zotero's fulltext index |
 | `check_retractions` | Check items (by `item_keys` or `collection_key`) for retractions, expressions of concern or corrections via Crossref (Retraction Watch data). Read-only; reports a `status` per item with any notices |
+| `find_duplicates` | Find duplicate items (same DOI or normalized title/year) in the library or a collection; or, given DOIs, report which are already present (use before `add_items_by_doi`). Read-only — never merges or deletes |
 
 ### Adding content
 
@@ -271,6 +272,7 @@ User-initiated MCP prompts (`prompts/list`, `prompts/get`) that walk a client th
 | `write_cited_document` | Draft a cited document from scratch and save it (`create_cited_document`) |
 | `import_references` | Import references by DOI (`add_items_by_doi`) |
 | `note_from_item` | Read an item and attach a summary note (`create_note`) |
+| `check_bibliography` | Check a collection for retracted items and duplicates before handing it in |
 
 ## Development
 
