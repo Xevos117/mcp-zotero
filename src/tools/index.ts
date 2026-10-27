@@ -19,6 +19,7 @@ import { handleImportPdfToZotero, toolConfig as importPdfToZoteroConfig } from "
 import { handleFindAndAttachPdfs, toolConfig as findAndAttachPdfsConfig } from "./find-and-attach-pdfs.js";
 import { handleDeleteCollection, toolConfig as deleteCollectionConfig } from "./delete-collection.js";
 import { handleDeleteItems, toolConfig as deleteItemsConfig } from "./delete-items.js";
+import { handleCheckRetractions, toolConfig as checkRetractionsConfig } from "./check-retractions.js";
 
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ZodRawShape } from "zod";
@@ -51,6 +52,7 @@ const tools: Array<{ config: { name: string; description: string; inputSchema: Z
   { config: findAndAttachPdfsConfig, handler: handleFindAndAttachPdfs },
   { config: deleteCollectionConfig, handler: handleDeleteCollection },
   { config: deleteItemsConfig, handler: handleDeleteItems },
+  { config: checkRetractionsConfig, handler: handleCheckRetractions },
 ];
 
 const handlers = new Map(tools.map(({ config, handler }) => [config.name, handler]));

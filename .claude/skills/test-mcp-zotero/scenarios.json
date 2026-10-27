@@ -105,6 +105,11 @@
       "id": "T-network",
       "files": ["src/utils/timeouts.ts", "src/utils/fetch-retry.ts", "src/utils/concurrency.ts", "src/utils/json-response.ts"],
       "scenario": "run F1 and T-import (if not already run); every call must return (a success or a clear error)"
+    },
+    {
+      "id": "T-retractions",
+      "files": ["src/tools/check-retractions.ts", "src/utils/crossref-retractions.ts"],
+      "scenario": "add_items_by_doi the retracted DOI 10.1016/s0140-6736(97)11096-0 and a normal DOI 10.1038/s41586-023-06647-8 (run prefix + tag), plus add_items one book without a DOI (run prefix + tag); check_retractions on the three item_keys: the retracted one is status retracted with a notice (type retraction, source retraction-watch), the normal one ok, the book no_doi; the response opens with a summary of the counts and a failed lookup (if any) never fails the rest"
     }
   ]
 }

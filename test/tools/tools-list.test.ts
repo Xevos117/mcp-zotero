@@ -35,6 +35,7 @@ const EXPECTED: Record<string, { required: string[]; properties: string[] }> = {
   },
   inject_citations: { required: ["file_path"], properties: ["file_path", "style", "format"] },
   create_cited_document: { required: ["markdown", "output_path"], properties: ["markdown", "output_path", "style", "format"] },
+  check_retractions: { required: [], properties: ["item_keys", "collection_key"] },
 };
 
 const LIBRARY_ARGS = ["library_type", "library_id"];

@@ -107,6 +107,10 @@
     {
       "name": "delete_items",
       "description": "Move items to the Zotero trash; permanent: true deletes for good (needs deletions 'items' or 'all')."
+    },
+    {
+      "name": "check_retractions",
+      "description": "Check items (by keys or collection) for retractions, concerns or corrections via Crossref."
     }
   ],
   "tools_generated": false,

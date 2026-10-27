@@ -314,6 +314,27 @@ Per default `delete_items` **sposta nel cestino di Zotero** (scrittura multi-ogg
 
 Nota: le chiavi `item_keys` sono deduplicate (ordine di prima comparsa) prima di qualsiasi scrittura, così una chiave ripetuta non viene scritta due volte nel POST/DELETE (prima finiva sia in `deleted_keys` sia in `failed`). La GET usa sempre `includeTrashed=1`. Il permanente raggiunge così anche le voci già nel cestino; il cestino riconosce le voci già cestinate (`already_in_trash`, non riscritte). Cestinare un genitore NON cestina i suoi figli (note/allegati), coerente con il client Zotero (`Zotero.Items.trash` marca solo le voci selezionate, verificato sul sorgente 2026-10-27); il permanente invece elimina anche i figli (cascata lato server).
 
+## check_retractions (`check-retractions.test.ts`)
+| ID | Scenario | Atteso |
+|---|---|---|
+| CR-01 | DOI con `updated-by` (correction + retraction) su Crossref | status `retracted`, nota con type/date/source (retraction-watch), `flagged_count` 1, DOI normalizzato minuscolo nella richiesta |
+| CR-02 | DOI normale, nessun `updated-by` | `ok`, nessuna nota |
+| CR-03 | item senza DOI | `no_doi`, nessuna chiamata a Crossref |
+| CR-04 | DOI solo in Extra (`DOI: …`, tipo senza campo DOI) | risolto dall'Extra e controllato → `retracted` |
+| CR-05 | DOI sconosciuto a Crossref (404) | `not_in_crossref` |
+| CR-06 | errore di rete su un DOI, un altro ok | `lookup_failed` isolato, l'altro `ok`, la chiamata non fallisce |
+| CR-07 | più note (expression_of_concern + correction) | precedenza: `expression_of_concern` (retracted > expression_of_concern > corrected > ok) |
+| CR-08 | `item_keys` e `collection_key` insieme / nessuno dei due | errore (esattamente uno) |
+| CR-09 | `collection_key` | controlla gli item diretti della collezione; 404 → errore strutturato |
+| CR-10 | 51 `item_keys` | errore di validazione (massimo 50) |
+| CR-11 | chiavi non trovate nella libreria | elencate in `not_found`, non contate in `checked` |
+| CR-12 | DOI con prefisso URL e maiuscole (`https://doi.org/10.1371/JOURNAL…`) | normalizzato (minuscolo, senza prefisso) nella richiesta, controllato → `corrected` |
+| CR-13 | Crossref 5xx (503) su una voce, un'altra ok | `lookup_failed` isolato, l'altra `ok`, la chiamata non fallisce |
+| CR-14 | una sola nota di correzione/erratum | `corrected`, `flagged_count` 0 |
+| CR-15 | DOI che è esso stesso una nota (solo `update-to`, nessun `updated-by`) | `ok`, nessuna nota (si guarda solo `updated-by`) |
+| CR-16 | collezione vuota | risultato vuoto (non un errore) |
+| CR-17 | esattamente 50 `item_keys` | accettato, nessun errore di validazione |
+
 ## import_pdf_to_zotero (`import-pdf-to-zotero.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
@@ -827,6 +848,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 | `delete-collection` | LIVE-DC-01 UNSAFE none/items rifiutato; 02-03 (solo fuori safe mode) cancellata con la voce che resta, chiave sconosciuta/vuota |
 | `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente (isError che la nomina, nessun output); 03 override |
 | `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations |
+| `check-retractions` (soft) | LIVE-CR-01 crea un ritirato vero (Wakefield, DOI 10.1016/S0140-6736(97)11096-0), uno normale e uno senza DOI (tag + collezione della run) → `retracted`/`ok`/`no_doi` via Crossref reale, nota di tipo retraction; 02 per `collection_key` sulla collezione della run |
 | `groups` | solo con gruppo `mzt-test…`: LIVE-GRP-01 server in modalità gruppo dall'ambiente (`ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID`): get_user_id → `groups/<id>` con lo user_id dell'utente (get_user_id descrive sempre la libreria dell'ambiente, gli argomenti per chiamata non si applicano); 02 create_collection, add_items, get_collection_items e inject nel gruppo per singola chiamata; 03 server in modalità gruppo senza argomenti di libreria: legge collezione e voce create in 02, override per chiamata verso la libreria utente |
 
 ### In CI (`.github/workflows/claude-agent-smoke.yml`, "Live tests + agent smoke")
