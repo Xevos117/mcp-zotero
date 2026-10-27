@@ -295,6 +295,8 @@ Per default `delete_items` **sposta nel cestino di Zotero** (scrittura multi-ogg
 | DI-23 | cestino, voce **già nel cestino** (deleted:1), senza permanent | `already_in_trash:[k]`, `deleted_count:0`, `hint` su permanent:true, nessun POST |
 | DI-24 | cestino, mista viva + già nel cestino | cestina solo la viva, l'altra in `already_in_trash` |
 | DI-25 | **permanent** su una voce già nel cestino | DELETE, `mode:"permanent"` (il permanente raggiunge anche il cestino) |
+| DI-26 | chiave duplicata, cestino | deduplicata: un solo oggetto nel POST, non appare in `failed` |
+| DI-27 | chiave duplicata, permanent | deduplicata: una sola DELETE |
 | DI-03 | **permanent**, 2 chiavi | GET itemKey → DELETE `?itemKey=A,B` con la versione della libreria; `mode: "permanent"`, nessun POST |
 | DI-04 | permanent, cancellazione parziale | not_found; cancellate solo le chiavi trovate |
 | DI-05 | permanent, nessuna trovata | errore strutturato con `hint` "Nothing was deleted…", nessuna DELETE |
@@ -310,7 +312,7 @@ Per default `delete_items` **sposta nel cestino di Zotero** (scrittura multi-ogg
 | DI-16 | chiave malformata | errore di validazione, **nessuna richiesta** (prima della 2.0.1 l'API ignorava il filtro e delete_items cancellava voci estranee) |
 | DI-17 | cestino, API che restituisce più voci di quelle chieste (filtro ignorato) | spostata nel cestino solo la chiave richiesta |
 
-Nota: la GET usa sempre `includeTrashed=1`. Il permanente raggiunge così anche le voci già nel cestino; il cestino riconosce le voci già cestinate (`already_in_trash`, non riscritte). Cestinare un genitore NON cestina i suoi figli (note/allegati), coerente con il client Zotero (`Zotero.Items.trash` marca solo le voci selezionate, verificato sul sorgente 2026-10-27); il permanente invece elimina anche i figli (cascata lato server).
+Nota: le chiavi `item_keys` sono deduplicate (ordine di prima comparsa) prima di qualsiasi scrittura, così una chiave ripetuta non viene scritta due volte nel POST/DELETE (prima finiva sia in `deleted_keys` sia in `failed`). La GET usa sempre `includeTrashed=1`. Il permanente raggiunge così anche le voci già nel cestino; il cestino riconosce le voci già cestinate (`already_in_trash`, non riscritte). Cestinare un genitore NON cestina i suoi figli (note/allegati), coerente con il client Zotero (`Zotero.Items.trash` marca solo le voci selezionate, verificato sul sorgente 2026-10-27); il permanente invece elimina anche i figli (cascata lato server).
 
 ## import_pdf_to_zotero (`import-pdf-to-zotero.test.ts`)
 | ID | Scenario | Atteso |
@@ -1043,6 +1045,7 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-10b | chiamata Zotero della trascrizione assente da audit e negazioni / negata | problema / nessuno |
 | VC-10c | sonde F0 negate; altra negazione; nessuna negazione | nessun problema; avviso; due problemi |
 | VC-10d | numerazione dell'audit: assente, 1..3 in disordine, ripetuta, con un buco, voce senza numero | nessun problema / un problema per caso |
+| VC-10e | chiamata con input JSON non parsabile (`__unparsedToolInput`, es. `"permanent": yes`) assente da audit | NON è un buco (la chiamata non raggiunge il tool); una vera chiamata senza audit resta un problema |
 | VC-06d | esplorativi citati per `call_no` (tool con o senza prefisso, Bash, esito), argomento non ASCII mai ridigitato | nessun problema |
 | VC-06e | `call_no` inesistente o non intero, strumento diverso, Bash dichiarato come tool Zotero, `is_error` mancante o diverso, argomenti al posto di `call_no` con audit numerato | un problema per caso |
 | VC-06i | guard probe: negazione dell'hook come prova — scenario senza chiamate / chiamata senza `call_no` corrispondente a una negazione / senza negazioni / una F0 non vale | sostenuto / sostenuto / "no calls" / "no calls" |

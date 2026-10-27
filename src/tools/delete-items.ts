@@ -39,7 +39,12 @@ export async function handleDeleteItems(
   args: Record<string, unknown>,
   unsafeOps: UnsafeOperationsMode = "none"
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { item_keys, permanent, library_type, library_id } = DeleteItemsSchema.parse(args);
+  const parsed = DeleteItemsSchema.parse(args);
+  const { permanent, library_type, library_id } = parsed;
+  // Drop duplicate keys (keep first-seen order): a repeated key would otherwise be written twice in the
+  // trash POST or the DELETE, and the server reports the second write as a failure, so the same key could
+  // end up in both deleted_keys and failed.
+  const item_keys = [...new Set(parsed.item_keys)];
   const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
   if (!canDeleteItems(unsafeOps)) {

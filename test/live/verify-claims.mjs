@@ -212,8 +212,16 @@ export function auditGaps(messages, entries, denials) {
   const known = new Set([...entries, ...denials].map((e) => e?.tool_use_id).filter(Boolean));
   return toolCalls(messages)
     .map((c, i) => ({ c, i }))
-    .filter(({ c }) => c.tool && !known.has(c.id))
+    // A call the client could not parse ({"__unparsedToolInput": …}, e.g. the model wrote `"permanent": yes`
+    // instead of `true`) never reaches the tool, so neither the PostToolUse audit hook nor a deny-hook can
+    // record it. It is the SDK rejecting malformed JSON, not a Zotero call that ran without an audit entry.
+    .filter(({ c }) => c.tool && !known.has(c.id) && !isUnparsedInput(c))
     .map(({ c, i }) => `call #${i + 1} ${c.tool} of the transcript has no audit entry (hooks not active, or no result)`);
+}
+
+/** A tool call whose arguments the client could not parse as JSON (SDK marks it with __unparsedToolInput). */
+export function isUnparsedInput(call) {
+  return !!call?.input && typeof call.input === "object" && "__unparsedToolInput" in call.input;
 }
 
 /**

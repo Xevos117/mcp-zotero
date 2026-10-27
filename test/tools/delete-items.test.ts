@@ -150,6 +150,25 @@ describe("delete_items (MCP)", () => {
       expect(out.json).toMatchObject({ deleted_keys: ["AAAARRRR"], deleted_count: 1, mode: "permanent" });
       expect(deletedKeys(h)).toEqual(["AAAARRRR"]);
     });
+
+    it("DI-26 chiave duplicata, cestino → deduplicata: un solo oggetto POST, non appare in failed", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")], 88));
+      h.net.on("POST", ITEMS, zWrite());
+      const out = await h.call("delete_items", { item_keys: ["AAAARRRR", "AAAARRRR"] });
+      expect(out.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1, mode: "trash" });
+      expect(trashed(h)).toEqual([{ key: "AAAARRRR", version: 88, deleted: 1 }]);
+      expect(h.net.requests("GET", ITEMS)[0].url.searchParams.get("itemKey")).toBe("AAAARRRR");
+    });
+
+    it("DI-27 chiave duplicata, permanent → deduplicata: una sola DELETE", async () => {
+      h = await startHarness({ unsafeOps: "items" });
+      h.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR"), article("BBBB2222")], 88));
+      h.net.on("DELETE", ITEMS, zDeleted());
+      const out = await h.call("delete_items", { item_keys: ["AAAARRRR", "BBBB2222", "AAAARRRR"], permanent: true });
+      expect(out.json).toMatchObject({ deleted_keys: ["AAAARRRR", "BBBB2222"], deleted_count: 2, mode: "permanent" });
+      expect(deletedKeys(h)).toEqual(["AAAARRRR", "BBBB2222"]);
+    });
   });
 
   // Comportamento reale della Web API (verificato il 2026-10-11): se nessuna chiave di itemKey ha la forma

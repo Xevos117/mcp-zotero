@@ -720,6 +720,19 @@ describe("verify-claims: evidenza dagli hook (VC-10)", () => {
     ]);
   });
 
+  it("VC-10e chiamata con input JSON non parsabile (__unparsedToolInput) → non è un buco dell'audit", () => {
+    // il modello ha scritto `"permanent": yes` (JSON non valido): la chiamata non raggiunge il tool, quindi
+    // nessun hook la registra; non deve contare come audit gap. Una vera chiamata senza audit resta un problema.
+    const messages = transcriptOf([
+      ["delete_items", { __unparsedToolInput: { raw: '{"item_keys":["N7B99XBB"],"permanent": yes}', len: 43 } }, "invalid input", true],
+      ["delete_items", { item_keys: ["ITEM2222"] }, { deleted_keys: ["ITEM2222"] }],
+    ]);
+    // solo la seconda (vera) chiamata, assente da audit/negazioni, è un buco; la prima (non parsata) è ignorata
+    expect(auditGaps(messages, [], [])).toEqual([
+      "call #2 delete_items of the transcript has no audit entry (hooks not active, or no result)",
+    ]);
+  });
+
   it("VC-10c sonde F0 negate dagli hook → nessun problema; altre negazioni → avvisi; sonde assenti → problemi", () => {
     const probes = [
       { tool_name: "Bash", tool_input: { command: "node test/live/agent/make-docx.mjs agent-out/mzt-x-probe.docx '[[\"probe\"]]' && ls" }, reason: "Denied by the agent smoke harness (command not allowed). Only…" },
