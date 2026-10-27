@@ -47,9 +47,12 @@ outputs) and do not re-read files you just wrote.
   anything else, and deletions of keys this run did not create; a denial outside step F0 is reported.
 - **Never run the verifier** (`test/live/verify-claims.mjs`) or any other script: whoever started the session runs
   it after you, on your claims and on the audit.
-- **In CI (`context.cleanup` is `verifier`) delete only what you created in order to delete it**: the objects named
-  `<prefix> … to delete` of F8 and T-delete. Nothing else, not even at the end: the workflow removes the run after
-  the verifier. Every other deletion is reported as a warning.
+- **In CI (`context.cleanup` is `verifier`) delete only what you created in order to delete it, and name it
+  `<prefix> … to delete`**: not just the fixed F8 and T-delete objects, but ALSO any item or collection you create
+  in an exploratory scenario to probe deletion (trash vs permanent, already-in-trash, duplicate keys, …) — give it a
+  title ending in "to delete" (e.g. `<prefix> trash probe to delete`) before you delete it. Never delete anything
+  else, not even at the end: the workflow removes the run after the verifier. A deletion of an object not named
+  "… to delete" is reported as a warning.
 - **Write in Italian** every `notes` of the scenarios, every `friction` note and the `rationale`, `expected` and
   `observed` of the exploratory scenarios; keys, tool names and quoted messages stay as they are.
 
