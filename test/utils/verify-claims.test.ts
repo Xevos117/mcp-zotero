@@ -195,7 +195,7 @@ function edgeCalls(): Call[] {
     ["delete_items", { item_keys: fifty }, { error: "No items found for the given keys" }, true],
     ["delete_items", { item_keys: [...fifty, "ZZZZZZZZ"] }, "MCP error -32602: Input validation error: too big", true],
     ["add_items", { items: [] }, "MCP error -32602: Input validation error: too small", true],
-    ["get_items_details", { item_keys: [] }, { message: "No items" }],
+    ["get_items_details", { item_keys: [] }, "MCP error -32602: Input validation error: too small", true],
     ["get_items_details", { item_keys: ["   "] }, "MCP error -32602: Input validation error: invalid key", true],
     ["search_library", { query: "   ", limit: 1 }, [{ title: "a", key: "ITEM2222" }]],
     ["search_library", { query: "mzt-x", limit: 1 }, [{ title: "a", key: "ITEM2222" }]],

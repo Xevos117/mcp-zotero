@@ -70,13 +70,12 @@ describe("get_collections", () => {
     expect(parsed).toEqual([collectionFixture]);
   });
 
-  it("returns error with suggestion when no collections found", async () => {
+  it("returns an empty array when no collections found", async () => {
     const { mock } = createZoteroApiMock([]);
     const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.message).toBe("No collections found");
-    expect(parsed.suggestion).toBeDefined();
+    expect(parsed).toEqual([]);
   });
 
   it("filters out trashed collections by default", async () => {
@@ -103,14 +102,13 @@ describe("get_collections", () => {
     expect(parsed).toHaveLength(2);
   });
 
-  it("returns error when all collections are trashed", async () => {
+  it("returns an empty array when all collections are trashed", async () => {
     const trashedOnly = { key: "CPLQQ2ZZ", name: "Trashed", deleted: true };
     const { mock } = createZoteroApiMock([trashedOnly]);
     const result = await handleToolCall("get_collections", {}, mock, TEST_USER_ID);
 
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.message).toBe("No collections found");
-    expect(parsed.suggestion).toContain("include_trashed");
+    expect(parsed).toEqual([]);
   });
 });
 
@@ -330,17 +328,11 @@ describe("get_items_details", () => {
     expect(parsed["ABCR2345"].authors).toBe("John Smith, Jane Doe");
   });
 
-  it("returns error for empty item_keys array", async () => {
+  it("rejects an empty item_keys array with a schema validation error (min 1)", async () => {
     const { mock } = createZoteroApiMock([]);
-    const result = await handleToolCall(
-      "get_items_details",
-      { item_keys: [] },
-      mock,
-      TEST_USER_ID
-    );
-
-    const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.error).toBe("At least one item key is required: pass item_keys from search_library, get_collection_items or add_items_by_doi.");
+    await expect(
+      handleToolCall("get_items_details", { item_keys: [] }, mock, TEST_USER_ID)
+    ).rejects.toThrow();
   });
 
   it("returns error when no items found", async () => {

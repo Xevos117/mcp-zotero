@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
-import { formatJsonResult, formatErrorResponse, formatEmptyResult } from "../utils/error-formatter.js";
+import { formatJsonResult, formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
 import { fetchItemsByKeys } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
@@ -14,6 +14,7 @@ export const toolConfig = {
   inputSchema: {
     item_keys: z
       .array(zoteroKey())
+      .min(1, "Provide at least one item key")
       .describe(
         'Array of Zotero item keys (e.g. ["EUHUT5K3", "F9UQM7N2"]). Get these from search_library, add_items_by_doi, or get_collection_items.'
       ),
@@ -42,12 +43,10 @@ export async function handleGetItemsDetails(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  // item_keys is validated with .min(1), so an empty array is a schema error (-32602) before we get here,
+  // consistent with delete_items/add_items.
   const { item_keys, include_abstract, library_type, library_id } = GetItemsDetailsSchema.parse(args);
   const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
-
-  if (item_keys.length === 0) {
-    return formatErrorResponse("At least one item key is required: pass item_keys from search_library, get_collection_items or add_items_by_doi.");
-  }
 
   const { items } = await fetchItemsByKeys(
     (params) => zoteroApi.library(libraryType, libraryId).items().get(params),

@@ -9,7 +9,7 @@ export const toolConfig = {
   description: `Search your Zotero library or list items sorted by a field.
 
 When 'query' is provided, matches it against titles, creator names and years (not abstracts, tags or full text).
-When 'query' is omitted, lists items sorted by the chosen field (default: dateAdded, descending).
+When 'query' is omitted — or is empty / only whitespace — it is treated as no query: the tool lists items sorted by the chosen field (default: dateAdded, descending), up to 'limit'.
 
 Examples:
   - Search: { "query": "deep learning" }
@@ -21,7 +21,7 @@ Use the returned item keys with get_items_details, get_item_fulltext, or inject_
     query: z
       .string()
       .optional()
-      .describe("Search query. If omitted, returns items sorted by the chosen field."),
+      .describe("Search query. If omitted, empty or only whitespace, returns items sorted by the chosen field."),
     sort: z
       .enum(["dateAdded", "dateModified", "title", "creator", "date"])
       .optional()

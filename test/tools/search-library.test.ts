@@ -57,10 +57,12 @@ describe("search_library (MCP)", () => {
     expect(h.net.calls[0].url.searchParams.has("q")).toBe(false);
   });
 
-  it("SL-03 query di soli spazi: nessun q inviato, query trimmata quando presente", async () => {
+  it("SL-03 query di soli spazi: trattata come nessuna query (elenca tutto), query trimmata quando presente", async () => {
     h.net.on("GET", ITEMS, zList([article("AAAA1111")]));
-    await h.call("search_library", { query: "   " });
+    const blank = await h.call("search_library", { query: "   " });
     await h.call("search_library", { query: "  transformers  " });
+    expect(blank.isError).toBe(false);
+    expect(blank.json).toHaveLength(1); // elenca gli item, non un errore né una query
     expect(h.net.calls[0].url.searchParams.has("q")).toBe(false);
     expect(h.net.calls[1].url.searchParams.get("q")).toBe("transformers");
   });
