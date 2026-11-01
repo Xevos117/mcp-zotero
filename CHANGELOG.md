@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Dependencies
+
+- `@modelcontextprotocol/sdk` 1.32.1 → 1.32.2
+- `dotenv` 18.0.6 → 18.0.9
+- `unpdf` 1.8.1 → 1.9.1
+- `zod` 4.6.5 → 4.6.7
+- `@anthropic-ai/claude-agent-sdk` 0.3.296 → 0.3.316 (dev)
+- `@types/node` 26.6.4 → 26.6.6 (dev)
+- `vitest` 5.0.3 → 5.0.5 (dev)
+
 ## [2.0.4] - 2026-10-25
 
 ### Changed
