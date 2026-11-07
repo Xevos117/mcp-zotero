@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-07
+
 ### Added
 
 - **New `check_retractions` tool** (issue #38.4): checks whether Zotero items have been retracted, flagged with an expression of concern, or corrected. Pass either `item_keys` (up to 50) or `collection_key`. Read-only (no `UNSAFE_OPERATIONS` gate): for each item it reads the DOI (the DOI field, or a `DOI: …` line in Extra), looks it up on Crossref (Retraction Watch data in the `updated-by` array of `/works/{doi}`) and reports a `status` (`retracted`, `expression_of_concern`, `corrected`, `ok`, `no_doi`, `not_in_crossref`, `lookup_failed`); an unknown notice type is kept and classified at least `corrected`, never dropped. Distinct DOIs are looked up once each (deduplicated) with limited concurrency, retrying Crossref's transient statuses (429/500/502/503/504) a bounded number of times; at most 200 distinct DOIs per call, with `start` / `truncated` / `next_start` to continue over a large collection. The response opens with a summary of counts and lists per item the key, title, doi, status and any notices (type, date, source, the notice's DOI); a failed lookup never fails the rest.
