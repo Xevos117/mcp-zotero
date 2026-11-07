@@ -28,6 +28,17 @@ All notable changes to this project will be documented in this file.
 
 - **`inject_citations` on `<zcite>` tags inside a run with attributes** (`<w:r w:rsidR="…">`, written by Word when it tracks changes): they were counted but silently skipped (`citations_found` without `citations_injected`); now they are injected. Documents whose runs have no attributes are unchanged (verified by the golden test).
 
+### Dependencies
+
+- `@modelcontextprotocol/sdk` 1.32.1 → 1.32.2
+- `dotenv` 18.0.6 → 18.0.9
+- `fast-xml-parser` 5.11.2 → 5.12.0
+- `unpdf` 1.8.1 → 1.9.1
+- `zod` 4.6.5 → 4.6.7
+- `@anthropic-ai/claude-agent-sdk` 0.3.296 → 0.3.319 (dev)
+- `@types/node` 26.6.4 → 26.6.6 (dev)
+- `vitest` 5.0.3 → 5.1.0 (dev)
+
 ## [2.0.4] - 2026-10-25
 
 ### Changed
