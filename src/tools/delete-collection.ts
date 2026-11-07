@@ -9,7 +9,7 @@ import { COLLECTION_KEY_HINT, unsafeOperationsHint, zoteroStatusHint } from "../
 export const toolConfig = {
   name: "delete_collection",
   description:
-    "Delete a collection (folder) from your Zotero library; confirm with the user first. Items inside the collection are NOT deleted — they remain in your library. Disabled unless the server setting UNSAFE_OPERATIONS is 'all'.",
+    "Permanently delete a collection (folder) from your Zotero library; confirm with the user first. Unlike delete_items, this cannot be undone: the Zotero Web API has no trash for collections, so a deleted collection is not recoverable. Items inside the collection are NOT deleted — they remain in your library. Disabled unless the server setting UNSAFE_OPERATIONS is 'all'.",
   inputSchema: {
     collection_key: zoteroKey()
       .describe("Zotero collection key to delete. Get this from get_collections."),

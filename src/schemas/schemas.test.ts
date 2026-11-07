@@ -75,6 +75,10 @@ describe("GetItemsDetailsSchema", () => {
     expect(() => GetItemsDetailsSchema.parse({ item_keys: "ITEMQQRZ" })).toThrow();
   });
 
+  it("rejects an empty item_keys array (min 1), like delete_items/add_items", () => {
+    expect(() => GetItemsDetailsSchema.parse({ item_keys: [] })).toThrow();
+  });
+
   it("defaults include_abstract to false", () => {
     const result = GetItemsDetailsSchema.parse({ item_keys: ["ITEMQQRZ"] });
     expect(result.include_abstract).toBe(false);
@@ -534,6 +538,15 @@ describe("DeleteItemsSchema", () => {
   it("accepts single item key", () => {
     const result = DeleteItemsSchema.parse({ item_keys: ["KEYRZZZZ"] });
     expect(result.item_keys).toHaveLength(1);
+  });
+
+  it("defaults permanent to false (move to trash) and accepts an explicit boolean", () => {
+    expect(DeleteItemsSchema.parse({ item_keys: ["KEYRZZZZ"] }).permanent).toBe(false);
+    expect(DeleteItemsSchema.parse({ item_keys: ["KEYRZZZZ"], permanent: true }).permanent).toBe(true);
+  });
+
+  it("rejects a non-boolean permanent", () => {
+    expect(() => DeleteItemsSchema.parse({ item_keys: ["KEYRZZZZ"], permanent: "yes" })).toThrow();
   });
 
   it("rejects missing item_keys", () => {

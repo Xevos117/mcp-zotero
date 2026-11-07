@@ -12,8 +12,10 @@ import {
   zList,
   zSingle,
   zWrite,
+  zPatch,
   zDeleted,
   zLibraryQuery,
+  zCollectionNotFound,
   article,
   collection,
   pdfAttachment,
@@ -57,13 +59,15 @@ describe("e2e: build/server.js su stdio", () => {
     expect(s.client.getInstructions()).toContain("inject_citations");
     // prerequisiti e regole che il modello deve conoscere prima di qualsiasi errore
     expect(s.client.getInstructions()).toContain("needs UNPAYWALL_EMAIL in the server settings");
-    expect(s.client.getInstructions()).toMatch(/UNSAFE_OPERATIONS \("Deletions allowed" in the Claude Desktop extension\) allows it \('items': delete_items; 'all': also delete_collection\)\. Never work around/);
+    expect(s.client.getInstructions()).toMatch(/UNSAFE_OPERATIONS \("Deletions allowed" in the Claude Desktop extension\) allows it \('items': delete_items; 'all': also delete_collection\)\./);
+    expect(s.client.getInstructions()).toMatch(/delete_items moves items to the Zotero trash by default \(recoverable\); pass permanent: true to delete for good\. delete_collection is always permanent/);
+    expect(s.client.getInstructions()).toMatch(/Never work around a blocked deletion with other tools/);
     expect(s.client.getInstructions()).toMatch(/Errors carry a hint.*tell the user instead of retrying/);
   });
 
-  it("E2E-02 tools/list: 15 tool, ognuno con inputSchema object", async () => {
+  it("E2E-02 tools/list: 20 tool, ognuno con inputSchema object", async () => {
     const { tools } = await s.client.listTools(undefined, { timeout: CALL_TIMEOUT_MS });
-    expect(tools).toHaveLength(15);
+    expect(tools).toHaveLength(20);
     for (const t of tools) {
       expect(t.inputSchema.type).toBe("object");
       expect(t.description).toBeTruthy();
@@ -76,6 +80,8 @@ describe("e2e: build/server.js su stdio", () => {
       ["get_items_details", {}, "item_keys"],
       ["get_item_fulltext", {}, "item_key"],
       ["add_items", { items: [] }, "items"],
+      ["update_item", {}, "item_key"],
+      ["create_note", { parent_item_key: "AAAARRRR" }, "note"],
       ["add_items_by_doi", {}, "dois"],
       ["add_linked_url_attachment", { url: "nope" }, "url"],
       ["create_collection", {}, "name"],
@@ -183,6 +189,45 @@ describe("e2e: build/server.js su stdio", () => {
     expect(out.json.results[0]).toMatchObject({ status: "available", pdf_url: "https://oa.example.org/a.pdf" });
   });
 
+  it("E2E-15b find_duplicates: gruppi per DOI e per titolo (accenti/punteggiatura, anno compatibile)", async () => {
+    const dupA = article("DUPAAAA2", { DOI: "10.5555/dup", title: "Shared DOI paper" });
+    const dupB = article("DUPAAAA3", { DOI: "https://doi.org/10.5555/DUP", title: "Shared DOI paper (v2)" });
+    const titA = article("TITAAAA2", { DOI: "10.1/t1", title: "A Study of Café Métabolisme!", date: "2021-03-02" });
+    const titB = article("TITAAAA3", { DOI: "10.1/t2", title: "a study of cafe metabolisme", date: "2021" });
+    const uniq = article("UNIQAAA2", { DOI: "10.1/u", title: "Totally unique title here", date: "2019" });
+    fake.net.on("GET", `${ZBASE}/items/top`, zLibraryQuery([dupA, dupB, titA, titB, uniq]));
+    const out = await call(s, "find_duplicates", {});
+    expect(out.isError).toBe(false);
+    expect(out.json).toMatchObject({ mode: "scan", scanned: 5, truncated: false, duplicate_groups: 2 });
+    const doiGroup = out.json.groups.find((g: { match: string }) => g.match === "doi");
+    expect(doiGroup.key).toBe("10.5555/dup");
+    expect(doiGroup.items.map((i: { key: string }) => i.key)).toEqual(["DUPAAAA2", "DUPAAAA3"]);
+    const titleGroup = out.json.groups.find((g: { match: string }) => g.match === "title");
+    expect(titleGroup.key).toBe("a study of cafe metabolisme");
+    expect(titleGroup.items.map((i: { key: string }) => i.key)).toEqual(["TITAAAA2", "TITAAAA3"]);
+    // the top request is used (child notes/attachments and trash excluded server-side)
+    expect(fake.net.requests("GET", `${ZBASE}/items/top`).length).toBeGreaterThan(0);
+  });
+
+  it("E2E-15c find_duplicates: modo dois (prima di add_items_by_doi)", async () => {
+    const present = article("DOIAAAA2", { DOI: "10.7777/present" });
+    fake.net.on("GET", `${ZBASE}/items/top`, zLibraryQuery([present]));
+    const out = await call(s, "find_duplicates", { dois: ["https://doi.org/10.7777/PRESENT", "10.9999/absent"] });
+    expect(out.isError).toBe(false);
+    expect(out.json.mode).toBe("dois");
+    expect(out.json.dois[0]).toMatchObject({ doi: "https://doi.org/10.7777/PRESENT", normalized: "10.7777/present" });
+    expect(out.json.dois[0].existing.map((e: { key: string }) => e.key)).toEqual(["DOIAAAA2"]);
+    expect(out.json.dois[1]).toMatchObject({ doi: "10.9999/absent", normalized: "10.9999/absent", existing: [] });
+  });
+
+  it("E2E-15d find_duplicates: collezione inesistente → not_found con hint", async () => {
+    fake.net.on("GET", `${ZBASE}/collections/ZZZZZZZZ/items/top`, zCollectionNotFound());
+    const out = await call(s, "find_duplicates", { collection_key: "ZZZZZZZZ" });
+    expect(out.isError).toBe(true);
+    expect(out.json).toMatchObject({ status: "not_found", collection_key: "ZZZZZZZZ" });
+    expect(out.json.suggestion).toContain("get_collections");
+  });
+
   it("E2E-16 delete_collection (UNSAFE_OPERATIONS=all)", async () => {
     fake.net.on("GET", `${ZBASE}/collections/CPLQQQQR`, zSingle(collection("CPLQQQQR", "ML"), 12));
     fake.net.on("DELETE", `${ZBASE}/collections/CPLQQQQR`, zDeleted());
@@ -191,11 +236,21 @@ describe("e2e: build/server.js su stdio", () => {
     expect(fake.net.requests("DELETE", `${ZBASE}/collections/CPLQQQQR`)[0].headers.get("if-unmodified-since-version")).toBe("12");
   });
 
-  it("E2E-17 delete_items (UNSAFE_OPERATIONS=all)", async () => {
+  it("E2E-17 delete_items nel cestino di default, poi permanente (UNSAFE_OPERATIONS=all)", async () => {
     fake.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")], 40));
+    fake.net.on("POST", ITEMS, zWrite());
+    const trash = await call(s, "delete_items", { item_keys: ["AAAARRRR", "GPNEQQQR"] });
+    expect(trash.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1, mode: "trash", not_found: ["GPNEQQQR"] });
+    const trashPost = fake.net
+      .requests("POST", ITEMS)
+      .map((r) => r.json<Array<Record<string, unknown>>>())
+      .find((b) => Array.isArray(b) && b[0]?.deleted === 1);
+    expect(trashPost).toEqual([{ key: "AAAARRRR", version: 40, deleted: 1 }]);
+
     fake.net.on("DELETE", ITEMS, zDeleted());
-    const out = await call(s, "delete_items", { item_keys: ["AAAARRRR", "GPNEQQQR"] });
-    expect(out.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1, not_found: ["GPNEQQQR"] });
+    const perm = await call(s, "delete_items", { item_keys: ["AAAARRRR"], permanent: true });
+    expect(perm.json).toEqual({ deleted_keys: ["AAAARRRR"], deleted_count: 1, mode: "permanent" });
+    expect(fake.net.requests("DELETE", ITEMS)).toHaveLength(1);
   });
 
   it("E2E-18 inject_citations su un .docx reale", async () => {
@@ -207,6 +262,88 @@ describe("e2e: build/server.js su stdio", () => {
     const xml = await readDocumentXml(await readFile(join(cwd, "paper_cited.docx")));
     expect(xml).toContain("ADDIN ZOTERO_ITEM CSL_CITATION");
     expect(xml).toContain("(Lovelace, 2023)");
+  });
+
+  it("E2E-18c inject_citations su marcatori Pandoc [@KEY] in un .docx senza <zcite>", async () => {
+    fake.net.on("GET", `${ZBASE}/items/AAAARRRR`, zSingle(article("AAAARRRR")));
+    const input = join(cwd, "pandoc.docx");
+    await writeFile(input, await makeDocx(para("As shown [@AAAARRRR] here.")));
+    const out = await call(s, "inject_citations", { file_path: input });
+    expect(out.json).toMatchObject({ output_path: join(cwd, "pandoc_cited.docx"), citations_found: 1, citations_injected: 1 });
+    const xml = await readDocumentXml(await readFile(join(cwd, "pandoc_cited.docx")));
+    expect(xml).toContain("ADDIN ZOTERO_ITEM CSL_CITATION");
+    expect(xml).toContain("ADDIN ZOTERO_BIBL");
+    expect(xml).not.toContain("[@AAAARRRR]");
+  });
+
+  it("E2E-18b create_cited_document da markdown su un .docx reale", async () => {
+    fake.net.on("GET", `${ZBASE}/items/AAAARRRR`, zSingle(article("AAAARRRR")));
+    const out = await call(s, "create_cited_document", { markdown: "# Title\n\nClaim [@AAAARRRR].", output_path: join(cwd, "new.docx") });
+    expect(out.json).toMatchObject({ output_path: join(cwd, "new.docx"), citations: 1 });
+    const xml = await readDocumentXml(await readFile(join(cwd, "new.docx")));
+    expect(xml).toContain("ADDIN ZOTERO_ITEM CSL_CITATION");
+    expect(xml).toContain("ADDIN ZOTERO_BIBL");
+    expect(xml).toContain("Title");
+  });
+
+  it("E2E-24 update_item: patch con version corretta → nuova versione", async () => {
+    fake.net.on("GET", `${ZBASE}/items/AAAARRRR`, zSingle(article("AAAARRRR"), 7));
+    fake.net.on("PATCH", `${ZBASE}/items/AAAARRRR`, zPatch({ version: 7, newVersion: 8 }));
+    const out = await call(s, "update_item", { item_key: "AAAARRRR", version: 7, fields: { title: "Nuovo titolo" } });
+    expect(out.isError).toBe(false);
+    expect(out.json).toMatchObject({ item_key: "AAAARRRR", version: 8, updated_fields: ["title"] });
+    const patch = fake.net.requests("PATCH", `${ZBASE}/items/AAAARRRR`).at(-1)!;
+    expect(patch.headers.get("if-unmodified-since-version")).toBe("7");
+    expect(patch.json()).toEqual({ title: "Nuovo titolo" });
+  });
+
+  it("E2E-25 update_item: version non combacia → version_conflict senza patch", async () => {
+    fake.net.on("GET", `${ZBASE}/items/BBBB2222`, zSingle(article("BBBB2222"), 9));
+    const before = fake.net.requests("PATCH", `${ZBASE}/items/BBBB2222`).length;
+    const out = await call(s, "update_item", { item_key: "BBBB2222", version: 3, fields: { title: "x" } });
+    expect(out.isError).toBe(true);
+    expect(out.json).toMatchObject({ code: "version_conflict", expected_version: 3, current_version: 9 });
+    expect(fake.net.requests("PATCH", `${ZBASE}/items/BBBB2222`).length).toBe(before);
+  });
+
+  it("E2E-26 create_note: nota figlia di un item regolare", async () => {
+    fake.net.on("GET", `${ZBASE}/items/AAAARRRR`, zSingle(article("AAAARRRR"), 7));
+    fake.net.on("POST", ITEMS, zWrite({ keys: ["NOTEQQQR"] }));
+    const out = await call(s, "create_note", { parent_item_key: "AAAARRRR", note: "Riga 1\n\nRiga 2" });
+    expect(out.isError).toBe(false);
+    expect(out.json).toEqual({ item_key: "NOTEQQQR", parent_item_key: "AAAARRRR" });
+    const posted = fake.net.requests("POST", ITEMS).at(-1)!.json<Array<Record<string, unknown>>>()[0];
+    expect(posted).toMatchObject({ itemType: "note", parentItem: "AAAARRRR", note: "<p>Riga 1</p><p>Riga 2</p>" });
+  });
+
+  it("E2E-27 prompts/list: capability e i 4 prompt", async () => {
+    expect(s.client.getServerCapabilities()?.prompts).toBeDefined();
+    const { prompts } = await s.client.listPrompts(undefined, { timeout: CALL_TIMEOUT_MS });
+    expect(prompts.map((p) => p.name)).toEqual([
+      "cite_word_document",
+      "write_cited_document",
+      "import_references",
+      "note_from_item",
+      "check_bibliography",
+    ]);
+  });
+
+  it("E2E-28 prompts/get: testo reso con gli argomenti", async () => {
+    const r = await s.client.getPrompt({ name: "note_from_item", arguments: { item_key: "AAAARRRR" } }, { timeout: CALL_TIMEOUT_MS });
+    const text = (r.messages[0].content as { text: string }).text;
+    expect(text).toContain("AAAARRRR");
+    expect(text).toContain("create_note");
+    expect(text).not.toContain("${arguments.");
+  });
+
+  it("E2E-29 check_retractions: DOI ritirato via Crossref", async () => {
+    fake.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR", { DOI: "10.1016/S0140-6736(97)11096-0" })]));
+    fake.net.on("GET", /^api\.crossref\.org\/works\//, jsonResponse({
+      message: { "updated-by": [{ type: "retraction", DOI: "10.1016/x", label: "Retraction", source: "retraction-watch", updated: { "date-parts": [[2010, 2, 6]] } }] },
+    }));
+    const out = await call(s, "check_retractions", { item_keys: ["AAAARRRR"] });
+    expect(out.json.summary).toMatchObject({ checked: 1, retracted: 1 });
+    expect(out.json.items[0]).toMatchObject({ key: "AAAARRRR", doi: "10.1016/s0140-6736(97)11096-0", status: "retracted" });
   });
 
   it("E2E-19 errore API Zotero (403) → isError al client", async () => {
@@ -255,7 +392,7 @@ describe("e2e: configurazione del processo", () => {
     const s = await spawnServer(fake, cwd, { UNSAFE_OPERATIONS: " ITEMS " });
     try {
       fake.net.on("GET", ITEMS, zLibraryQuery([article("AAAARRRR")]));
-      fake.net.on("DELETE", ITEMS, zDeleted());
+      fake.net.on("POST", ITEMS, zWrite());
       expect((await call(s, "delete_items", { item_keys: ["AAAARRRR"] })).json.deleted_count).toBe(1);
       expect((await call(s, "delete_collection", { collection_key: "CCCC2222" })).json.current_value).toBe("items");
     } finally {

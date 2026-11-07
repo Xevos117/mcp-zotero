@@ -33,12 +33,18 @@ function sessionId(): string {
   return [...randomBytes(8)].map((b) => SESSION_ALPHABET[b % SESSION_ALPHABET.length]).join("");
 }
 
-/** The document data Zotero serializes (data-version 3), citations in the text (no noteType), fields as Word fields. */
-export function zoteroDocumentData(styleId: string, session = sessionId()): string {
+/** Tipo di campo nelle preferenze: Field per Word, ReferenceMark per LibreOffice. */
+export type ZoteroFieldType = "Field" | "ReferenceMark";
+
+/**
+ * The document data Zotero serializes (data-version 3), citations in the text (no noteType). `fieldType`
+ * is Field for Word fields and ReferenceMark for LibreOffice reference marks.
+ */
+export function zoteroDocumentData(styleId: string, fieldType: ZoteroFieldType = "Field", session = sessionId()): string {
   return (
     `<data data-version="3"><session id="${session}"/>` +
     `<style id="${escapeXml(styleId)}" locale="en-US" hasBibliography="1" bibliographyStyleHasBeenSet="0"/>` +
-    `<prefs><pref name="fieldType" value="Field"/></prefs></data>`
+    `<prefs><pref name="fieldType" value="${fieldType}"/></prefs></data>`
   );
 }
 

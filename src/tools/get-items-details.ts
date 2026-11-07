@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { zoteroKey } from "../utils/zotero-keys.js";
 import { ZoteroApiInterface } from "../types/zotero-types.js";
-import { formatJsonResult, formatErrorResponse, formatEmptyResult } from "../utils/error-formatter.js";
+import { formatJsonResult, formatEmptyResult } from "../utils/error-formatter.js";
 import { formatCreators } from "../utils/item-formatter.js";
 import { fetchItemsByKeys } from "../utils/pagination.js";
 import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
@@ -10,10 +10,11 @@ import { ITEM_KEY_HINT } from "../utils/error-hints.js";
 export const toolConfig = {
   name: "get_items_details",
   description:
-    "Get metadata for multiple Zotero items in a single call. Accepts an array of item keys and returns a map of key → metadata. Use this instead of one call per item. Returns all type-specific fields (e.g. bookTitle for bookSection, proceedingsTitle for conferencePaper, university for thesis). Set include_abstract to include abstracts (excluded by default to keep responses lightweight). Keys not found in the library are listed in not_found (present only when some are missing).",
+    "Get metadata for multiple Zotero items in a single call. Accepts an array of item keys and returns a map of key → metadata. Use this instead of one call per item. Returns all type-specific fields (e.g. bookTitle for bookSection, proceedingsTitle for conferencePaper, university for thesis). Each entry also carries its current `version`: pass it to update_item to edit the item safely (update_item rejects a stale version). Set include_abstract to include abstracts (excluded by default to keep responses lightweight). Keys not found in the library are listed in not_found (present only when some are missing).",
   inputSchema: {
     item_keys: z
       .array(zoteroKey())
+      .min(1, "Provide at least one item key")
       .describe(
         'Array of Zotero item keys (e.g. ["EUHUT5K3", "F9UQM7N2"]). Get these from search_library, add_items_by_doi, or get_collection_items.'
       ),
@@ -42,12 +43,10 @@ export async function handleGetItemsDetails(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  // item_keys is validated with .min(1), so an empty array is a schema error (-32602) before we get here,
+  // consistent with delete_items/add_items.
   const { item_keys, include_abstract, library_type, library_id } = GetItemsDetailsSchema.parse(args);
   const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
-
-  if (item_keys.length === 0) {
-    return formatErrorResponse("At least one item key is required: pass item_keys from search_library, get_collection_items or add_items_by_doi.");
-  }
 
   const { items } = await fetchItemsByKeys(
     (params) => zoteroApi.library(libraryType, libraryId).items().get(params),
@@ -57,7 +56,7 @@ export async function handleGetItemsDetails(
   if (items.length === 0) {
     return formatEmptyResult("No items found for the given keys", {
       item_keys,
-      suggestion: `None of these keys exists in this library (deleted, or from another library). ${ITEM_KEY_HINT}`,
+      suggestion: `None of these keys exists in this library as a live item (permanently deleted, in another library, or in the trash: restore it in Zotero, or remove it for good with delete_items permanent: true). ${ITEM_KEY_HINT}`,
     });
   }
 
@@ -71,6 +70,11 @@ export async function handleGetItemsDetails(
       title: item.title || "Untitled",
       authors: formatCreators(item.creators),
     };
+    // Current object version, needed by update_item (optimistic concurrency); still excluded from the
+    // generic field loop below via SKIP_FIELDS. The skill's inject.js metadataToCsl ignores it.
+    if (typeof item.version === "number") {
+      entry.version = item.version;
+    }
     // Structured names as stored in Zotero (firstName/lastName or single-field name): lets the
     // skill's inject.js build CSL names exactly like inject_citations, multi-word surnames included
     if (item.creators && item.creators.length > 0) {

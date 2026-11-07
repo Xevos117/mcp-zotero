@@ -21,9 +21,9 @@ export const VISUAL_REVIEW = "visual-review.md";
 const FIELDS = { Documento: "document", Pagina: "image", Posizione: "where", "Voce del corpus": "items", Reso: "rendered", Atteso: "expected", Noto: "known" };
 const REQUIRED = ["document", "image", "where", "items", "rendered", "expected"];
 
-/** { problems: [{n, title, document, image, where, items[], rendered, expected, known?, missing[]}], wordChecks: [], none, errors: [] } */
+/** { problems: [{n, title, document, image, where, items[], rendered, expected, known?, missing[]}], wordChecks: [], loChecks: [], none, errors: [] } */
 export function parseVisualReview(text) {
-  const out = { problems: [], wordChecks: [], none: false, errors: [] };
+  const out = { problems: [], wordChecks: [], loChecks: [], none: false, errors: [] };
   let section = null;
   for (const raw of String(text).split("\n")) {
     const line = raw.trim();
@@ -33,11 +33,15 @@ export function parseVisualReview(text) {
       out.problems.push(section);
     } else if (/^##\s+Da verificare in Word\s*$/i.test(line)) {
       section = "word";
+    } else if (/^##\s+Da verificare in LibreOffice\s*$/i.test(line)) {
+      // Layout remarks of the LibreOffice pages (job word-render renders lo-apa/lo-ieee/lo-group too): like the Word
+      // list, impagination only, never fails the run.
+      section = "lo";
     } else if (/^##\s/.test(line)) {
       out.errors.push(`unknown section "${line.slice(0, 80)}"`);
       section = null;
-    } else if ((m = line.match(/^[-*]\s+(.*)$/)) && section === "word") {
-      out.wordChecks.push(m[1].trim());
+    } else if ((m = line.match(/^[-*]\s+(.*)$/)) && (section === "word" || section === "lo")) {
+      (section === "word" ? out.wordChecks : out.loChecks).push(m[1].trim());
     } else if ((m = line.match(/^[-*]\s+([^:]+):\s*(.*)$/)) && section && typeof section === "object") {
       const key = FIELDS[m[1].trim()];
       if (!key) out.errors.push(`problem ${section.n}: unknown field "${m[1].trim()}"`);
@@ -129,5 +133,6 @@ export function visualReviewMarkdown(parsed, inline) {
     );
   }
   if (parsed.wordChecks.length) lines.push("**Da verificare in Word** (impaginazione: non fa fallire la run)", "", ...parsed.wordChecks.map((w) => `- ${t(w, 300)}`), "");
+  if (parsed.loChecks.length) lines.push("**Da verificare in LibreOffice** (impaginazione: non fa fallire la run)", "", ...parsed.loChecks.map((w) => `- ${t(w, 300)}`), "");
   return lines.join("\n");
 }

@@ -130,26 +130,37 @@ jobs:
     timeout-minutes: 5
     outputs:
       run: ${{ steps.scope.outputs.run }}
+      lo: ${{ steps.scope.outputs.lo }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 3
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Scope of the word-proxy job
+      - name: Scope of the word-proxy and lo-proxy jobs
         id: scope
         timeout-minutes: 2
         env:
           EVENT: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
+          set -uo pipefail
           if [ "$EVENT" = "pull_request" ]; then
-            git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/changed.txt"
+            # Stacked PRs: the base branch is force-pushed while the run is pending, so the event's base.sha can be
+            # gone from the fetch (git diff then fails with exit 128). Diff against the freshly-fetched base BRANCH;
+            # if even that fails, fail safe to running everything (a scope job must never go red).
+            if git fetch --no-tags origin "$BASE_REF" >/dev/null 2>&1 &&
+               git diff --name-only "origin/$BASE_REF...${HEAD_SHA:-HEAD}" > "$RUNNER_TEMP/changed.txt" 2>/dev/null; then
+              node scripts/word-proxy-scope.mjs < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
+            else
+              echo "::warning::scope: cannot diff against origin/$BASE_REF; running word-proxy and lo-proxy (fail-safe)"
+              printf 'run=true\nlo=true\n' | tee -a "$GITHUB_OUTPUT"
+            fi
           else
             : > "$RUNNER_TEMP/changed.txt"
+            node scripts/word-proxy-scope.mjs < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
           fi
-          node scripts/word-proxy-scope.mjs < "$RUNNER_TEMP/changed.txt" | tee -a "$GITHUB_OUTPUT"
 
   # Word checklist proxy: the documents injected by the built server (real corpus, placeholder libraries
   # users/000000 and groups/777, fake Zotero API) refreshed by the official Zotero desktop build under Xvfb through
@@ -211,5 +222,78 @@ jobs:
         with:
           name: word-proxy
           path: ${{ runner.temp }}/word-proxy-artifact/
+          retention-days: 1
+          if-no-files-found: warn
+
+  # LibreOffice checklist proxy (#37): the same corpus documents injected as .odt by the built server, refreshed by
+  # the official LibreOffice (TDF) build under Xvfb through the Zotero LibreOffice .oxt (UNO), checked against
+  # test/word-proxy/expect.json (the rendering is Zotero's, identical to the Word path), plus a docx->LO->docx round
+  # trip. The Zotero build and its .oxt come from word-tools; LibreOffice and its JRE/poppler from libreoffice-tools.
+  # No secrets, no account, placeholder libraries only. Not a required check.
+  lo-proxy:
+    name: lo-proxy (LibreOffice + Zotero .oxt)
+    needs: word-proxy-scope
+    if: needs.word-proxy-scope.outputs.lo == 'true'
+    # pinned: ubuntu-latest moves to a new release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 3
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+        timeout-minutes: 5
+      - run: npm run build
+        timeout-minutes: 3
+      - name: Zotero and WordCraft (pinned, sha256, cached) — Zotero ships the .oxt
+        id: wtools
+        uses: ./.github/actions/word-tools
+        timeout-minutes: 8
+      - name: LibreOffice (pinned, sha256, cached) + JRE + poppler
+        id: lotools
+        uses: ./.github/actions/libreoffice-tools
+        timeout-minutes: 10
+      - name: Inject as odt, refresh through LibreOffice, check expectations
+        timeout-minutes: 12
+        env:
+          XVFB: Xvfb
+          ZOTERO_DIR: ${{ steps.wtools.outputs.zotero }}
+          SOFFICE: ${{ steps.lotools.outputs.soffice }}
+          UNOPKG: ${{ steps.lotools.outputs.unopkg }}
+          UNO_PYTHON: ${{ steps.lotools.outputs.python }}
+        run: |
+          OXT="$ZOTERO_DIR/integration/libreoffice/Zotero_LibreOffice_Integration.oxt"
+          test -f "$OXT" || { echo "::error::Zotero .oxt not found at $OXT"; exit 1; }
+          timeout 780 test/lo-proxy/ci.sh "$ZOTERO_DIR" "$SOFFICE" "$UNOPKG" "$UNO_PYTHON" "$OXT" "$RUNNER_TEMP/lo-proxy" test/word-proxy/expect.json
+      # Only placeholder data, but checked anyway (fail closed): nothing is uploaded if the check fails
+      - name: Collect and check the artifact
+        id: artifact
+        if: failure()
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/lo-proxy" U="$RUNNER_TEMP/lo-proxy-artifact"
+          mkdir -p "$U"
+          for s in embedded library; do
+            [ -d "$W/$s" ] || continue
+            mkdir -p "$U/$s"
+            cp "$W/$s"/*.refreshed.odt "$W/$s"/*.pdf "$W/$s"/*.driver "$W/$s"/events.jsonl "$W/$s"/report.json "$U/$s/" 2>/dev/null || true
+          done
+          cp -r "$W/docs" "$U/" 2>/dev/null || true
+          cp "$W/roundtrip.json" "$U/" 2>/dev/null || true
+          node test/word-proxy/check-artifacts.mjs "$U"
+      - name: Upload documents, driver logs and reports
+        if: failure() && steps.artifact.outcome == 'success'
+        timeout-minutes: 3
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lo-proxy
+          path: ${{ runner.temp }}/lo-proxy-artifact/
           retention-days: 1
           if-no-files-found: warn

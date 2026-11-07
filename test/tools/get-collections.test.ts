@@ -6,7 +6,6 @@ import {
   expectToolError,
   expectApiError,
   ZOTERO_ERROR_STATUSES,
-  expectEmptyResult,
 } from "../helpers/mcp-harness.js";
 import { networkError } from "../helpers/fake-net.js";
 import { ZBASE, zList, zError, zLibraryQuery, collection, ZItem } from "../helpers/zotero-fake.js";
@@ -73,18 +72,18 @@ describe("get_collections (MCP)", () => {
     expect(all.json.map((c: ZItem) => c.key)).toEqual(["CPLQQQQR", "COL00002"]);
   });
 
-  it("GC-06 tutte nel cestino → risultato vuoto che suggerisce include_trashed", async () => {
+  it("GC-06 tutte nel cestino → array vuoto (tipo invariato), non un oggetto messaggio", async () => {
     h.net.on("GET", COLLS, zList([collection("COL00002", "Trashed", { deleted: true })]));
-    const json = expectEmptyResult(await h.call("get_collections", {}), "No collections found");
-    expect(json.suggestion).toContain("include_trashed=true");
-    expect(json.suggestion).toContain("create_collection");
+    const out = await h.call("get_collections", {});
+    expect(out.isError).toBe(false);
+    expect(out.json).toEqual([]);
   });
 
-  it("GC-07 nessuna collezione → risultato vuoto con helpUrl", async () => {
+  it("GC-07 nessuna collezione (libreria vuota) → array vuoto", async () => {
     h.net.on("GET", COLLS, zList([]));
-    const json = expectEmptyResult(await h.call("get_collections", {}), "No collections found");
-    expect(json.helpUrl).toMatch(/^https:\/\/www\.zotero\.org\//);
-    expect(json.suggestion).toMatch(/search_library.*create_collection/);
+    const out = await h.call("get_collections", {});
+    expect(out.isError).toBe(false);
+    expect(out.json).toEqual([]);
   });
 
   it("GC-08 nomi unicode preservati", async () => {

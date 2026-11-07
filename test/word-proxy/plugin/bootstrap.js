@@ -2,7 +2,7 @@
 // Preferences, citation dialog, item reselect) with scripted answers and logs every request as a `WCAUTO {json}`
 // line of the debug output, so a headless run can tell which dialog Zotero wanted (H-W1) and still finish the
 // command. Uses Zotero internals (Zotero.Integration.displayDialog): re-check on every Zotero update.
-var orig, windowObserver;
+var orig, origAlert, windowObserver;
 function log(o) { dump("WCAUTO " + JSON.stringify(o) + "\n"); }
 async function startup() {
   await Zotero.initializationPromise;
@@ -26,6 +26,18 @@ async function startup() {
     }
     // Any other dialog (citation, select items, bibliography editor) is cancelled: io untouched.
   };
+  // LibreOffice only (lo-proxy): Session.displayAlert calls the document's displayAlert, which for the LibreOffice
+  // plugin pops a UNO message box in the soffice frame and blocks the UNO-driven command forever under Xvfb. When the
+  // lo-proxy runner sets extensions.wcauto.hookAlerts, log every alert and return the default button instead of
+  // calling the document, so nothing blocks (verify.mjs asserts 0 alerts: a real alert still fails the run). The
+  // Word path (WordCraft) never sets the pref, so Zotero.Integration.Session.displayAlert is untouched there.
+  if (Zotero.Prefs.get("extensions.wcauto.hookAlerts", true) && Zotero.Integration && Zotero.Integration.Session) {
+    origAlert = Zotero.Integration.Session.prototype.displayAlert;
+    Zotero.Integration.Session.prototype.displayAlert = async function (text, icon, buttons) {
+      log({ alert: String(text).slice(0, 200), icon, buttons });
+      return 0; // default button (OK / first): never show the document's message box
+    };
+  }
   // Windows that bypass the word processor (e.g. Services.prompt): only logged (title, URL), never answered here;
   // the protocol's own alerts are answered by WordCraft's headless host and end up in the trace.
   windowObserver = { observe(subject) { subject.addEventListener("load", () => log({ window: subject.location.href, title: subject.document.title }), { once: true }); } };
@@ -39,6 +51,7 @@ async function startup() {
 }
 function shutdown() {
   if (orig) Zotero.Integration.displayDialog = orig;
+  if (origAlert) Zotero.Integration.Session.prototype.displayAlert = origAlert;
   if (windowObserver) Services.obs.removeObserver(windowObserver, "domwindowopened");
 }
 function install() {}

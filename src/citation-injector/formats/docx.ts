@@ -1,0 +1,119 @@
+import JSZip from "jszip";
+import { FormatWriter } from "./types.js";
+import { InjectionError, PreparedCitation } from "../model.js";
+import { regexEscape } from "../xml-utils.js";
+import { normalizeZciteTags, normalizePandocMarkers } from "../zcite-normalizer.js";
+import { generateZoteroFieldCode, generateBibliographyFieldCode } from "../field-codes.js";
+import {
+  DocumentPrefsOutcome,
+  EXISTING_PREFS_WARNING,
+  PREFS_NOT_WRITTEN_WARNING,
+  writeZoteroDocumentPrefs,
+} from "../document-prefs.js";
+
+const REGENERATE_DOCX =
+  "The file is not a Word document or is corrupted: create it again as .docx (e.g. with the docx npm package) and call again.";
+
+/**
+ * Sostituisce il tag <zcite> (escapato) con il field code Word. Caso A (il tag è l'unico contenuto di un
+ * <w:r>), caso B (il tag è inline con altro testo). La `<w:r>` iniziale può avere attributi
+ * (`<w:r w:rsidR="…">`, scritti da Word quando tiene traccia delle revisioni): `<w:r[^>]*>` li tollera.
+ * Prima venivano saltati in silenzio (found ma non injected); i documenti senza attributi non cambiano.
+ */
+function replaceZciteInXml(xml: string, escapedZciteTag: string, fieldCodeXml: string): string {
+  // Case A (preferred): tag is the sole content of a <w:r>
+  // Use [^<]*(?:<(?!/w:rPr>)[^<]*)* instead of .*? inside <w:rPr> to prevent
+  // matching across element boundaries in minified (single-line) XML.
+  const soloRunRegex = new RegExp(
+    `<w:r[^>]*>(?:<w:rPr>[^<]*(?:<(?!/w:rPr>)[^<]*)*</w:rPr>)?<w:t[^>]*>${regexEscape(escapedZciteTag)}</w:t></w:r>`
+  );
+
+  if (soloRunRegex.test(xml)) {
+    return xml.replace(soloRunRegex, fieldCodeXml);
+  }
+
+  // Case B (fallback): tag is inline with other text
+  const inlineRegex = new RegExp(
+    `(<w:r[^>]*>(?:<w:rPr>([^<]*(?:<(?!/w:rPr>)[^<]*)*)</w:rPr>)?<w:t[^>]*>)([^<]*)${regexEscape(escapedZciteTag)}([^<]*)(</w:t></w:r>)`
+  );
+
+  const inlineMatch = xml.match(inlineRegex);
+  if (inlineMatch) {
+    const rPr = inlineMatch[2] ? `<w:rPr>${inlineMatch[2]}</w:rPr>` : "";
+    const textBefore = inlineMatch[3];
+    const textAfter = inlineMatch[4];
+
+    let replacement = "";
+    if (textBefore) {
+      replacement += `<w:r>${rPr}<w:t xml:space="preserve">${textBefore}</w:t></w:r>`;
+    }
+    replacement += fieldCodeXml;
+    if (textAfter) {
+      replacement += `<w:r>${rPr}<w:t xml:space="preserve">${textAfter}</w:t></w:r>`;
+    }
+
+    return xml.replace(inlineRegex, replacement);
+  }
+
+  return xml;
+}
+
+/** Scrittore Word: involucro sulle funzioni di oggi, l'output docx non cambia byte per byte. */
+export const docxWriter: FormatWriter = {
+  format: "docx",
+  fieldType: "Field",
+  bodyPart: "word/document.xml",
+  app: "Word",
+  invalidPackageMessage: (detail) => `Invalid .docx file: not a readable ZIP archive (${detail}). ${REGENERATE_DOCX}`,
+  bodyMissingMessage: `Invalid .docx file: word/document.xml not found. ${REGENERATE_DOCX}`,
+  sniff(zip: JSZip) {
+    // un .odt passato come .docx: errore chiaro invece di "word/document.xml not found"
+    if (zip.file("content.xml") && !zip.file("word/document.xml")) {
+      throw new InjectionError("format_mismatch", 'This looks like a LibreOffice .odt, not a Word .docx. Use format "odt" (or a .odt file).');
+    }
+  },
+  normalize: (bodyXml) => normalizeZciteTags(bodyXml),
+  normalizePandoc: (bodyXml) => normalizePandocMarkers(bodyXml),
+  citationXml: (prepared: PreparedCitation) => generateZoteroFieldCode(prepared.items, prepared.formattedText),
+  replaceTag: (bodyXml, rawTag, citationXml) => replaceZciteInXml(bodyXml, rawTag, citationXml),
+  appendBibliography: (bodyXml) => bodyXml.replace("</w:body>", `${generateBibliographyFieldCode()}</w:body>`),
+  writePrefs: (zip: JSZip, style: string) => writeZoteroDocumentPrefs(zip, style),
+  prefsWarnings: (outcome: DocumentPrefsOutcome) => {
+    if (outcome === "kept") return [EXISTING_PREFS_WARNING];
+    if (outcome === "skipped") return [PREFS_NOT_WRITTEN_WARNING];
+    return [];
+  },
+  async skeleton() {
+    const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const zip = new JSZip();
+    zip.file(
+      "[Content_Types].xml",
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>'
+    );
+    zip.file(
+      "_rels/.rels",
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'
+    );
+    zip.file(
+      "word/_rels/document.xml.rels",
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'
+    );
+    // Heading 1..6 con outlineLvl: così il pannello di navigazione e il sommario di Word funzionano
+    const sizes = [36, 32, 28, 26, 24, 22];
+    const headings = sizes
+      .map(
+        (sz, i) =>
+          `<w:style w:type="paragraph" w:styleId="Heading${i + 1}"><w:name w:val="heading ${i + 1}"/><w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="${i}"/></w:pPr><w:rPr><w:b/><w:sz w:val="${sz}"/></w:rPr></w:style>`
+      )
+      .join("");
+    zip.file(
+      "word/styles.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="${W}"><w:style w:type="paragraph" w:styleId="Normal" w:default="1"><w:name w:val="Normal"/></w:style>${headings}</w:styles>`
+    );
+    zip.file(
+      "word/document.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="${W}"><w:body><w:sectPr/></w:body></w:document>`
+    );
+    return zip;
+  },
+};

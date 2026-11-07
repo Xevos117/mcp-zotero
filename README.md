@@ -2,10 +2,23 @@
 
 > **Note:** This is an unofficial community project and is not affiliated with, endorsed by, or supported by the Zotero team or the Corporation for Digital Scholarship. "Zotero" is a registered trademark of the Corporation for Digital Scholarship.
 
-A Model Context Protocol server for Zotero integration. It gives any LLM full access to your Zotero library: search, organize, add papers by DOI, import PDFs, read full-text content, and inject live citations into Word documents.
+A Model Context Protocol server for Zotero integration. It gives any LLM full access to your Zotero library: search, organize, add papers by DOI, import PDFs, read full-text content, edit items and notes, check a bibliography for retractions and duplicates, and put live Zotero citations into Word and LibreOffice documents.
 
 > Originally based on [mcp-zotero](https://github.com/kaliaboi/mcp-zotero) by Abhishek Kalia.
-> This project has since been extensively rewritten with a new architecture, 15 tools (up from 5), citation injection, PDF management, and Claude skill support.
+> This project has since been extensively rewritten with a new architecture, 20 tools (up from 5), citation injection, PDF management, and Claude skill support.
+
+## Features
+
+- **Live citations in Word and LibreOffice.** `inject_citations` turns placeholders in an existing `.docx` or `.odt` into native Zotero citations and a bibliography, which the Zotero plugin of either app can refresh and restyle. Placeholders can be `<zcite>` tags or Pandoc markers (`[@KEY]`), with Zotero item keys or Better BibTeX citation keys ([details](#citation-placeholders)).
+- **Cited documents from Markdown.** `create_cited_document` writes a new `.docx` or `.odt` from Markdown with Pandoc-style citations, real heading styles and a bibliography.
+- **Five citation styles:** APA, IEEE, Vancouver, Harvard and Chicago.
+- **Adding references** by DOI or with full metadata (all 37 Zotero item types), with open-access PDFs attached automatically through Unpaywall.
+- **Editing:** `update_item` changes fields and creators with a version check (never overwrites a concurrent edit); `create_note` attaches a plain-text note to an item.
+- **Checking a bibliography:** `check_retractions` flags retracted papers, expressions of concern and corrections (Crossref, with Retraction Watch data); `find_duplicates` finds items with the same DOI or title, or tells which DOIs are already in the library before importing them.
+- **Safe deletion:** `delete_items` moves items to the Zotero trash by default; permanent deletion needs `permanent: true`, and every deletion is off unless `UNSAFE_OPERATIONS` allows it.
+- **Group libraries,** set for the whole server or per call.
+- **MCP prompts** for common workflows: citing a document, writing a cited document, importing references, summarizing an item into a note, checking a bibliography before submission.
+- **Claude skill** for clients without filesystem access (Claude.ai Projects, Claude Desktop): the same citation injection, run inside the sandbox.
 
 ## How it works
 
@@ -17,10 +30,10 @@ For advanced use cases (PDF upload policy, citation style guidance, source trans
 
 | Scenario | MCP server | Skill needed? |
 |---|---|---|
-| LLM with filesystem access (Claude Code, LM Studio, etc.) | All 15 tools | No |
+| LLM with filesystem access (Claude Code, LM Studio, etc.) | All 20 tools | No |
 | LLM without filesystem access (Claude.ai Projects, Claude Desktop) | API tools (search, add, metadata) | Yes, for citation injection |
 
-LLMs with filesystem access can use all tools directly, including `inject_citations` which reads and writes `.docx` files on disk.
+LLMs with filesystem access can use all tools directly, including `inject_citations` which reads and writes `.docx` (Word) and `.odt` (LibreOffice) files on disk.
 
 LLMs without filesystem access — including Claude Desktop, which connects to MCP but cannot generate files locally — can use the included **Claude skill** (`skills/zotero-skill-mcp-integrations/`), which runs citation injection entirely inside a sandbox. MCP tools handle all Zotero API operations; the skill handles document assembly.
 
@@ -140,8 +153,8 @@ To enable deletion, set the `UNSAFE_OPERATIONS` environment variable to one of t
 
 - If `UNSAFE_OPERATIONS` is not set, empty, or set to an unrecognized value, it defaults to `none`.
 - The value is **case-insensitive** (e.g. `ALL`, `Items`, `NONE` all work).
-- `delete_items` deletes items **permanently**: the Zotero Web API multi-item DELETE does not move them to the Zotero trash, so they cannot be restored from the desktop client.
-- `delete_collection` removes the collection (folder) only — items inside it are **not** deleted and remain in your library.
+- `delete_items` **moves items to the Zotero trash by default**, so the user can restore them from the desktop client (Zotero → Trash). Pass `permanent: true` to delete them for good instead; the same `UNSAFE_OPERATIONS` setting gates both the trash and the permanent path.
+- `delete_collection` is always **permanent**: the Zotero Web API has no trash for collections, so a deleted collection cannot be restored. It removes the collection (folder) only — items inside it are **not** deleted and remain in your library.
 - The `all` value includes both item and collection deletion because managing collections inherently requires item-level access.
 
 **Configuration example:**
@@ -224,8 +237,10 @@ available in every project (the default `local` scope covers only the current pr
 | `get_collections` | List all collections (folders) with keys, names, and parent relationships |
 | `get_collection_items` | Get items in a specific collection with keys, titles, authors, dates |
 | `search_library` | Search by query, or list items sorted by field (date, title, etc.) |
-| `get_items_details` | Batch metadata retrieval for multiple items — returns all type-specific fields (bookTitle, proceedingsTitle, university, etc.), the `authors` string and the structured `creators`; keys not in the library are listed in `not_found` |
+| `get_items_details` | Batch metadata retrieval for multiple items — returns all type-specific fields (bookTitle, proceedingsTitle, university, etc.), the `authors` string, the structured `creators` and each item's current `version` (needed by `update_item`); keys not in the library are listed in `not_found` |
 | `get_item_fulltext` | Get full-text content of a PDF attachment via Zotero's fulltext index |
+| `check_retractions` | Check items (by `item_keys` or `collection_key`) for retractions, expressions of concern or corrections via Crossref (Retraction Watch data). Read-only; reports a `status` per item with any notices |
+| `find_duplicates` | Find duplicate items (same DOI or normalized title/year) in the library or a collection; or, given DOIs, report which are already present (use before `add_items_by_doi`). Read-only — never merges or deletes |
 
 ### Adding content
 
@@ -238,26 +253,65 @@ available in every project (the default `local` scope covers only the current pr
 | `find_and_attach_pdfs` | Batch OA PDF lookup and auto-attach via Unpaywall (by item keys or collection) |
 | `add_linked_url_attachment` | Attach a URL to an existing item or create a standalone link |
 
+### Editing content
+
+| Tool | Description |
+|---|---|
+| `update_item` | Edit an existing item's fields and/or creators. Needs the item's current `version` (from `get_items_details`); a stale version returns `version_conflict` instead of overwriting |
+| `create_note` | Attach a plain-text child note to an existing regular item (blank lines become paragraphs) |
+
 ### Deleting content
 
 | Tool | Description |
 |---|---|
-| `delete_items` | Permanently delete up to 50 items per call (not moved to the Zotero trash). Requires `UNSAFE_OPERATIONS=items` or `all` |
-| `delete_collection` | Delete a collection (folder). Items inside are kept. Requires `UNSAFE_OPERATIONS=all` |
+| `delete_items` | Delete up to 50 items per call: moved to the Zotero trash by default (recoverable), or permanently with `permanent: true`. Requires `UNSAFE_OPERATIONS=items` or `all` |
+| `delete_collection` | Delete a collection (folder) permanently — collections have no trash. Items inside are kept. Requires `UNSAFE_OPERATIONS=all` |
 
 ### Citation & documents
 
 | Tool | Description |
 |---|---|
-| `inject_citations` | Inject live Zotero citations into a Word document. Supports APA, IEEE, Vancouver, Harvard, Chicago. Output is saved in the same folder as the input file with a `_cited` suffix (e.g. `paper.docx` → `paper_cited.docx`) |
+| `inject_citations` | Inject live Zotero citations into a Word (`.docx`) or LibreOffice (`.odt`) document (native fields in Word, reference marks in LibreOffice; format from the extension or the `format` argument). Recognizes two placeholder styles automatically: `<zcite keys="ITEMKEY"/>` tags, or — when the document has no `<zcite>` — Pandoc markers (`[@KEY]`, `[@K1; @K2]`, `[see @KEY, p. 12]`, `-@KEY`, inline `@KEY`), where `KEY` is a Zotero key or a case-sensitive Better BibTeX citation key (resolved via the item's `citationKey` field or a `Citation Key:` line in Extra). Prefer the bracketed `[@KEY]` form: an inline `@word` that doesn't resolve (a handle or code) is kept as text with a warning, while an unknown key in `[@…]` is an error. Supports APA, IEEE, Vancouver, Harvard, Chicago. Output is saved in the same folder as the input file with a `_cited` suffix (e.g. `paper.docx` → `paper_cited.docx`, `paper.odt` → `paper_cited.odt`) |
+| `create_cited_document` | Create a new `.docx` or `.odt` from Markdown (headings, bold/italic, one-level lists) with pandoc-style citations (`[@KEY]`, `[@K1; @K2]`, `[see @KEY, p. 12]`, `-@KEY`) turned into native Zotero citations and a bibliography. Never overwrites an existing file |
 | `get_user_id` | Returns the configured Zotero user ID |
+
+### Citation placeholders
+
+`inject_citations` (and the skill's `inject.js`) recognizes the placeholder style by itself, so there is no argument to set:
+
+| The document contains | What happens |
+|---|---|
+| `<zcite keys="ITEMKEY"/>` tags | The tags become Zotero citations. Any Pandoc markers in the same document are left alone and reported in a warning |
+| Only Pandoc markers | `[@KEY]`, `[@K1; @K2]`, `[see @KEY, p. 12]`, `-@KEY` (year only) and inline `@KEY` become Zotero citations |
+| Neither | The copy is written unchanged, with a warning |
+
+- `KEY` is a Zotero item key (8 characters) or a **Better BibTeX citation key** such as `rossi2020`, found through the item's citation key field or a `Citation Key:` line in Extra. Citation keys are case-sensitive.
+- Prefer the bracketed form `[@KEY]`. An unknown or ambiguous key inside brackets is an error and nothing is written. An inline `@word` that doesn't resolve (a social handle, `@media`, a code decorator) stays text with a warning. Word may split an inline `@KEY` across formatting runs; the bracketed form is always recognized.
+- A document with both styles: run `inject_citations` on the `_cited` output again to convert the Pandoc markers too. The second run adds the citations without a second bibliography; Zotero → Refresh updates the existing one.
+- Footnotes and comments are not scanned, in either style.
+
+### After injection
+
+Open the `_cited` file in Word or LibreOffice with the [Zotero plugin](https://www.zotero.org/support/word_processor_integration) installed and use Zotero → Refresh: the plugin formats the citations and the bibliography in the chosen style, and from then on you can add, edit or restyle citations from the plugin as usual. The document stays in its format: a `.docx` keeps Word fields, an `.odt` keeps LibreOffice reference marks.
+
+### Prompts
+
+User-initiated MCP prompts (`prompts/list`, `prompts/get`) that walk a client through a workflow in terms of the tools above:
+
+| Prompt | Description |
+|---|---|
+| `cite_word_document` | Turn the placeholders in an existing `.docx`/`.odt` into Zotero citations (`inject_citations`) |
+| `write_cited_document` | Draft a cited document from scratch and save it (`create_cited_document`) |
+| `import_references` | Import references by DOI: skip those already in the library (`find_duplicates`), add the rest (`add_items_by_doi`), check them for retractions (`check_retractions`) and attach open-access PDFs (`find_and_attach_pdfs`) |
+| `note_from_item` | Read an item and attach a summary note (`create_note`) |
+| `check_bibliography` | Check a collection for retracted items (`check_retractions`) and duplicates (`find_duplicates`) before handing it in |
 
 ## Development
 
 ```bash
 npm install
 npm run build          # Compile TypeScript
-npm test               # Unit and per-tool tests (vitest, fetch faked, ~1000 tests)
+npm test               # Unit and per-tool tests (vitest, fetch faked, ~1900 tests)
 npm run test:e2e       # Built server over stdio against a local fake Zotero API
 npm run smoke          # Quick stdio smoke test of the built server (user + group library)
 npm run bundle         # Claude Desktop extension: dist/mcp-zotero.mcpb (production dependencies only)
@@ -350,7 +404,7 @@ Other owner settings:
    and record the results in its log.
 4. Before the first release that ships the Claude Desktop extension (and whenever `manifest.json` or the Node.js
    requirement changes): build it with `npm run bundle`, install `dist/mcp-zotero.mcpb` once in a real Claude
-   Desktop (macOS or Windows), fill in a test key and user ID, and check that the 15 tools appear and
+   Desktop (macOS or Windows), fill in a test key and user ID, and check that the 20 tools appear and
    `get_collections` answers.
 5. Publish the GitHub release: the [release workflow](.github/workflows/release.yml) runs the tests, publishes
    to npm, publishes `server.json` to the [MCP Registry](https://registry.modelcontextprotocol.io) and attaches

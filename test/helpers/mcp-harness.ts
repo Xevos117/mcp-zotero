@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { registerAllTools } from "../../src/tools/index.js";
+import { registerAllPrompts } from "../../src/prompts/index.js";
 import { ZoteroApiInterface } from "../../src/types/zotero-types.js";
 import { UnsafeOperationsMode } from "../../src/utils/unsafe-operations.js";
 import { FakeNet } from "./fake-net.js";
@@ -78,12 +79,13 @@ export async function startHarness(opts: HarnessOptions = {}): Promise<Harness> 
   const net = new FakeNet().install();
   const server = new McpServer(
     { name: "zotero-test", version: "0.0.0" },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {}, prompts: {} } }
   );
   // Unico punto da adattare se la firma di registerAllTools cambia (es. supporto
   // librerie di gruppo): i test assumono la libreria utente di default,
   // cioè URL /users/{USER_ID}/... (vedi ZBASE in zotero-fake.ts).
   registerAllTools(server, createZoteroClient(), opts.userId ?? USER_ID, opts.unsafeOps ?? "none");
+  registerAllPrompts(server);
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "zotero-test-client", version: "0.0.0" });

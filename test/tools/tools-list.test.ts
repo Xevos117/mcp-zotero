@@ -15,6 +15,8 @@ const EXPECTED: Record<string, { required: string[]; properties: string[] }> = {
   get_item_fulltext: { required: ["item_key"], properties: ["item_key", "max_characters"] },
   get_user_id: { required: [], properties: [] },
   add_items: { required: ["items"], properties: ["items", "collection_key", "tags"] },
+  update_item: { required: ["item_key", "version", "fields"], properties: ["item_key", "version", "fields", "creators"] },
+  create_note: { required: ["parent_item_key", "note"], properties: ["parent_item_key", "note", "tags"] },
   add_items_by_doi: { required: ["dois"], properties: ["dois", "collection_key", "tags", "auto_attach_pdf"] },
   add_linked_url_attachment: {
     required: ["url"],
@@ -22,7 +24,7 @@ const EXPECTED: Record<string, { required: string[]; properties: string[] }> = {
   },
   create_collection: { required: ["name"], properties: ["name", "parent_collection"] },
   delete_collection: { required: ["collection_key"], properties: ["collection_key"] },
-  delete_items: { required: ["item_keys"], properties: ["item_keys"] },
+  delete_items: { required: ["item_keys"], properties: ["item_keys", "permanent"] },
   import_pdf_to_zotero: {
     required: ["url"],
     properties: ["url", "filename", "title", "content_type", "parent_item", "collections", "tags"],
@@ -31,7 +33,13 @@ const EXPECTED: Record<string, { required: string[]; properties: string[] }> = {
     required: [],
     properties: ["item_keys", "collection_key", "skip_if_attachment_exists", "dry_run"],
   },
-  inject_citations: { required: ["file_path"], properties: ["file_path", "style"] },
+  find_duplicates: {
+    required: [],
+    properties: ["dois", "collection_key"],
+  },
+  inject_citations: { required: ["file_path"], properties: ["file_path", "style", "format"] },
+  create_cited_document: { required: ["markdown", "output_path"], properties: ["markdown", "output_path", "style", "format"] },
+  check_retractions: { required: [], properties: ["item_keys", "collection_key", "start"] },
 };
 
 const LIBRARY_ARGS = ["library_type", "library_id"];
@@ -48,7 +56,7 @@ describe("tools/list (MCP)", () => {
     await h.close();
   });
 
-  it("TL-01 espone esattamente i 15 tool attesi", () => {
+  it("TL-01 espone esattamente i tool attesi", () => {
     expect(tools.map((t) => t.name).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 
@@ -70,10 +78,12 @@ describe("tools/list (MCP)", () => {
     expect(props("search_library").limit.default).toBe(25);
     expect([...props("inject_citations").style.enum].sort()).toEqual(["apa", "chicago", "harvard", "ieee", "vancouver"]);
     expect(props("inject_citations").style.default).toBe("apa");
+    expect([...props("inject_citations").format.enum].sort()).toEqual(["docx", "odt"]);
     expect(props("add_items_by_doi").auto_attach_pdf.default).toBe(true);
     expect(props("get_item_fulltext").max_characters.default).toBe(50000);
     expect(props("find_and_attach_pdfs").dry_run.default).toBe(false);
     expect(props("import_pdf_to_zotero").content_type.default).toBe("application/pdf");
+    expect(props("delete_items").permanent.default).toBe(false);
   });
 
   it("TL-08 library_type enum user/group e library_id numerico, mai obbligatori", () => {

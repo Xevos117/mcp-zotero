@@ -26,6 +26,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "tsc",
+    "build:skill": "node scripts/build-skill.mjs",
     "smoke": "node scripts/smoke-stdio.mjs",
     "bundle": "node scripts/build-mcpb.mjs",
     "start": "node build/server.js",
@@ -63,6 +64,7 @@
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "citeproc": "^2.4.63",
+    "esbuild": "0.28.2",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   }

@@ -31,6 +31,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
 import { validateDocx } from "../helpers/docx-validate.ts";
+import { validateOdt } from "../helpers/citation-validate.ts";
 import { VISUAL_REVIEW, parseVisualReview, visualReviewFindings, visualReviewProblems } from "./agent/visual-review.mjs";
 import { loadScenarios, targetedScenarios } from "./agent/scenarios.mjs";
 import { externalReason } from "./helpers/external.mjs";
@@ -121,6 +122,26 @@ async function api(path) {
   }
 }
 
+/**
+ * Whether a claims.deleted entry is satisfied by the API response `r` for that key.
+ * - collections: only HTTP 404 counts (the Zotero Web API has no trash for collections).
+ * - items with `permanent: true` in the claim: only 404 counts — an item left in the trash (200 +
+ *   deleted:1) is a FAILURE, so a regression where permanent only trashes is caught (F8 permanent probe).
+ * - items otherwise: 404 (permanently gone) or 200 with deleted:1 (moved to the trash) are both valid.
+ */
+export function deletedClaimOutcome(dItem, r) {
+  const kind = dItem.kind === "collection" ? "collections" : "items";
+  if (r.status === 404) return { ok: true, message: `deleted ${dItem.key}` };
+  const trashed = kind === "items" && r.status === 200 && r.data?.data?.deleted === 1;
+  if (trashed && !dItem.permanent) return { ok: true, message: `trashed ${dItem.key}` };
+  const why = trashed
+    ? " but only in the trash (permanent deletion was claimed)"
+    : r.status === 200
+      ? " and not in the trash"
+      : "";
+  return { ok: false, message: `${dItem.kind ?? "item"} ${dItem.key} claimed deleted but HTTP ${r.status}${why}` };
+}
+
 // ---------------------------------------------------------------------------------------------------
 // Transcript
 // ---------------------------------------------------------------------------------------------------
@@ -191,8 +212,16 @@ export function auditGaps(messages, entries, denials) {
   const known = new Set([...entries, ...denials].map((e) => e?.tool_use_id).filter(Boolean));
   return toolCalls(messages)
     .map((c, i) => ({ c, i }))
-    .filter(({ c }) => c.tool && !known.has(c.id))
+    // A call the client could not parse ({"__unparsedToolInput": …}, e.g. the model wrote `"permanent": yes`
+    // instead of `true`) never reaches the tool, so neither the PostToolUse audit hook nor a deny-hook can
+    // record it. It is the SDK rejecting malformed JSON, not a Zotero call that ran without an audit entry.
+    .filter(({ c }) => c.tool && !known.has(c.id) && !isUnparsedInput(c))
     .map(({ c, i }) => `call #${i + 1} ${c.tool} of the transcript has no audit entry (hooks not active, or no result)`);
+}
+
+/** A tool call whose arguments the client could not parse as JSON (SDK marks it with __unparsedToolInput). */
+export function isUnparsedInput(call) {
+  return !!call?.input && typeof call.input === "object" && "__unparsedToolInput" in call.input;
 }
 
 /**
@@ -216,14 +245,17 @@ export function auditNumberingProblems(entries) {
   return out;
 }
 
+/** The two mandatory F0 probes (a chained Bash command and a delete of a nonexistent key) the hooks must deny. */
+export const isF0BashProbe = (d) => d?.tool_name === "Bash" && PROBE_COMMAND.test(String(d?.tool_input?.command ?? ""));
+export const isF0DeleteProbe = (d) => d?.tool_name === `${ZOTERO_PREFIX}delete_items` && canonical(d?.tool_input?.item_keys) === canonical([PROBE_KEY]);
+export const isF0Probe = (d) => isF0BashProbe(d) || isF0DeleteProbe(d);
+
 /** F0 and denials: the two probes must be denied by the hooks; any other denial is a warning. */
 export function guardrailFindings(denials) {
   const res = { problems: [], warnings: [] };
-  const isBashProbe = (d) => d.tool_name === "Bash" && PROBE_COMMAND.test(String(d.tool_input?.command ?? ""));
-  const isDeleteProbe = (d) => d.tool_name === `${ZOTERO_PREFIX}delete_items` && canonical(d.tool_input?.item_keys) === canonical([PROBE_KEY]);
-  if (!denials.some(isBashProbe)) res.problems.push("F0: the chained Bash probe was not denied by the Bash hook");
-  if (!denials.some(isDeleteProbe)) res.problems.push(`F0: the delete of ${PROBE_KEY} was not denied by the delete hook`);
-  for (const d of denials.filter((x) => !isBashProbe(x) && !isDeleteProbe(x))) res.warnings.push(`denied by the hooks: ${d.tool_name} (${String(d.reason ?? "").split(".")[0]})`);
+  if (!denials.some(isF0BashProbe)) res.problems.push("F0: the chained Bash probe was not denied by the Bash hook");
+  if (!denials.some(isF0DeleteProbe)) res.problems.push(`F0: the delete of ${PROBE_KEY} was not denied by the delete hook`);
+  for (const d of denials.filter((x) => !isF0Probe(x))) res.warnings.push(`denied by the hooks: ${d.tool_name} (${String(d.reason ?? "").split(".")[0]})`);
   return res;
 }
 
@@ -267,6 +299,11 @@ function callEffects(call) {
     case "find_and_attach_pdfs":
       for (const x of json.results ?? []) add(created, x?.attachment_key);
       break;
+    case "create_note":
+      add(created, json.note_key ?? json.item_key ?? json.key);
+      break;
+    case "create_cited_document":
+      break; // writes a document file, creates no Zotero items: no keys to attribute
   }
   return { created, deleted };
 }
@@ -386,19 +423,27 @@ const WRITE_KEY_ARGS = {
   create_collection: ["parent_collection"],
   delete_items: ["item_keys"],
   delete_collection: ["collection_key"],
+  update_item: ["item_key"],
+  create_note: ["parent_item_key"],
 };
+
+/** A tool call the harness hooks denied (PreToolUse): it never executed, so it is not a data-safety concern. */
+export function isHookDenied(call) {
+  return /Denied by the agent smoke harness/.test(String(call?.result?.text ?? ""));
+}
 
 /**
  * Every key a write call references must be well-formed and created earlier in the run (or be one of
  * FAKE_KEYS); group libraries are written only outside safe mode and only for context.group_id;
- * delete_collection is never called in safe mode.
+ * delete_collection is never called in safe mode. A call the hooks denied never ran, so it is skipped (a
+ * guard probe such as update_item on a key the run did not create is denied, not a data-safety violation).
  */
 export function writeSafetyProblems(messages, context) {
   const out = [];
   const created = new Set();
   toolCalls(messages).forEach((call, i) => {
     const argNames = WRITE_KEY_ARGS[call.tool];
-    if (argNames && !(call.tool === "find_and_attach_pdfs" && call.input?.dry_run === true)) {
+    if (argNames && !isHookDenied(call) && !(call.tool === "find_and_attach_pdfs" && call.input?.dry_run === true)) {
       const label = `call #${i + 1} ${call.tool}`;
       for (const name of argNames) {
         const v = call.input?.[name];
@@ -435,7 +480,9 @@ const F10_ROWS = [
   }],
   ["delete_items with 51 fake keys (max+1)", (c) => c.tool === "delete_items" && keysOf(c, "item_keys")?.length === 51 && c.input.item_keys.every((k) => FAKE_KEYS.has(k)), (c) => (c.result?.isError ? null : "accepted (expected a validation error, max 50)")],
   ["add_items with items []", (c) => c.tool === "add_items" && keysOf(c, "items")?.length === 0, (c) => (c.result?.isError ? null : "accepted (expected a validation error, min 1)")],
-  ["get_items_details with item_keys []", (c) => c.tool === "get_items_details" && keysOf(c, "item_keys")?.length === 0, () => null],
+  // Accept either form: a schema error (-32602, after the .min(1) added in PR O) or the older tool error — the
+  // agent reads the base-branch skill, so both are valid for O's run. Only a non-error acceptance is wrong.
+  ["get_items_details with item_keys []", (c) => c.tool === "get_items_details" && keysOf(c, "item_keys")?.length === 0, (c) => (c.result?.isError ? null : "accepted (expected a schema or tool error, min 1)")],
   ["get_items_details with a whitespace-only key", (c) => c.tool === "get_items_details" && (keysOf(c, "item_keys") ?? []).some((k) => typeof k === "string" && k.length > 0 && !k.trim()), (c) => (c.result?.isError ? null : "accepted (expected a validation error)")],
   ["search_library with a whitespace-only query", (c) => c.tool === "search_library" && typeof c.input?.query === "string" && c.input.query.length > 0 && !c.input.query.trim(), (c) => (c.result?.isError ? "error (expected a result, as without query)" : null)],
   ["search_library with limit 1", (c) => c.tool === "search_library" && c.input?.limit === 1, (c) => limitProblem(c, 1)],
@@ -516,7 +563,7 @@ const MAX_INPUT_SHOWN = 300;
  * input as the audit recorded it (truncated), so the report shows what was really sent.
  * @returns {{ problems: string[], warnings: string[], checks: string[], calls: Array<{ scenario: string, call_no: number, tool: string, input: string }> }}
  */
-export function exploratoryFindings(list, messages, reserved = new Set()) {
+export function exploratoryFindings(list, messages, reserved = new Set(), denials = []) {
   const res = { problems: [], warnings: [], checks: [], calls: [] };
   if (list === undefined) return res;
   if (!Array.isArray(list)) {
@@ -530,6 +577,17 @@ export function exploratoryFindings(list, messages, reserved = new Set()) {
   const made = calls.map((c) => ({ tool: c.tool, name: c.name, args: argsOf(c.name, c.input) }));
   const byNo = new Map(calls.filter((c) => Number.isInteger(c.callNo)).map((c) => [c.callNo, c]));
   const numbered = byNo.size > 0;
+  // Hook denials are legitimate exploratory evidence: a call the hooks blocked never reaches the audit (no
+  // call_no), so a guard-probe scenario references it by tool (no call_no) or has no audited call at all. The
+  // two mandatory F0 probes are not exploratory evidence. Each guard denial backs at most one scenario/call.
+  const guardDenials = (Array.isArray(denials) ? denials : []).filter((d) => d && !isF0Probe(d));
+  const denialUsed = new Array(guardDenials.length).fill(false);
+  const takeDenial = (tool) => {
+    const i = guardDenials.findIndex((d, k) => !denialUsed[k] && (tool === undefined || d.tool_name === tool));
+    if (i < 0) return false;
+    denialUsed[i] = true;
+    return true;
+  };
   const owner = new Map();
   const ids = new Set();
   for (const x of list.slice(0, MAX_EXPLORATORY)) {
@@ -541,7 +599,12 @@ export function exploratoryFindings(list, messages, reserved = new Set()) {
     ids.add(id);
     if (typeof x.rationale !== "string" || !x.rationale.trim()) res.problems.push(`${id}: rationale missing`);
     if (typeof x.expected !== "string" || typeof x.observed !== "string") res.problems.push(`${id}: expected/observed missing`);
-    if (!Array.isArray(x.calls) || x.calls.length === 0) res.problems.push(`${id}: no calls`);
+    if (!Array.isArray(x.calls) || x.calls.length === 0) {
+      // a guard-probe scenario whose only attempts the hooks denied has no audited call to cite: a hook denial
+      // is its evidence (valid, verdict "ok" if that denial was the expected outcome)
+      if (takeDenial(undefined)) res.checks.push(`${id}: backed by a hook denial (guard probe, no audited call)`);
+      else res.problems.push(`${id}: no calls`);
+    }
     for (const [n, call] of (Array.isArray(x.calls) ? x.calls : []).entries()) {
       const tool = String(call?.tool ?? "");
       const short = tool.startsWith(ZOTERO_PREFIX) ? tool.slice(ZOTERO_PREFIX.length) : tool;
@@ -567,6 +630,11 @@ export function exploratoryFindings(list, messages, reserved = new Set()) {
         continue;
       }
       if (numbered) {
+        // a call the hooks denied never reaches the audit (no call_no): accept it if a hook denial of this tool backs it
+        if (takeDenial(tool)) {
+          res.checks.push(`${label}: denied by a hook (guard probe)`);
+          continue;
+        }
         res.problems.push(`${label}: no call_no (the audit numbers every call: reference it by call_no)`);
         continue;
       }
@@ -588,11 +656,25 @@ export function exploratoryFindings(list, messages, reserved = new Set()) {
 
 const decode = (s) => s.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
 
-/** What the <zcite> tags of a source document exercise (tags are read across runs, as the normalizer does). */
-export function sourceFeatures(documentXml) {
-  const f = { zcites: 0, multiKey: false, locatorPrefixSuffix: false, inline: false, split: false, allNum: true, spacedKeys: false, duplicateKey: false, keys: [] };
-  for (const p of documentXml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []) {
-    const segments = [...p.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]);
+// Pandoc markers of the inject_citations Pandoc branch, as src/citation-injector/pandoc-body.ts reads them
+// (that module cannot be imported from here: its relative imports end in .js). A bracketed marker must
+// resolve (else the tool fails); an inline @key that does not resolve is kept as text.
+const PANDOC_KEY = "[A-Za-z0-9_](?:[A-Za-z0-9_:.#$%&+?~/-]*[A-Za-z0-9_])?";
+const PANDOC_INLINE_KEY = "[A-Za-z0-9_](?:[A-Za-z0-9_:.-]*[A-Za-z0-9_])?";
+const PANDOC_RE = new RegExp(`\\[([^\\]<]*@[^\\]<]*)\\]|(?<![A-Za-z0-9_/.])(-?)@(${PANDOC_INLINE_KEY})`, "g");
+const PANDOC_BRACKET_KEY_RE = new RegExp(`(^|[\\s;])(-?)@(${PANDOC_KEY})`);
+
+/**
+ * What the <zcite> tags of a source document exercise (tags are read across runs, as the normalizer does).
+ * `odt`: the source is a LibreOffice document (content.xml, text:p/text:h with text:span), not a .docx;
+ * the tags are read from the joined paragraph text (split/inline detection is docx-only — the odt parity
+ * document is never the required coverage document, which stays on docx).
+ */
+export function sourceFeatures(documentXml, odt = false) {
+  const f = { zcites: 0, multiKey: false, locatorPrefixSuffix: false, inline: false, split: false, allNum: true, spacedKeys: false, duplicateKey: false, keys: [], pandocBracket: 0, pandocInline: 0 };
+  const paraRe = odt ? /<text:(?:p|h)\b[\s\S]*?<\/text:(?:p|h)>/g : /<w:p[ >][\s\S]*?<\/w:p>/g;
+  for (const p of documentXml.match(paraRe) ?? []) {
+    const segments = odt ? [p.replace(/<[^>]*>/g, "")] : [...p.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]);
     const starts = [];
     let joined = "";
     for (const s of segments) {
@@ -600,12 +682,19 @@ export function sourceFeatures(documentXml) {
       joined += s;
     }
     const segAt = (offset) => starts.findLastIndex((st) => st <= offset);
+    for (const m of joined.matchAll(PANDOC_RE)) {
+      if (m[1] !== undefined) {
+        if (PANDOC_BRACKET_KEY_RE.test(decode(m[1]))) f.pandocBracket++;
+      } else f.pandocInline++;
+    }
     for (const m of joined.matchAll(/&lt;zcite\s[\s\S]*?\/&gt;/g)) {
       f.zcites++;
-      const first = segAt(m.index);
-      const last = segAt(m.index + m[0].length - 1);
-      if (first !== last) f.split = true;
-      else if (segments[first].replace(m[0], "").trim()) f.inline = true;
+      if (!odt) {
+        const first = segAt(m.index);
+        const last = segAt(m.index + m[0].length - 1);
+        if (first !== last) f.split = true;
+        else if (segments[first].replace(m[0], "").trim()) f.inline = true;
+      }
       const attrs = Object.fromEntries([...decode(m[0]).matchAll(/(\w+)="([^"]*)"/g)].map((a) => [a[1], decode(a[2])]));
       const raw = attrs.keys ?? "";
       const keys = raw.split(",").map((k) => k.trim()).filter(Boolean);
@@ -622,6 +711,20 @@ export function sourceFeatures(documentXml) {
 }
 
 /**
+ * The number of citations of a document against its source: one per <zcite> tag (zcite branch, also when
+ * Pandoc markers are left over in a mixed document) or, for a source with only Pandoc markers, one per
+ * bracketed marker plus at most one per inline @key (an inline key that does not resolve stays text).
+ * @returns {string | null}
+ */
+export function citationCountProblem(source, cited) {
+  if (source.zcites === 0 && source.pandocBracket + source.pandocInline > 0) {
+    if (cited >= source.pandocBracket && cited <= source.pandocBracket + source.pandocInline) return null;
+    return `${cited} citations for ${source.pandocBracket} bracketed and ${source.pandocInline} inline Pandoc markers`;
+  }
+  return cited === source.zcites ? null : `${cited} citations for ${source.zcites} <zcite>`;
+}
+
+/**
  * Everything both producers must write identically, except the random citationID: the full field JSON of
  * every citation (citationItems with uris, itemData, locator, label, prefix, suffix; properties), the visible
  * text of every citation, the visible text of every paragraph, and the bibliography fields. With `prefs`
@@ -632,15 +735,29 @@ export function docxFingerprint(report, { prefs = false } = {}) {
     const { citationID: _random, ...rest } = c.json;
     return rest;
   });
+  const common = { fields, visible: report.citations.map((c) => c.visible) };
+  const withPrefs = prefs ? { documentPrefs: report.documentPrefs ?? null } : {};
+
+  // dispatch per sniff: il report docx porta documentXml (+ fields con i w:fldChar), l'odt porta contentXml
+  if (report.documentXml === undefined) {
+    const content = report.contentXml ?? "";
+    const paragraphs = (content.match(/<text:(p|h)\b[^>]*>([\s\S]*?)<\/text:\1>/g) ?? []).map((p) => decode(p.replace(/<[^>]*>/g, "")));
+    // il nome della sezione ZOTERO_BIBL, senza il suffisso RND casuale (diverso tra i due produttori)
+    const bibliography = [...content.matchAll(/<text:section text:name="([^"]*)"/g)]
+      .map((m) => decode(m[1]))
+      .filter((n) => n.startsWith("ZOTERO_BIBL"))
+      .map((n) => n.replace(/ RND[0-9A-Za-z]{10}$/, ""));
+    return { ...common, paragraphs, bibliography, ...withPrefs };
+  }
+
   const paragraphs = (report.documentXml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).map((p) =>
     decode([...p.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]).join(""))
   );
   return {
-    fields,
-    visible: report.citations.map((c) => c.visible),
+    ...common,
     paragraphs,
     bibliography: report.fields.filter((f) => f.instr.trim().startsWith("ADDIN ZOTERO_BIBL")).map((f) => f.instr.trim()),
-    ...(prefs ? { documentPrefs: report.documentPrefs ?? null } : {}),
+    ...withPrefs,
   };
 }
 
@@ -671,6 +788,8 @@ export function itemCoverage(report) {
 
 async function documentXmlOf(path) {
   const zip = await JSZip.loadAsync(readFileSync(path));
+  // docx: word/document.xml; odt: content.xml
+  if (path.endsWith(".odt")) return (await zip.file("content.xml")?.async("string")) ?? "";
   return (await zip.file("word/document.xml")?.async("string")) ?? "";
 }
 
@@ -715,6 +834,9 @@ export function createdByCalls(calls, userLibrary) {
       case "find_and_attach_pdfs":
         for (const x of json.results ?? []) add(x?.attachment_key, "attachment");
         break;
+      case "create_note":
+        add(json.note_key ?? json.item_key ?? json.key, "note");
+        break;
     }
   }
   return out;
@@ -748,6 +870,14 @@ export function createdCallFindings(created, calls, userLibrary) {
       continue;
     }
     if (origin.kind === "item" && origin.name !== undefined) res.titles.set(c.key, origin.name);
+  }
+  // update_item is a write that supersedes the title the creating call reported: the expected title becomes the
+  // latest value a successful update_item set on that key (its `fields.title` input), in call order.
+  for (const call of calls) {
+    if (call.tool !== "update_item" || !successJson(call)) continue;
+    const key = call.input?.item_key;
+    const title = call.input?.fields?.title;
+    if (typeof key === "string" && res.titles.has(key) && typeof title === "string") res.titles.set(key, title);
   }
   return res;
 }
@@ -790,8 +920,27 @@ export function metadataFindings(list, calls, read) {
   const res = { problems: [], checks: [] };
   const declared = new Map((Array.isArray(list) ? list : []).map((m) => [String(m?.path ?? ""), m]));
   const byNo = new Map(calls.filter((c) => Number.isInteger(c.callNo)).map((c) => [c.callNo, c]));
-  const used = new Set(calls.filter((c) => c.name === "Bash").map((c) => injectMetadataPath(c.input?.command)).filter(Boolean));
-  for (const path of used) if (!declared.has(path)) res.problems.push(`metadata ${path}: used by inject.js but not declared in claims.metadata with its call_no`);
+  // Each metadata path an inject.mjs command used, and whether any inject that used it succeeded.
+  const used = new Map();
+  for (const c of calls.filter((x) => x.name === "Bash")) {
+    const path = injectMetadataPath(c.input?.command);
+    if (!path) continue;
+    const prev = used.get(path) ?? { anySuccess: false };
+    if (!c.result?.isError) prev.anySuccess = true;
+    used.set(path, prev);
+  }
+  for (const [path, { anySuccess }] of used) {
+    if (declared.has(path)) continue;
+    // A metadata file used ONLY by inject.js calls that failed never needs a claims.metadata entry, whether it
+    // exists (e.g. deliberately malformed JSON) or not (a nonexistent path): it is a legitimate test of
+    // inject.js's error path. Only metadata used by a SUCCESSFUL inject must be declared with its
+    // get_items_details call_no (so the verifier can compare the file with the audited result).
+    if (!anySuccess) {
+      res.checks.push(`metadata ${path}: not declared, used only by inject calls that failed (error-path test)`);
+      continue;
+    }
+    res.problems.push(`metadata ${path}: used by inject.js but not declared in claims.metadata with its call_no`);
+  }
   for (const [path, m] of declared) {
     const call = byNo.get(m?.call_no);
     if (!call || call.tool !== "get_items_details" || call.result.isError) {
@@ -846,6 +995,11 @@ export function targetedFindings(scenarios, context, table) {
 /** Style id of the Zotero document preferences in a docx (docProps/custom.xml), or null. */
 async function documentPrefsStyleOf(path) {
   const zip = await JSZip.loadAsync(readFileSync(path));
+  if (path.endsWith(".odt")) {
+    const meta = (await zip.file("meta.xml")?.async("string")) ?? "";
+    const value = [...meta.matchAll(/meta:name="ZOTERO_PREF_\d+"[^>]*>([\s\S]*?)<\/meta:user-defined>/g)].map((m) => decode(m[1])).join("");
+    return /<style\b[^>]*\bid="([^"]+)"/.exec(value)?.[1] ?? null;
+  }
   const custom = (await zip.file("docProps/custom.xml")?.async("string")) ?? "";
   const value = [...custom.matchAll(/name="ZOTERO_PREF_\d+"[^>]*>\s*<vt:lpwstr>([\s\S]*?)<\/vt:lpwstr>/g)].map((m) => decode(m[1])).join("");
   return /<style\b[^>]*\bid="([^"]+)"/.exec(value)?.[1] ?? null;
@@ -948,7 +1102,7 @@ async function main() {
     const edge = edgeCaseEvidence(calls, { anyCall: v3 });
     edge.problems.forEach(fail);
     if (!edge.problems.length) ok("F9/F10: edge cases verified on the audit");
-    const x = exploratoryFindings(claims.exploratory, calls, edge.evidence);
+    const x = exploratoryFindings(claims.exploratory, calls, edge.evidence, denials);
     x.problems.forEach(fail);
     warnings.push(...x.warnings);
     checks.push(...x.checks);
@@ -1065,8 +1219,9 @@ async function main() {
     }
     const kind = dItem.kind === "collection" ? "collections" : "items";
     const r = await api(`${dItem.library_path}/${kind}/${dItem.key}`);
-    if (r.status !== 404) fail(`${dItem.kind ?? "item"} ${dItem.key} claimed deleted but HTTP ${r.status}`);
-    else ok(`deleted ${dItem.key}`);
+    const outcome = deletedClaimOutcome(dItem, r);
+    if (outcome.ok) ok(outcome.message);
+    else fail(outcome.message);
   }
 
   // Produced documents: valid structure/CSL/rendering, URIs pointing at created items
@@ -1081,7 +1236,7 @@ async function main() {
       fail(`docx ${doc.path}: unknown style ${doc.style}`);
       continue;
     }
-    if (!["inject_citations", "inject.js"].includes(doc.producer)) {
+    if (!["inject_citations", "inject.js", "create_cited_document"].includes(doc.producer)) {
       fail(`docx ${doc.path}: unknown producer ${doc.producer}`);
       continue;
     }
@@ -1094,15 +1249,18 @@ async function main() {
       fail(`docx ${doc.path}: unknown document_prefs style ${doc.document_prefs}`);
       continue;
     }
-    const source = sourceFeatures(await documentXmlOf(sourcePath));
+    const isOdt = path.endsWith(".odt");
+    const source = sourceFeatures(await documentXmlOf(sourcePath), sourcePath.endsWith(".odt"));
     // schema 3: every document with citations must carry the document preferences (of the source, if it had them)
     const prefsOptions = v3 ? { requireDocumentPrefs: source.zcites > 0, documentPrefsStyle: doc.document_prefs } : {};
-    const report = await validateDocx(readFileSync(path), { style: doc.style, libraryPath: doc.library_path, ...prefsOptions });
+    const validate = isOdt ? validateOdt : validateDocx;
+    const report = await validate(readFileSync(path), { style: doc.style, libraryPath: doc.library_path, ...prefsOptions });
     const before = problems.length;
     for (const e of report.errors) fail(`docx ${doc.path}: ${e}`);
     // the numbering is the agent's choice; for author-date styles the visible text must match citeproc
     if (!NUMBERED.has(doc.style)) for (const m of report.mismatches) fail(`docx ${doc.path}: ${m}`);
-    if (report.citations.length !== source.zcites) fail(`docx ${doc.path}: ${report.citations.length} citations for ${source.zcites} <zcite> in ${doc.source}`);
+    const countProblem = citationCountProblem(source, report.citations.length);
+    if (countProblem) fail(`docx ${doc.path}: ${countProblem} in ${doc.source}`);
     for (const cite of report.citations) {
       for (const ci of cite.json.citationItems ?? []) {
         const m = /^http:\/\/zotero\.org\/((?:users|groups)\/\d+)\/items\/([A-Z0-9]{8})$/.exec(ci.uris?.[0] ?? "");

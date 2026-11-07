@@ -7,7 +7,11 @@ import { resolveLibrary, libraryArgsSchema } from "../utils/library-context.js";
 
 export const toolConfig = {
   name: "inject_citations",
-  description: `Replace <zcite> placeholder tags in a .docx file with native Zotero field codes that Zotero for Word can recognize and manage. The tool fetches item metadata from Zotero automatically — you only need to provide the .docx file.
+  description: `Replace citation placeholders in a .docx (or .odt) file with native Zotero field codes that Zotero can recognize and manage. The tool fetches item metadata from Zotero automatically — you only need to provide the file.
+
+PLACEHOLDER SYNTAX — two kinds, recognized automatically (no flag):
+- <zcite keys="ITEMKEY"/> tags (see ZCITE TAG FORMAT below). If the document has any <zcite> tag, it is handled as a zcite document.
+- Pandoc citation markers when there are no <zcite> tags: bracketed [@KEY], [@K1; @K2], [see @KEY, p. 12], -@KEY to suppress the author, or inline @KEY. KEY may be a Zotero 8-character key or a Better BibTeX citation key (e.g. [@rossi2020]); citation keys are case-sensitive and resolved against each item's citationKey field or a "Citation Key: <key>" line in Extra. Prefer the bracketed form [@KEY] — it is the reliable one: an inline @word that does not resolve (a handle, an email, code like @media or @angular/core, or a marker Word split across runs) is left as plain text with a warning, never an error, whereas an unknown or ambiguous key in a bracketed [@…] IS an error and nothing is written. A document that mixes <zcite> and [@…] is treated as zcite, and the Pandoc markers are reported so you can call the tool again on the output.
 
 WORKFLOW — how to create a Word document with live Zotero citations:
 1. Collect item keys: use add_items_by_doi or add_items (or search_library for existing items)
@@ -38,7 +42,7 @@ WHERE THE FILE LIVES: this tool reads and writes files on the machine where this
     file_path: z
       .string()
       .describe(
-        'Absolute path to the .docx file containing <zcite keys="..."/> placeholder tags'
+        'Absolute path to the .docx (Word) or .odt (LibreOffice) file containing <zcite keys="..."/> placeholder tags'
       ),
     style: z
       .enum(["apa", "ieee", "vancouver", "harvard", "chicago"])
@@ -46,6 +50,12 @@ WHERE THE FILE LIVES: this tool reads and writes files on the machine where this
       .default("apa")
       .describe(
         "Citation style for the visible placeholder text. Zotero will reformat on refresh. Default: apa"
+      ),
+    format: z
+      .enum(["docx", "odt"])
+      .optional()
+      .describe(
+        "Document format: docx for Word, odt for LibreOffice. Defaults to the file extension; an error if it disagrees with the extension or the file content."
       ),
     ...libraryArgsSchema,
   },
@@ -64,23 +74,37 @@ export async function handleInjectCitations(
   userId: string,
   args: Record<string, unknown>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  const { file_path, style, library_type, library_id } = InjectCitationsSchema.parse(args);
+  const { file_path, style, format, library_type, library_id } = InjectCitationsSchema.parse(args);
   const { type: libraryType, id: libraryId } = resolveLibrary({ library_type, library_id }, userId);
 
-  if (!file_path.endsWith(".docx")) {
-    return formatErrorResponse("File must be a .docx file", {
+  const extFormat = file_path.endsWith(".docx") ? "docx" : file_path.endsWith(".odt") ? "odt" : undefined;
+  if (!extFormat) {
+    return formatErrorResponse("File must be a .docx (Word) or .odt (LibreOffice) file", {
       file_path,
-      hint: "Only Word .docx files are supported and the name must end in lowercase .docx: convert .doc, .odt or .rtf to .docx first, or create the document as .docx with <zcite> placeholders.",
+      hint: "The name must end in lowercase .docx or .odt: convert .doc or .rtf first, or create the document as .docx/.odt with <zcite> placeholders.",
     });
   }
+  if (format && format !== extFormat) {
+    return formatErrorResponse(`format '${format}' does not match the file extension of ${file_path}`, {
+      file_path,
+      hint: `The file ends in .${extFormat}: pass format "${extFormat}" or omit it, or rename the file to match the format.`,
+    });
+  }
+  const resolvedFormat = format ?? extFormat;
 
   let result: Awaited<ReturnType<typeof injectCitations>>;
   try {
-    result = await injectCitations(file_path, zoteroApi, libraryType, libraryId, style);
+    result = await injectCitations(file_path, zoteroApi, libraryType, libraryId, style, resolvedFormat);
   } catch (err) {
     // A path from a sandbox or cloud workspace (Claude.ai, Claude Desktop code execution) does not exist here:
     // say so and point to the skill instead of a bare ENOENT.
     const code = (err as NodeJS.ErrnoException).code;
+    if (code === "EBUSY") {
+      return formatErrorResponse("Cannot write the _cited copy: the output file is locked (EBUSY).", {
+        file_path,
+        hint: "Close the _cited file if it is open in Word (or another program) and call again.",
+      });
+    }
     if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
       return formatErrorResponse(`Cannot read the file or write the _cited copy next to it (${code}).`, {
         file_path,

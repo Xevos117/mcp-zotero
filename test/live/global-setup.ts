@@ -170,11 +170,13 @@ async function seed(z: ZoteroWeb, runTag: string, prefix: string) {
 /** Chiavi da cancellare: tutte quelle candidate che portano un marcatore della run. */
 async function verifiedRunItems(z: ZoteroWeb, runId: string, runTag: string, runCollections: Set<string>): Promise<{ keys: string[]; refused: string[] }> {
   const candidates = new Set<string>(readRegistry(runId).items);
-  for (const it of await z.getAll<any>(`items?tag=${encodeURIComponent(runTag)}`)) candidates.add(it.key);
-  for (const it of await z.getAll<any>(`items?q=${encodeURIComponent(runId)}&qmode=titleCreatorYear`)) candidates.add(it.key);
+  // includeTrashed=1 su ogni elenco: un delete_items non permanente lascia la voce nel cestino, che per
+  // default è escluso dalle liste per tag/ricerca/collezione — senza questo resterebbe orfano nel cestino.
+  for (const it of await z.getAll<any>(`items?tag=${encodeURIComponent(runTag)}&includeTrashed=1`)) candidates.add(it.key);
+  for (const it of await z.getAll<any>(`items?q=${encodeURIComponent(runId)}&qmode=titleCreatorYear&includeTrashed=1`)) candidates.add(it.key);
   for (const c of runCollections) {
     const r = await z.get<any[]>(`collections/${c}/items?limit=100`);
-    if (r.status === 200) for (const it of await z.getAll<any>(`collections/${c}/items`)) candidates.add(it.key);
+    if (r.status === 200) for (const it of await z.getAll<any>(`collections/${c}/items?includeTrashed=1`)) candidates.add(it.key);
   }
   const data = new Map<string, any>();
   const fetchData = async (keys: string[]) => {
@@ -185,9 +187,10 @@ async function verifiedRunItems(z: ZoteroWeb, runId: string, runTag: string, run
     }
   };
   await fetchData([...candidates]);
-  // figli (allegati creati dai tool) dei candidati
+  // figli (allegati/note creati dai tool) dei candidati; includeTrashed=1 così un figlio nel cestino
+  // (o il figlio di un genitore cestinato) non sfugge alla pulizia
   for (const key of [...data.keys()]) {
-    const r = await z.get<any[]>(`items/${key}/children?limit=100`);
+    const r = await z.get<any[]>(`items/${key}/children?limit=100&includeTrashed=1`);
     if (r.status === 200) for (const child of r.data) data.set(child.key, child.data);
   }
   const verified = new Set<string>();
@@ -292,14 +295,15 @@ async function sweepStale(z: ZoteroWeb, label = "pulizia avanzi") {
   };
   const staleColls = (await z.getAll<any>("collections")).filter((c) => stale(nameRun(String(c.data.name))));
   const keys = new Set<string>();
-  for (const c of staleColls) for (const it of await z.getAll<any>(`collections/${c.key}/items`)) keys.add(it.key);
-  for (const it of await z.getAll<any>(`items?q=${RUN_PREFIX}&qmode=titleCreatorYear`)) {
+  // includeTrashed=1: raccogli anche le voci lasciate nel cestino da delete_items non permanenti.
+  for (const c of staleColls) for (const it of await z.getAll<any>(`collections/${c.key}/items?includeTrashed=1`)) keys.add(it.key);
+  for (const it of await z.getAll<any>(`items?q=${RUN_PREFIX}&qmode=titleCreatorYear&includeTrashed=1`)) {
     if (stale(nameRun(String(it.data.title ?? "")))) keys.add(it.key);
   }
   const tags = await z.getAll<any>(`tags?q=${encodeURIComponent("mzt-run:")}&qmode=startsWith`);
   for (const t of tags) {
     if (!stale(String(t.tag).slice("mzt-run:".length))) continue;
-    for (const it of await z.getAll<any>(`items?tag=${encodeURIComponent(t.tag)}`)) keys.add(it.key);
+    for (const it of await z.getAll<any>(`items?tag=${encodeURIComponent(t.tag)}&includeTrashed=1`)) keys.add(it.key);
   }
   if (keys.size) await z.deleteKeys("items", [...keys]);
   if (staleColls.length) await z.deleteKeys("collections", staleColls.map((c) => c.key));

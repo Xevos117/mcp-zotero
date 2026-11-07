@@ -55,6 +55,7 @@ export interface ZoteroCitationItem {
   locator?: string;
   prefix?: string;
   suffix?: string;
+  "suppress-author"?: boolean;
 }
 
 export interface ZoteroCslCitation {

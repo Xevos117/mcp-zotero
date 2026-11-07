@@ -71,6 +71,54 @@ export async function readDocumentXml(docx: Buffer): Promise<string> {
   return entry.async("string");
 }
 
+// ─── ODT (LibreOffice) ──────────────────────────────────────────
+
+const ODT_NS =
+  'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" ' +
+  'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" ' +
+  'xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" ' +
+  'xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0"';
+const ODT_MIME = "application/vnd.oasis.opendocument.text";
+
+/** Paragrafo ODF con il testo indicato (già XML-escapato); i testi vengono concatenati. */
+export function odtPara(...texts: string[]): string {
+  return `<text:p>${texts.join("")}</text:p>`;
+}
+
+/** text:span con il testo indicato (per i test di tag spezzato tra più span). */
+export function odtSpan(text: string): string {
+  return `<text:span>${text}</text:span>`;
+}
+
+export function contentXml(bodyInner: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${ODT_NS}><office:body><office:text>${bodyInner}</office:text></office:body></office:document-content>`;
+}
+
+/** .odt reale (zip) con il body indicato: mimetype STORED e primo, content/styles/meta/manifest. */
+export async function makeOdt(bodyInner: string, opts: { omitContent?: boolean; meta?: string; styles?: string } = {}): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file("mimetype", ODT_MIME, { compression: "STORE" });
+  zip.file(
+    "META-INF/manifest.xml",
+    '<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.3">' +
+      `<manifest:file-entry manifest:full-path="/" manifest:version="1.3" manifest:media-type="${ODT_MIME}"/>` +
+      '<manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>' +
+      '<manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>' +
+      '<manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/></manifest:manifest>'
+  );
+  if (!opts.omitContent) zip.file("content.xml", contentXml(bodyInner));
+  zip.file("styles.xml", opts.styles ?? `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${ODT_NS}><office:styles/></office:document-styles>`);
+  zip.file("meta.xml", opts.meta ?? `<?xml version="1.0" encoding="UTF-8"?><office:document-meta ${ODT_NS}><office:meta/></office:document-meta>`);
+  return zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+}
+
+export async function readContentXml(odt: Buffer): Promise<string> {
+  const zip = await JSZip.loadAsync(odt);
+  const entry = zip.file("content.xml");
+  if (!entry) throw new Error("content.xml missing");
+  return entry.async("string");
+}
+
 export interface TempDir {
   path: string;
   file(name: string, data: Buffer | string): Promise<string>;

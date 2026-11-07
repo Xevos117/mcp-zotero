@@ -14,13 +14,16 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve, sep } from "node:path";
 import JSZip from "jszip";
 
-const argv = process.argv.slice(2);
+const rawArgv = process.argv.slice(2);
+const odt = rawArgv.includes("--odt"); // LibreOffice: stesso spec, output .odt
+const argv = rawArgv.filter((a) => a !== "--odt");
+const ext = odt ? ".odt" : ".docx";
 const specText = argv.length >= 2 ? argv[argv.length - 1] : undefined;
 const outs = argv.slice(0, -1);
 const root = resolve("agent-out");
-const valid = (out) => resolve(out).startsWith(root + sep) && resolve(out).endsWith(".docx");
+const valid = (out) => resolve(out).startsWith(root + sep) && resolve(out).endsWith(ext);
 if (!specText || outs.length === 0 || !outs.every(valid)) {
-  console.error("usage: make-docx.mjs agent-out/<name>.docx [agent-out/<other>.docx ...] '<json spec>' (outputs must be .docx inside agent-out/)");
+  console.error(`usage: make-docx.mjs [--odt] agent-out/<name>${ext} [agent-out/<other>${ext} ...] '<json spec>' (outputs must be ${ext} inside agent-out/)`);
   process.exit(2);
 }
 let spec;
@@ -59,35 +62,79 @@ function renderRun(r) {
   if (r.before !== undefined || r.after !== undefined) return run(`${r.before ?? ""}${t}${r.after ?? ""}`);
   return run(t);
 }
+// ODT: stesse run dello spec, ma elementi ODF. Il tag in un text:span, lo split in tre text:span.
+function renderRunOdt(r) {
+  if (typeof r === "string") return esc(r);
+  const t = tag(r?.zcite);
+  if (!t) throw new Error(`invalid run ${JSON.stringify(r)} (zcite needs a string "keys"; attribute values cannot contain ")`);
+  if (r.split) {
+    const a = t.indexOf('"') + 1;
+    const b = t.length - 3;
+    return [t.slice(0, a), t.slice(a, b), t.slice(b)].map((part) => `<text:span>${esc(part)}</text:span>`).join("");
+  }
+  if (r.before !== undefined || r.after !== undefined) return esc(`${r.before ?? ""}${t}${r.after ?? ""}`);
+  return `<text:span>${esc(t)}</text:span>`;
+}
+
+if (odt && prefsStyle !== undefined) {
+  console.error("make-docx: --odt does not support the prefs spec");
+  process.exit(2);
+}
+
 let body;
 try {
-  body = paragraphs.map((runs) => `<w:p>${runs.map(renderRun).join("")}</w:p>`).join("");
+  body = odt
+    ? paragraphs.map((runs) => `<text:p>${runs.map(renderRunOdt).join("")}</text:p>`).join("")
+    : paragraphs.map((runs) => `<w:p>${runs.map(renderRun).join("")}</w:p>`).join("");
 } catch (e) {
   console.error(`make-docx: ${e.message}`);
   process.exit(2);
 }
 
 const zip = new JSZip();
-zip.file(
-  "[Content_Types].xml",
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'
-);
-zip.file(
-  "_rels/.rels",
-  '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'
-);
-zip.file(
-  "word/document.xml",
-  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr/></w:body></w:document>`
-);
-if (prefsStyle !== undefined) {
-  const { writeZoteroDocumentPrefs } = await import("../../../src/citation-injector/document-prefs.ts");
-  if ((await writeZoteroDocumentPrefs(zip, prefsStyle)) !== "written") {
-    console.error(`make-docx: no document preferences for style ${JSON.stringify(prefsStyle)} (apa, ieee, vancouver, harvard, chicago)`);
-    process.exit(2);
+let buffer;
+if (odt) {
+  const ODT_MIME = "application/vnd.oasis.opendocument.text";
+  const NS =
+    'xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" ' +
+    'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" ' +
+    'xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0" ' +
+    'xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0"';
+  zip.file("mimetype", ODT_MIME, { compression: "STORE" });
+  zip.file(
+    "META-INF/manifest.xml",
+    '<?xml version="1.0" encoding="UTF-8"?><manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.3">' +
+      `<manifest:file-entry manifest:full-path="/" manifest:version="1.3" manifest:media-type="${ODT_MIME}"/>` +
+      '<manifest:file-entry manifest:full-path="content.xml" manifest:media-type="text/xml"/>' +
+      '<manifest:file-entry manifest:full-path="styles.xml" manifest:media-type="text/xml"/>' +
+      '<manifest:file-entry manifest:full-path="meta.xml" manifest:media-type="text/xml"/></manifest:manifest>'
+  );
+  zip.file("content.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-content ${NS}><office:body><office:text>${body}</office:text></office:body></office:document-content>`);
+  zip.file("styles.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-styles ${NS}><office:styles/></office:document-styles>`);
+  zip.file("meta.xml", `<?xml version="1.0" encoding="UTF-8"?><office:document-meta ${NS}><office:meta/></office:document-meta>`);
+  buffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+} else {
+  zip.file(
+    "[Content_Types].xml",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'
+  );
+  zip.file(
+    "_rels/.rels",
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'
+  );
+  zip.file(
+    "word/document.xml",
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr/></w:body></w:document>`
+  );
+  if (prefsStyle !== undefined) {
+    const { writeZoteroDocumentPrefs } = await import("../../../src/citation-injector/document-prefs.ts");
+    if ((await writeZoteroDocumentPrefs(zip, prefsStyle)) !== "written") {
+      console.error(`make-docx: no document preferences for style ${JSON.stringify(prefsStyle)} (apa, ieee, vancouver, harvard, chicago)`);
+      process.exit(2);
+    }
   }
+  buffer = await zip.generateAsync({ type: "nodebuffer" });
 }
-const buffer = await zip.generateAsync({ type: "nodebuffer" });
 for (const out of outs) {
   mkdirSync(dirname(resolve(out)), { recursive: true });
   writeFileSync(resolve(out), buffer);

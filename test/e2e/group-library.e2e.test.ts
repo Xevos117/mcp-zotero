@@ -128,8 +128,8 @@ describe("e2e: libreria di gruppo (ZOTERO_LIBRARY_TYPE=group, ZOTERO_LIBRARY_ID=
 
   it("E2E-G07 delete_items e delete_collection su /groups/777/", async () => {
     fake.net.on("GET", GITEMS, zLibraryQuery([article("AAAARRRR")], 40));
-    fake.net.on("DELETE", GITEMS, zDeleted());
-    expect((await call(s, "delete_items", { item_keys: ["AAAARRRR"] })).json).toMatchObject({ deleted_count: 1 });
+    fake.net.on("POST", GITEMS, zWrite());
+    expect((await call(s, "delete_items", { item_keys: ["AAAARRRR"] })).json).toMatchObject({ deleted_count: 1, mode: "trash" });
     fake.net.on("GET", `${GBASE}/collections/CPLQQQQR`, zSingle(collection("CPLQQQQR", "Team"), 9));
     fake.net.on("DELETE", `${GBASE}/collections/CPLQQQQR`, zDeleted());
     expect((await call(s, "delete_collection", { collection_key: "CPLQQQQR" })).json).toMatchObject({ deleted: true });
@@ -152,6 +152,18 @@ describe("e2e: libreria di gruppo (ZOTERO_LIBRARY_TYPE=group, ZOTERO_LIBRARY_ID=
     installUnpaywall(fake.net, { "10.1000/aaaarrrr": oaGold("https://oa.example.org/a.pdf") });
     const out = await call(s, "find_and_attach_pdfs", { item_keys: ["AAAARRRR"], dry_run: true });
     expect(out.json.results[0]).toMatchObject({ status: "available" });
+  });
+
+  it("E2E-G09b find_duplicates legge /groups/777/items/top e raggruppa per DOI", async () => {
+    const dupA = article("DUPGGGG2", { DOI: "10.5555/gdup", title: "Group DOI dup A" });
+    const dupB = article("DUPGGGG3", { DOI: "https://doi.org/10.5555/GDUP", title: "Group DOI dup B" });
+    fake.net.on("GET", `${GITEMS}/top`, zLibraryQuery([dupA, dupB]));
+    const out = await call(s, "find_duplicates", {});
+    expect(out.isError).toBe(false);
+    expect(out.json).toMatchObject({ mode: "scan", scanned: 2, duplicate_groups: 1 });
+    expect(out.json.groups[0]).toMatchObject({ match: "doi", key: "10.5555/gdup" });
+    expect(out.json.groups[0].items.map((i: { key: string }) => i.key)).toEqual(["DUPGGGG2", "DUPGGGG3"]);
+    expect(fake.net.requests("GET", `${GITEMS}/top`).length).toBeGreaterThan(0);
   });
 
   it("E2E-G10 ogni richiesta a api.zotero.org finora ha usato solo /groups/777/", () => {

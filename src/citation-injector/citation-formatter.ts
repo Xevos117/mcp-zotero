@@ -5,6 +5,8 @@ export interface CitationTextOptions {
   locator?: string;
   prefix?: string;
   suffix?: string;
+  /** Pandoc `-@K`: omette l'autore (negli stili autore-data resta solo l'anno). */
+  suppressAuthor?: boolean;
 }
 
 /**
@@ -74,6 +76,9 @@ export function formatCitationText(items: CslItemData[], style: string, opts: Ci
     const name = (a: NonNullable<CslItemData["author"]>[number]) => a.family ?? a.literal ?? "Unknown";
     const year =
       item.issued?.["date-parts"]?.[0]?.[0]?.toString() ?? "n.d.";
+
+    // suppress-author (pandoc -@K): solo l'anno, con eventuali locator/prefix/suffix
+    if (opts.suppressAuthor) return `${prefix}${year}${locator}${suffix}`;
 
     let authorText: string;
     if (!authors || authors.length === 0) {

@@ -118,7 +118,7 @@ function readFixture(name: string): string {
   return readFileSync(new URL(name, CSL_DIR), "utf8");
 }
 
-function getCitationValidator() {
+export function getCitationValidator() {
   if (citationValidator) return citationValidator;
   const data = JSON.parse(readFixture("csl-data.json"));
   const citation = JSON.parse(readFixture("csl-citation.json"));
@@ -306,7 +306,7 @@ function renderClusters(engine: any, clusters: Array<Array<Record<string, unknow
   return clusters.map((_, i) => texts.get(`mzt-c${i}`) ?? "");
 }
 
-function renderWithCiteproc(report: DocxReport, style: CitationStyle): void {
+export function renderWithCiteproc(report: DocxReport, style: CitationStyle): void {
   // id sintetici = URI della voce (+ numero di validazione): stabili tra citazioni, indipendenti da citationItems[].id
   const run = ++validationSeq;
   const idOf = (uri: string) => `${uri}#v${run}`;
@@ -324,7 +324,7 @@ function renderWithCiteproc(report: DocxReport, style: CitationStyle): void {
         items.set(idOf(uri), { ...ci.itemData, id: idOf(uri) });
       }
       const entry: Record<string, unknown> = { id: idOf(uri) };
-      for (const k of ["locator", "label", "prefix", "suffix"]) if (ci[k] !== undefined) entry[k] = ci[k];
+      for (const k of ["locator", "label", "prefix", "suffix", "suppress-author"]) if (ci[k] !== undefined) entry[k] = ci[k];
       full.push(entry);
     }
     clusters.push(full);
@@ -368,15 +368,17 @@ function compareKeyParts(report: DocxReport, style: CitationStyle, c: CitationFi
   for (const ci of c.json.citationItems ?? []) {
     const family = firstFamily(ci.itemData ?? {});
     const y = year(ci.itemData ?? {});
-    if (family && !c.visible.includes(family)) report.mismatches.push(`${where}: cognome "${family}" assente dal testo visibile`);
-    if (family && !rendered.includes(family)) report.mismatches.push(`${where}: cognome "${family}" assente dal rendering CSL`);
+    // suppress-author (pandoc -@K): l'autore è volutamente assente dal testo e dal rendering, si controlla solo l'anno
+    const suppressed = ci["suppress-author"] === true;
+    if (!suppressed && family && !c.visible.includes(family)) report.mismatches.push(`${where}: cognome "${family}" assente dal testo visibile`);
+    if (!suppressed && family && !rendered.includes(family)) report.mismatches.push(`${where}: cognome "${family}" assente dal rendering CSL`);
     if (y && !c.visible.includes(y)) report.mismatches.push(`${where}: anno ${y} assente dal testo visibile`);
     if (y && !rendered.includes(y)) report.mismatches.push(`${where}: anno ${y} assente dal rendering CSL`);
     if (!y && !c.visible.includes("n.d.")) report.mismatches.push(`${where}: voce senza anno ma "n.d." assente`);
   }
 }
 
-function checkCitation(json: Record<string, any>, visible: string, idx: number, opts: ValidateOptions, errors: string[]): void {
+export function checkCitation(json: Record<string, any>, visible: string, idx: number, opts: ValidateOptions, errors: string[]): void {
   const where = `citazione ${idx + 1}`;
   const validate = getCitationValidator();
   if (!validate(json)) {

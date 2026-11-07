@@ -19,11 +19,14 @@ const part = (zip: JSZip, name: string) => zip.file(name)!.async("string");
 
 describe("document-prefs (preferenze Zotero del documento, H-W1)", () => {
   it("DP-01 valore come lo serializza Zotero: data-version 3, sessione di 8 caratteri, stile, fieldType Field", () => {
-    const v = zoteroDocumentData("http://www.zotero.org/styles/apa", "AbCd1234");
+    const v = zoteroDocumentData("http://www.zotero.org/styles/apa", "Field", "AbCd1234");
     expect(v).toBe(
       '<data data-version="3"><session id="AbCd1234"/><style id="http://www.zotero.org/styles/apa" locale="en-US" hasBibliography="1" bibliographyStyleHasBeenSet="0"/><prefs><pref name="fieldType" value="Field"/></prefs></data>'
     );
+    // fieldType ReferenceMark per LibreOffice (default Field per Word)
+    expect(zoteroDocumentData("x", "ReferenceMark", "S")).toContain('<pref name="fieldType" value="ReferenceMark"/>');
     expect(zoteroDocumentData("x")).toMatch(/<session id="[A-Za-z0-9]{8}"\/>/);
+    expect(zoteroDocumentData("x")).toContain('<pref name="fieldType" value="Field"/>');
     expect(Object.keys(ZOTERO_STYLE_IDS)).toEqual(["apa", "ieee", "vancouver", "harvard", "chicago"]);
   });
 

@@ -8,14 +8,19 @@ import { handleSearchLibrary, toolConfig as searchConfig } from "./search-librar
 import { handleCreateCollection, toolConfig as createCollectionConfig } from "./create-collection.js";
 import { handleAddItemsByDoi, toolConfig as addItemsByDoiConfig } from "./add-items-by-doi.js";
 import { handleInjectCitations, toolConfig as injectCitationsConfig } from "./inject-citations.js";
+import { handleCreateCitedDocument, toolConfig as createCitedDocumentConfig } from "./create-cited-document.js";
 import { handleGetItemFulltext, toolConfig as getItemFulltextConfig } from "./get-item-fulltext.js";
 import { handleGetUserId, toolConfig as getUserIdConfig } from "./get-user-id.js";
 import { handleAddLinkedUrlAttachment, toolConfig as addLinkedUrlAttachmentConfig } from "./add-linked-url-attachment.js";
 import { handleAddItems, toolConfig as addItemsConfig } from "./add-items.js";
+import { handleUpdateItem, toolConfig as updateItemConfig } from "./update-item.js";
+import { handleCreateNote, toolConfig as createNoteConfig } from "./create-note.js";
 import { handleImportPdfToZotero, toolConfig as importPdfToZoteroConfig } from "./import-pdf-to-zotero.js";
 import { handleFindAndAttachPdfs, toolConfig as findAndAttachPdfsConfig } from "./find-and-attach-pdfs.js";
+import { handleFindDuplicates, toolConfig as findDuplicatesConfig } from "./find-duplicates.js";
 import { handleDeleteCollection, toolConfig as deleteCollectionConfig } from "./delete-collection.js";
 import { handleDeleteItems, toolConfig as deleteItemsConfig } from "./delete-items.js";
+import { handleCheckRetractions, toolConfig as checkRetractionsConfig } from "./check-retractions.js";
 
 import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { ZodRawShape } from "zod";
@@ -37,14 +42,19 @@ const tools: Array<{ config: { name: string; description: string; inputSchema: Z
   { config: createCollectionConfig, handler: handleCreateCollection },
   { config: addItemsByDoiConfig, handler: handleAddItemsByDoi },
   { config: injectCitationsConfig, handler: handleInjectCitations },
+  { config: createCitedDocumentConfig, handler: handleCreateCitedDocument },
   { config: getItemFulltextConfig, handler: handleGetItemFulltext },
   { config: getUserIdConfig, handler: handleGetUserId },
   { config: addLinkedUrlAttachmentConfig, handler: handleAddLinkedUrlAttachment },
   { config: addItemsConfig, handler: handleAddItems },
+  { config: updateItemConfig, handler: handleUpdateItem },
+  { config: createNoteConfig, handler: handleCreateNote },
   { config: importPdfToZoteroConfig, handler: handleImportPdfToZotero },
   { config: findAndAttachPdfsConfig, handler: handleFindAndAttachPdfs },
+  { config: findDuplicatesConfig, handler: handleFindDuplicates },
   { config: deleteCollectionConfig, handler: handleDeleteCollection },
   { config: deleteItemsConfig, handler: handleDeleteItems },
+  { config: checkRetractionsConfig, handler: handleCheckRetractions },
 ];
 
 const handlers = new Map(tools.map(({ config, handler }) => [config.name, handler]));

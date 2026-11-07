@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// PreToolUse hook on Bash for the agent smoke test: the only commands allowed are the two wrappers the
-// test-mcp-zotero skill uses, in their exact shape. No chaining, pipes, redirections, substitutions, variables,
+// PreToolUse hook on Bash for the agent smoke test: the only commands allowed are the wrappers the
+// test-mcp-zotero skill uses (make-docx, inject, prompts), in their exact shape. No chaining, pipes, redirections, substitutions, variables,
 // env prefixes, other interpreters, node options or paths outside agent-out/. Anything else is denied with the
 // reason, before Claude Code's own permission rules (which stay as a second layer). A hook error denies.
 import { bashDecision, deny, readStdin, BASH_USAGE } from "./lib.mjs";

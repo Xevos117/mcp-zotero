@@ -66,7 +66,7 @@ test normali. Non restano `it.fails` nella suite.
 |---|---|---|
 | SL-01 | query | GET /items `q`, sort=dateAdded, direction=desc, limit=25, API key; lista formattata con dateAdded |
 | SL-02 | senza query | nessun `q` |
-| SL-03 | query di soli spazi / con spazi | `q` omesso / trimmato |
+| SL-03 | query di soli spazi / con spazi | trattata come nessuna query: elenca gli item (nessun errore), `q` omesso; query con spazi trimmata |
 | SL-04 | limit 500 | limit=100 |
 | SL-05 | sort=title, asc, limit 5 | parametri inoltrati; nessun dateAdded |
 | SL-06/07 | risultato vuoto con/senza query | risultato vuoto (`message`, non isError) "No results found" (con query) / "No items found"; `suggestion` con cosa provare (titolo/autore/anno, senza query) / come aggiungere voci |
@@ -87,7 +87,7 @@ test normali. Non restano `it.fails` nella suite.
 | GC-03 | Total-Results gonfiato | si ferma alla pagina vuota, nessun loop |
 | GC-04 | Total-Results assente | solo la prima pagina |
 | GC-05 | collezioni nel cestino | escluse di default, incluse con include_trashed |
-| GC-06/07 | tutte nel cestino / nessuna | risultato vuoto (suggestion include_trashed=true o create_collection / helpUrl, search_library e create_collection) |
+| GC-06/07 | tutte nel cestino / nessuna | **array vuoto `[]`** (mai un oggetto messaggio; stesso tipo per libreria piena/vuota, utente/gruppo; la guida è nella descrizione del tool) |
 | GC-08 | nomi unicode | preservati |
 | GC-09 | include_trashed non booleano | isError |
 | GC-10/11/12 | HTTP 4xx/5xx, errore sulla 2ª pagina, errore di rete | errore strutturato con `http_status` e `hint` (rete: "Network error") |
@@ -112,7 +112,7 @@ test normali. Non restano `it.fails` nella suite.
 | GID-01 | 2 chiavi | una sola GET `itemKey=A,B`; mappa chiave → campi specifici del tipo |
 | GID-02 | abstract | escluso di default, incluso con include_abstract |
 | GID-03 | campi strutturali/vuoti | omessi |
-| GID-04/05 | `[]` / nessun item | errore strutturato che dice dove prendere le chiavi (nessuna chiamata HTTP) / risultato vuoto con le chiavi richieste e suggestion |
+| GID-04/05 | `[]` / nessun item | **errore di validazione dello schema** (`-32602`, `min 1`, come delete_items/add_items; nessuna chiamata HTTP) / risultato vuoto con le chiavi richieste e suggestion |
 | GID-06 | chiavi in parte inesistenti (anche ripetute) | voci trovate più `not_found` con le mancanti (senza doppioni), senza isError |
 | GID-17 | tutte le chiavi trovate | nessun campo `not_found` |
 | GID-07/08 | fallback, unicode | ok |
@@ -232,6 +232,35 @@ test normali. Non restano `it.fails` nella suite.
 | ALU-07 | url mancante/non valido/numero, tags, collections | isError |
 | ALU-08/09 | HTTP 4xx/5xx, rete | isError |
 
+## update_item (`update-item.test.ts`)
+| ID | Scenario | Atteso |
+|---|---|---|
+| UI-01 | version corretta | GET poi PATCH con `If-Unmodified-Since-Version`, body = soli campi, nuova versione restituita in `version`, `updated_fields` |
+| UI-02 | version non combacia (pre-check sul GET) | errore `version_conflict` con `expected_version`/`current_version` e `hint` a get_items_details, nessuna PATCH |
+| UI-03 | 412 dal server (gara dopo il pre-check) | errore `version_conflict` con `current_version` dall'header, una sola PATCH (nessun retry) |
+| UI-04 | campo protetto (itemType/version/collections/parentItem/relations/dateAdded/dateModified/key) | errore "cannot be set" col nome del campo, nessuna chiamata |
+| UI-05 | campo non valido per il tipo | errore "Invalid fields" dopo il GET, nessuna PATCH |
+| UI-06 | creators sostituiti | mappati nella forma Zotero (name istituzionale o first/last), `creators_replaced` |
+| UI-07 | title su un tipo con nome di campo diverso (case) | rimappato a `caseName` nel body |
+| UI-08 | item inesistente (404) | errore "not found", nessuna PATCH |
+| UI-09 | fields vuoto e nessun creators | errore "Nothing to update", nessuna chiamata |
+| UI-10 | item_key malformato / version mancante | errore di validazione, nessuna chiamata |
+| UI-11 | creatorType non valido per il tipo | errore "Invalid fields" dopo il GET |
+| UI-12/13 | GET HTTP 4xx/5xx (≠404/412), rete | errore API con `http_status`/`hint` |
+
+## create_note (`create-note.test.ts`)
+| ID | Scenario | Atteso |
+|---|---|---|
+| CN-01 | nota figlia di un item regolare | GET del parent poi POST `itemType: note`, `parentItem`, HTML `<p>…</p>`, ritorna `{item_key, parent_item_key}` |
+| CN-02 | testo in paragrafi e righe | blank line → `<p>` separati, newline singolo → `<br/>`, XML escapato (`&amp;`, `&lt;`) |
+| CN-03 | tags | applicati come `[{tag}]` |
+| CN-04 | parent inesistente (404) | errore "not found" con `hint`, nessuna scrittura |
+| CN-05 | parent nota/allegato | errore "regular item", nessuna scrittura |
+| CN-06 | scrittura `failed` | errore strutturato "Failed to create note" con `details` |
+| CN-07 | parent_item_key malformato | errore di validazione, nessuna chiamata |
+| CN-08 | note vuota | errore di validazione, nessuna chiamata |
+| CN-09/10 | GET del parent HTTP 4xx/5xx (≠404), rete | errore API |
+
 ## delete_collection (`delete-collection.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
@@ -247,26 +276,71 @@ test normali. Non restano `it.fails` nella suite.
 | DC-10/11/12 | 403/429/500/503 su GET o DELETE, rete | errore strutturato con `http_status` e `hint` |
 | DC-13 | chiave mancante/vuota/numero | isError |
 
+`delete_collection` è sempre **permanente**: la Web API di Zotero non ha un cestino per le collezioni (solo DELETE). Verificato il 2026-10-27 sulla doc ufficiale `zotero.org/support/dev/web_api/v3/write_requests` (sezione "Deleting a collection": solo `DELETE …/collections/<key>`, nessuna proprietà `deleted`).
+
 ## delete_items (`delete-items.test.ts`)
+Per default `delete_items` **sposta nel cestino di Zotero** (scrittura multi-oggetto `{key, version, deleted:1}`, semantica PATCH del POST); l'output aggiunge `mode: "trash" | "permanent"` mantenendo `deleted_keys`/`deleted_count`. Con `permanent: true` torna il vecchio comportamento (DELETE definitivo). Lo stesso `UNSAFE_OPERATIONS` ('items'/'all') abilita entrambi i percorsi.
+
 | ID | Scenario | Atteso |
 |---|---|---|
 | DI-01 | **guard** none | errore strutturato "not allowed… UNSAFE_OPERATIONS is 'none'. Nothing was deleted."; `hint`: non aggirare il blocco, 'items' o 'all' e cosa abilitano, dove impostarli ("Deletions allowed" nell'estensione di Claude Desktop, `UNSAFE_OPERATIONS` in claude_desktop_config.json / .mcp.json), riavvio; nessuna chiamata HTTP |
-| DI-02 | items / all | consentito |
-| DI-03 | 2 chiavi | GET itemKey → DELETE `?itemKey=A,B` con la versione della libreria |
-| DI-04 | cancellazione parziale | not_found; cancellate solo le chiavi trovate |
-| DI-05 | nessuna trovata | errore strutturato con `hint` "Nothing was deleted…", nessuna DELETE |
-| DI-06 | 412 ripetuto | una nuova GET e un solo nuovo tentativo (2 GET, 2 DELETE), poi errore strutturato version_conflict con `http_status` 412 e `hint` "Retry the same call once.", senza `deleted_count` |
-| DI-06b | 412 poi successo | 2 GET, 2 DELETE, la seconda con `If-Unmodified-Since-Version` della nuova GET; tutte cancellate |
-| DI-06c | 412, nel frattempo una chiave sparita | la nuova GET chiede solo le chiavi da cancellare; seconda DELETE sulle rimaste, la sparita in `not_found` |
-| DI-06d | 412, nel frattempo sparite tutte | errore strutturato not_found, nessuna seconda DELETE |
-| DI-07 | versione assente | errore strutturato con `hint` di riprovare |
-| DI-08 | 20 chiavi | una GET + una DELETE |
-| DI-09 | 50 chiavi (massimo per chiamata) | tutte cancellate, GET di verifica con limit=50 |
+| DI-01b | none, sia cestino sia permanente | entrambi rifiutati, nessuna chiamata HTTP |
+| DI-02 | items / all (default = cestino) | consentito; `mode: "trash"` |
+| DI-18 | **cestino** (default), 2 chiavi | GET itemKey → POST `[{key,version,deleted:1}, …]` con `If-Unmodified-Since-Version`, nessuna DELETE; `mode: "trash"` |
+| DI-19 | cestino, cancellazione parziale | not_found; solo le chiavi trovate spostate nel cestino |
+| DI-20 | cestino, 412 sul POST poi successo | nuova GET, secondo POST con la nuova versione |
+| DI-21 | cestino, 412 ripetuto sul POST | errore version_conflict, al massimo 2 POST |
+| DI-22 | cestino, POST fallito su tutte le voci | errore "Could not move items to the trash", nessuna cancellazione |
+| DI-22b | cestino, fallimento **parziale** del POST (indice 1 fallito, 0 riuscito) | `{deleted_keys:[k0], deleted_count:1, mode:"trash", failed:[k1]}` |
+| DI-23 | cestino, voce **già nel cestino** (deleted:1), senza permanent | `already_in_trash:[k]`, `deleted_count:0`, `hint` su permanent:true, nessun POST |
+| DI-24 | cestino, mista viva + già nel cestino | cestina solo la viva, l'altra in `already_in_trash` |
+| DI-25 | **permanent** su una voce già nel cestino | DELETE, `mode:"permanent"` (il permanente raggiunge anche il cestino) |
+| DI-26 | chiave duplicata, cestino | deduplicata: un solo oggetto nel POST, non appare in `failed` |
+| DI-27 | chiave duplicata, permanent | deduplicata: una sola DELETE |
+| DI-03 | **permanent**, 2 chiavi | GET itemKey → DELETE `?itemKey=A,B` con la versione della libreria; `mode: "permanent"`, nessun POST |
+| DI-04 | permanent, cancellazione parziale | not_found; cancellate solo le chiavi trovate |
+| DI-05 | permanent, nessuna trovata | errore strutturato con `hint` "Nothing was deleted…", nessuna DELETE |
+| DI-06 | permanent, 412 ripetuto | una nuova GET e un solo nuovo tentativo (2 GET, 2 DELETE), poi errore strutturato version_conflict con `http_status` 412 e `hint` "Retry the same call once.", senza `deleted_count` |
+| DI-06b | permanent, 412 poi successo | 2 GET, 2 DELETE, la seconda con `If-Unmodified-Since-Version` della nuova GET; tutte cancellate |
+| DI-06c | permanent, 412, nel frattempo una chiave sparita | la nuova GET chiede solo le chiavi da cancellare; seconda DELETE sulle rimaste, la sparita in `not_found` |
+| DI-06d | permanent, 412, nel frattempo sparite tutte | errore strutturato not_found, nessuna seconda DELETE |
+| DI-07 | permanent, versione assente | errore strutturato con `hint` di riprovare |
+| DI-09 | permanent, 50 chiavi (massimo per chiamata) | tutte cancellate, GET di verifica con limit=50 |
 | DI-10/11/12 | 4xx/5xx su GET o DELETE, rete | errore strutturato con `http_status` e `hint` |
-| DI-13/14 | mancante, `[]`, stringa, 51 chiavi / esattamente 50 | isError / accettato |
+| DI-13 | mancante, `[]`, stringa, 51 chiavi, `permanent` non booleano | isError di validazione, nessuna chiamata |
 | DI-15 | validazione prima del guard | isError |
 | DI-16 | chiave malformata | errore di validazione, **nessuna richiesta** (prima della 2.0.1 l'API ignorava il filtro e delete_items cancellava voci estranee) |
-| DI-17 | API che restituisce più voci di quelle chieste (filtro ignorato) | cancellata solo la chiave richiesta |
+| DI-17 | cestino, API che restituisce più voci di quelle chieste (filtro ignorato) | spostata nel cestino solo la chiave richiesta |
+
+Nota: le chiavi `item_keys` sono deduplicate (ordine di prima comparsa) prima di qualsiasi scrittura, così una chiave ripetuta non viene scritta due volte nel POST/DELETE (prima finiva sia in `deleted_keys` sia in `failed`). La GET usa sempre `includeTrashed=1`. Il permanente raggiunge così anche le voci già nel cestino; il cestino riconosce le voci già cestinate (`already_in_trash`, non riscritte). Cestinare un genitore NON cestina i suoi figli (note/allegati), coerente con il client Zotero (`Zotero.Items.trash` marca solo le voci selezionate, verificato sul sorgente 2026-10-27); il permanente invece elimina anche i figli (cascata lato server).
+
+## check_retractions (`check-retractions.test.ts`)
+| ID | Scenario | Atteso |
+|---|---|---|
+| CR-01 | DOI con `updated-by` (correction + retraction) su Crossref | status `retracted`, nota con type/date/source (retraction-watch), `flagged_count` 1, DOI normalizzato minuscolo nella richiesta |
+| CR-02 | DOI normale, nessun `updated-by` | `ok`, nessuna nota |
+| CR-03 | item senza DOI | `no_doi`, nessuna chiamata a Crossref |
+| CR-04 | DOI solo in Extra (`DOI: …`, tipo senza campo DOI) | risolto dall'Extra e controllato → `retracted` |
+| CR-05 | DOI sconosciuto a Crossref (404) | `not_in_crossref` |
+| CR-06 | errore di rete su un DOI, un altro ok | `lookup_failed` isolato, l'altro `ok`, la chiamata non fallisce |
+| CR-07 | più note (expression_of_concern + correction) | precedenza: `expression_of_concern` (retracted > expression_of_concern > corrected > ok) |
+| CR-08 | `item_keys` e `collection_key` insieme / nessuno dei due | errore (esattamente uno) |
+| CR-09 | `collection_key` | controlla gli item diretti della collezione; 404 → errore strutturato |
+| CR-10 | 51 `item_keys` | errore di validazione (massimo 50) |
+| CR-11 | chiavi non trovate nella libreria | elencate in `not_found`, non contate in `checked` |
+| CR-12 | DOI con prefisso URL e maiuscole (`https://doi.org/10.1371/JOURNAL…`) | normalizzato (minuscolo, senza prefisso) nella richiesta, controllato → `corrected` |
+| CR-13 | Crossref 5xx (503) su una voce, un'altra ok | `lookup_failed` isolato, l'altra `ok`, la chiamata non fallisce |
+| CR-14 | una sola nota di correzione/erratum | `corrected`, `flagged_count` 0 |
+| CR-15 | DOI che è esso stesso una nota (solo `update-to`, nessun `updated-by`) | `ok`, nessuna nota (si guarda solo `updated-by`) |
+| CR-16 | collezione vuota | risultato vuoto (non un errore) |
+| CR-17 | esattamente 50 `item_keys` | accettato, nessun errore di validazione |
+| CR-18 | note `removal` / `withdrawal` / `partial_retraction` | tutte `retracted` e `flagged` (una regressione su RETRACTED_TYPES fa fallire qui) |
+| CR-19 | tipo di avviso sconosciuto (`new_type`) | almeno `corrected`, la nota resta in `notices` (mai scartata in silenzio) |
+| CR-20 | stesso DOI (anche con maiuscole diverse) su più voci | **una sola** richiesta a Crossref (deduplicato), stesso status su tutte |
+| CR-21 | collezione con >200 DOI unici | `truncated: true`, `next_start` 200, `checked` 200; richiamando con `start=next_start` continua (nessun truncated, le restanti) |
+| CR-22 | Crossref 500 poi 200 | ritentato (429/500/502/503/504) e risolto `ok` |
+| CR-23 | `UNPAYWALL_EMAIL` non valida / valida | niente `mailto` nella richiesta / `mailto` presente (validazione come unpaywall.ts) |
+| CR-24 | `type` Crossref col trattino / maiuscole (`Expression-of-Concern`) | normalizzato (minuscolo, `-`/spazi → `_`) prima del confronto e memorizzato così → `expression_of_concern` |
 
 ## import_pdf_to_zotero (`import-pdf-to-zotero.test.ts`)
 | ID | Scenario | Atteso |
@@ -319,6 +393,29 @@ test normali. Non restano `it.fails` nella suite.
 | FA-29 | stesso scenario della pipeline condivisa | campi per PDF identici a `attachOpenAccessPdf` chiamata direttamente |
 | FA-30 | chiave malformata | errore di validazione, nessuna richiesta |
 
+## find_duplicates (`find-duplicates.test.ts`)
+Tool di sola lettura: non unisce né cancella nulla. Scansiona solo le voci regolari via `.top()` (niente note, allegati o cestino), 100 per pagina fino a un tetto, e dichiara `scanned`/`truncated`. Utilità in `src/utils/duplicates.ts`.
+| ID | Scenario | Atteso |
+|---|---|---|
+| schema | `dois` opzionale (≤50), `collection_key` opzionale | `dois` oltre 50 e chiave malformata rifiutati |
+| scan path | senza `collection_key` / con `collection_key` | la catena passa da `items().top()` / `collections(key).items().top()` |
+| scan base | una voce, nessun duplicato | `mode: "scan"`, `scanned: 1`, `truncated: false`, `groups: []` |
+| scan DOI | stesso DOI (campo, forma URL e riga `DOI:` in Extra) + una voce diversa | un gruppo `match: "doi"`, le tre voci; la quarta esclusa |
+| normalizeDoi | `see 10.1000/abc, p.5`, `(see 10.1000/abc)`, `10.1000/a(b)`, Wakefield `(10.1016/S0140-6736(97)11096-0).` | punteggiatura finale tolta sul match; `)` tolto solo se sbilanciato → parentesi bilanciate preservate (SICI, S0140-6736(97)…) |
+| scan DOI Extra | campo `10.1000/abc` e riga Extra `DOI: 10.1000/abc, see note` | raggruppati (stessa normalizzazione) |
+| scan titolo | stesso titolo con accenti/punteggiatura e stesso anno | un gruppo `match: "title"`, chiave = titolo normalizzato |
+| scan CJK/cirillico | titoli CJK uguali (soglia 4), CJK corto generico (`序言`) escluso, cirillico uguale (soglia latina) | CJK e cirillico raggruppati, CJK corto no |
+| scan collezione 404 | `collection_key` inesistente | isError `status: "not_found"` con hint get_collections (come get_collection_items) |
+| scan anni | stesso titolo ma anni diversi (entrambi presenti) | nessun gruppo |
+| scan senza anno | stesso titolo, uno con anno e uno senza | un gruppo `match: "title"` |
+| scan titolo corto | titolo normalizzato troppo corto | nessun gruppo (falsi positivi evitati) |
+| scan esclusioni | note e allegati con lo stesso titolo delle voci regolari | esclusi dallo scan e dai gruppi |
+| scan precedenza | due voci con stesso DOI e stesso titolo | un solo gruppo `match: "doi"` (non anche per titolo) |
+| scan paginazione | 150 voci, duplicati a cavallo di due pagine | due richieste (`start` 0 e 100), gruppo trovato |
+| scan tetto | oltre il tetto di voci | `scanned` al tetto, `truncated: true` |
+| dois | `dois` presente/assente/non-DOI/duplicato nell'input | per DOI le voci già presenti (forma URL normalizzata), `normalized` null per un non-DOI, `existing` vuoto per l'assente; risultati nell'ordine dei DOI in ingresso, `existing` ordinato per chiave |
+| dois entry | voce presente per un DOI | ogni voce con `key`, `title`, `year`, `first_author`, `item_type`, `doi` |
+
 ## Pipeline PDF open access condivisa (`test/utils/oa-pdf.test.ts`)
 `attachOpenAccessPdf` (src/utils/oa-pdf.ts) è l'unico percorso usato da add_items_by_doi e find_and_attach_pdfs.
 | ID | Scenario | Atteso |
@@ -357,8 +454,77 @@ test normali. Non restano `it.fails` nella suite.
 | IC-22 | `keys=" A, B ,"` con spazi | chiavi ripulite, URI senza spazi, nessuna richiesta fuori route |
 | IC-24 | chiave `<zcite>` non valida per Zotero (`../tags`, `AB?C`, mista a una valida, con 0/1/O, minuscole, 9 caratteri) | isError "Invalid Zotero item key(s) in <zcite>: <solo le chiavi errate> (a key is 8 characters from 23456789ABCDEFGHIJKLMNPQRSTUVWXYZ)" con "No file was written" e da dove prendere le chiavi, nessuna richiesta, nessun output (come SK-10) |
 | IC-23 | itemData | volume/issue/page/publisher/publisher-place inclusi, abstract escluso, cognome multiparola intatto |
+| IC-25a/b | `<zcite>` in una run con attributi (`<w:r w:rsidR="…">`): tag unico nella run (A) e inline con altro testo (B) | iniettata (prima `found` senza `injected`); nel caso B "Before "/" after" conservati; docx valido |
 
-Gli output di IC-01/02/03/04/07/19/23 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
+Gli output di IC-01/02/03/04/07/19/23/25 passano anche dal validatore docx (`expectValidDocx`, vedi sotto).
+
+### Marcatori Pandoc (`test/tools/inject-citations-pandoc.test.ts`)
+Riconoscimento interno, senza un campo in ingresso: se il documento contiene `<zcite` è un documento zcite (percorso di oggi, golden Word invariato); se non ci sono `<zcite` ma marcatori Pandoc `[@…]`/inline `@…` si usa il ramo pandoc; nessuno dei due → copia invariata. I citekey Better BibTeX (case-sensitive) sono risolti in chiavi Zotero. I marcatori si leggono SOLO dal testo visibile (`<w:t>` in docx, contenuto degli elementi in odt): mai da `<w:instrText>`, attributi o JSON CSL di un campo esistente. Un inline `@parola` che non si risolve (handle, email, codice, o spezzato tra run) resta testo con un avviso, NON un errore; una forma tra parentesi `[@…]` sconosciuta o ambigua è un errore.
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| IC-P01 | `[@KEY]` con chiave Zotero (docx) | field code + bibliografia, testo intorno conservato, nessun `[@…]` residuo |
+| IC-P02 | inline `@KEY` e soppressione autore `-@KEY` | due citazioni iniettate |
+| IC-P03 | marcatore `[@KEY]` spezzato tra due run | unito dal normalizzatore e iniettato |
+| IC-P04 | citekey risolto dal campo nativo `citationKey` (ricerca `q=<citekey>` + conferma lato client) | URI con la chiave Zotero risolta |
+| IC-P05 | citekey risolto dalla riga `Citation Key:` in Extra, con locator | iniettato, URI con la chiave Zotero, `p. 12` |
+| IC-P06 | citekey sconosciuto | errore "not found in the library" con il citekey, nessun output |
+| IC-P07 | citekey ambiguo (due voci con lo stesso citekey) | errore "match more than one item", nessun output |
+| IC-P08 | una email `a@b.com` accanto a `[@KEY]` | solo una citazione, email intatta |
+| IC-P09 | stile `ieee` | numerazione per ordine di prima citazione ([1], [2]) |
+| IC-P10 | misto `<zcite>` + `[@…]` | vince zcite, i marcatori Pandoc restano testo, avviso "N Pandoc citation marker(s)" |
+| IC-P11 | seconda chiamata sul `_cited` (già con bibliografia) | inietta i Pandoc rimasti, **nessuna** seconda bibliografia (una sola `ZOTERO_BIBL`), avviso |
+| IC-P12 | ODT `[@KEY]` | reference mark + sezione bibliografia |
+| IC-P13 | ODT marcatore spezzato tra due `text:span` | unito e iniettato |
+| IC-P14 | nessun marcatore | copia invariata, avviso "No <zcite> placeholders found" |
+| IC-P15 | `[@K1; @K2]` più voci in una citazione | entrambe le URI nel field code |
+| IC-P16 | solo handle/codice inline (`@Component`, `@media`, `@app.route`), nessuna citazione | copia invariata, `citations_found` 0, avvisi "kept as text", **nessun errore** |
+| IC-P17 | handle non risolto accanto a un `[@KEY]` reale | inietta la citazione, l'handle resta testo con avviso |
+| IC-P18 | seconda chiamata: una `@` nel titolo di un campo esistente + un nuovo `[@KEY]` | inietta solo il nuovo, nessun falso positivo dal campo |
+| IC-P19 | inline spezzato tra due run (`@SMI`+`TH222`) | non ricucito → resta testo con avviso, nessun errore |
+| IC-P20 | citekey non trovato da `q` ma presente in `items/top` | risolto dalla scansione di fallback |
+
+Parser puro in `test/citation-injector/pandoc-body.test.ts` (PB: bracket/inline con flag `inline`, multi-chiave, prefix/locator, email, punteggiatura finale, `_`/`/`/`.` prima di `@` non è citazione, `@angular/core` si ferma a `/`, URL in bracket non è citazione; PB-B: solo testo visibile, mai instrText/attributi). Risoluzione citekey in `test/citation-injector/citekey-resolver.test.ts` (CK: `citationKey`+Extra, case-sensitive, suggerimento di variante di maiuscole, separazione citekey/chiavi Zotero, bracket sconosciuto → `missing_keys`, bracket ambiguo → `invalid_key`, inline non risolto → scartato con avviso senza errore). Parità tool ⇄ script sul ramo pandoc in `SK-P01` e sul caso misto + seconda chiamata in `SK-P02`. E2E `E2E-18c`. La ricerca citekey pagina fino a 5 pagine (`q`+`qmode=everything` include il full-text); se non trova nulla, ricade su una scansione paginata di `items/top` fino a 5000 voci (legge direttamente citationKey/extra, quindi trova anche una voce appena creata non ancora indicizzata — IC-P20). I lookup dei citekey SOLO-inline sono limitati a 25 token unici (CK-13: oltre il tetto restano testo con un avviso riassuntivo; CK-14: i bracket `[@…]` e le chiavi Zotero non contano nel tetto).
+
+### LibreOffice ODT (`test/tools/inject-citations-odt.test.ts`, validatore `test/helpers/citation-validate.ts`)
+
+`inject_citations` su `.odt`: reference mark al posto dei field code, bibliografia in una `text:section`, preferenze in `meta.xml` (fieldType ReferenceMark). `validateOdt`/`expectValidOdt` controllano struttura ODF, mimetype primo e STORED, schema CSL, URI e rendering citeproc (la stessa macchina di docx-validate).
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| ICO-01 | un `<zcite>` in un `.odt` | `*_cited.odt` con reference mark (nome `ZOTERO_ITEM CSL_CITATION {json} RND<10>`, senza plainCitation), `ZOTERO_BIBL`, originale intatto, odt valido |
+| ICO-V01 | i 5 stili sulla matrice IC-V (singola, coppia+molti, locator/prefix/suffix, unicode/senza autore/istituzionale, ripetuta) | odt valido, citeproc 5 citazioni + 7 voci, preferenze `fieldType` ReferenceMark |
+| ICO-V02 | libreria di gruppo per chiamata | URI `groups/<id>` validi |
+| ICO-02 | `<zcite>` spezzato tra più `text:span` | normalizzato e iniettato, testo intorno conservato |
+| ICO-03 | nessuno `<zcite>` | found 0, output `.odt` scritto, nessuna chiamata |
+| ICO-04 | `format: "docx"` su un file `.odt` | errore di estensione, nessun output |
+| ICO-05/06 | `.docx` rinominato `.odt` / `.odt` rinominato `.docx` | errore di contenuto (sniff), nessun output |
+| ICO-07 | estensione non supportata (`.rtf`) | errore "File must be a .docx (Word) or .odt (LibreOffice) file" |
+| SK-ODT-01/02 | script della skill su `.odt` nei 5 stili e in un gruppo | stessi itemData/testo/URI di `inject_citations`, odt valido |
+
+### create_cited_document (`test/tools/create-cited-document.test.ts`)
+
+Crea un documento `.docx`/`.odt` da markdown con citazioni pandoc (`src/cited-document/`). Parser puri in `src/cited-document/parsers.test.ts` (CCD-P pandoc, CCD-M markdown, CCD-N numerazione).
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| CCD-01 | markdown (titolo, grassetto/corsivo, elenco, 3 citazioni) → `.docx` | field code, `ZOTERO_BIBL`, titolo con `pStyle Heading1`, `<w:b/>`/`<w:i/>`, punto elenco; docx valido |
+| CCD-02 | lo stesso → `.odt` | reference mark, `text:h` con `Heading_20_N`, `text:style-name="T_Bold"`; odt valido |
+| CCD-09 | `-@K` (suppress-author) | solo l'anno nel testo ("(2023)"), `suppress-author: true` nel field JSON; citeproc rende "(2023)" senza il cognome |
+| CCD-03 | stile apa e ieee | valido; ieee: numeri nell'ordine di prima citazione ([1] SMITH, [2] PAIR) |
+| CCD-04 | output già esistente | errore "already exists", file originale intatto (mai sovrascritto) |
+| CCD-05 | chiave non valida per Zotero | stesso errore di inject_citations, nessun output |
+| CCD-06 | chiave assente dalla libreria | errore "not found in the library", nessun output |
+| CCD-07 | `format` in contrasto con l'estensione | errore |
+| CCD-08 | nessuna citazione | documento creato, nessuna bibliografia |
+| CCD-10 | `output_path` relativo | errore "output_path must be an absolute path" |
+| CCD-11 | markdown vuoto (solo spazi) | documento creato con avviso "Markdown is empty" |
+| CCD-12 | una email (`a@b.com`) nel markdown accanto a `[@K]` | solo `[@K]` citato, email intatta, nessun errore |
+| CCD-P01..06 | pandoc: `[@K]`, `[@K1; @K2]`, `[see @K, p. 12]` (prefix+locator), `-@K`/`@K`, testo alternato, suffisso non-locator | richieste di citazione corrette |
+| CCD-P07 | `a@b.com` / `x3@y.org` | nessuna citazione (`@` solo a inizio testo o dopo un non-alfanumerico, come pandoc) |
+| CCD-P08 | `@parola` non chiave Zotero ben formata | resta testo con un avviso, mai un errore (la chiave valida accanto resta una citazione) |
+| CCD-M01..04 | markdown: titoli/grassetto/corsivo/elenco, citazione in paragrafo, costrutti non supportati con avviso, paragrafi su più righe | blocchi e avvisi corretti |
+| CCD-N01 | numerazione | ordine di prima citazione, chiave ripetuta stesso numero |
 
 ### Validazione docx (IC-V)
 | ID | Scenario | Atteso |
@@ -389,6 +555,33 @@ assenti dal client) le decide il job `word-proxy` (sezione sotto) con Zotero des
 | DV-16 | validatore | preferenze su più proprietà ricomposte; stile diverso dall'iniezione, buchi nella numerazione, parte oltre 255 caratteri, `fieldType` diverso, Override o relazione mancanti → errori; assenti con `requireDocumentPrefs` → errore (senza: nessuno); preferenze di un altro stile con `documentPrefsStyle` → nessun errore |
 | SK-V01 (esteso) | inject.js nei 5 stili | stesse preferenze di `inject_citations` |
 | SK-V03 | inject.js con preferenze già presenti; radice con prefisso; parte non unibile | mantenute con WARNING; unite conservando le proprietà dell'utente; non scritte, parte intatta, WARNING |
+
+### Golden del percorso Word (`test/citation-injector/golden.test.ts`, snapshot `test/fixtures/golden/`)
+
+Garantisce la regola del proprietario: Word non si tocca, l'output resta identico byte per byte dopo il refactor del nucleo comune. Gli snapshot sono stati generati dal codice precedente al refactor; `UPDATE_GOLDEN=1` li rigenera (solo di proposito).
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| GOLD-* | ogni fixture IC (singola, multi, chiavi ripetute, locator/prefix/suffix, i 5 stili, unicode, record completo, capitolo, metadati ostili, gruppo) più preferenze non unibili/già presenti e un campione del corpus reale | `word/document.xml` e `docProps/custom.xml` di `inject_citations` identici allo snapshot, normalizzando solo citationID e id di sessione |
+
+### Salvataggio atomico (`src/utils/atomic-write.test.ts`)
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| AW-01 | scrittura | contenuto scritto, nessun file temporaneo residuo |
+| AW-02 | `overwrite:true` (default) su file esistente | sostituito |
+| AW-03 | `overwrite:false` su file esistente | errore `EEXIST`, file originale intatto, nessun temporaneo |
+| AW-04 | `overwrite:false` su file assente | creato |
+| AW-05 | cartella non scrivibile | errore `EACCES`, nessun temporaneo (il tool mappa anche `EBUSY` → "chiudi il file in Word") |
+
+## Skill inject.js — generazione dal sorgente (`test/skills/inject-bundle.test.ts`, `test/skills/inject-golden.test.ts`)
+
+`inject.js` è generato da `scripts/skill/inject-cli.ts` con `npm run build:skill` (bundle esbuild del nucleo comune `src/citation-injector`); solo `metadataToCsl` resta nella CLI.
+
+| ID | Scenario | Atteso |
+|---|---|---|
+| BUNDLE-01 | ricostruzione in memoria vs file committato | identici (fallisce se sorgente o `inject.js` modificati senza rigenerare); intestazione GENERATED e shebang |
+| SKGOLD-* | i 5 stili + gruppo, con metadati di vari tipi (articolo, libro, capitolo, report istituzionale, senza autore, tesi con data non numerica) | `word/document.xml` e `docProps/custom.xml` dello script generato identici allo snapshot dello script scritto a mano (normalizzando citationID e id di sessione) |
 
 ## Skill inject.js (`test/skills/inject-script.test.ts`, processo node reale)
 | ID | Scenario | Atteso |
@@ -449,7 +642,7 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 ## tools/list (`tools-list.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| TL-01 | elenco | esattamente 15 nomi |
+| TL-01 | elenco | esattamente i nomi attesi (confrontati con la tabella EXPECTED) |
 | TL-02 | per tool | `type: object`, properties e required attesi (+ `library_type`/`library_id` tranne get_user_id), descrizione presente |
 | TL-03 | enum/default | sort, direction, limit, style, auto_attach_pdf, max_characters, dry_run, content_type |
 | TL-04 | cardinalità | delete_items 1..50, add_items min 1, collection_key minLength 1 |
@@ -457,6 +650,15 @@ nessuna chiave è ben formata): ogni argomento chiave usa lo schema condiviso `z
 | TL-06 | url | `format: uri` |
 | TL-07 | tool sconosciuto | isError |
 | TL-08 | override libreria | `library_type` enum user/group, `library_id` pattern numerico, mai required |
+
+## Prompt MCP (`test/utils/prompts.test.ts`)
+| ID | Scenario | Atteso |
+|---|---|---|
+| PR-01 | prompts/list | i prompt attesi in ordine (cite_word_document, write_cited_document, import_references, note_from_item, check_bibliography), argomenti e flag `required` (opzionali da `.optional()` non obbligatori) |
+| PR-02 | prompts/get con argomenti | un messaggio `user` col testo reso (valori sostituiti, nessun `${arguments.}` residuo) |
+| PR-03 | prompts/get con opzionale omesso | default nel testo (es. style "apa") |
+| PR-04 | allineamento manifest.json | `prompts_generated: false`; nomi/ordine, `arguments` e `text` (con i placeholder `${arguments.x}`) uguali a `PROMPTS` |
+| PR-05 | contenuto dei template | ogni template nomina almeno un tool del server |
 
 ## Entità HTML nei metadati dei registri (`src/utils/html-entities.test.ts`)
 
@@ -516,21 +718,25 @@ Import da DOI (`cslToZoteroItem`) e itemData incorporati nei codici di campo (`z
 | RM-02 | versione, `name`, pacchetto npm | `version` e `packages[0].version` = versione di `package.json`, `name` = `mcpName`, `identifier` = nome npm, `mcpName` con prefisso `io.github.<owner>/` col maiuscolo/minuscolo esatto del repository |
 | RM-03 | `environmentVariables` | stessi nomi delle `process.env.X` lette in `src/` (test esclusi); solo `ZOTERO_API_KEY` segreta (e obbligatoria); `choices`/`default` di `UNSAFE_OPERATIONS` e `ZOTERO_LIBRARY_TYPE` |
 | RM-04 | `manifest.json` (estensione Claude Desktop) contro lo schema MCPB della sua `manifest_version` (0.3, dal pacchetto `@anthropic-ai/mcpb`) | valido; `version` = package.json, `entry_point` = `main`, args `${__dirname}/build/server.js`, Node minimo = `engines` |
-| RM-05 | `tools` del manifest | nomi e ordine dei 15 tool registrati, ciascuno con un riassunto proprio di una riga (10-100 caratteri, non confrontato col codice: riformulare una descrizione in `src/` non tocca il manifest), `tools_generated: false` |
+| RM-05 | `tools` del manifest | nomi e ordine dei tool registrati, ciascuno con un riassunto proprio di una riga (10-100 caratteri, non confrontato col codice: riformulare una descrizione in `src/` non tocca il manifest), `tools_generated: false` |
 | RM-06 | `mcp_config.env` e `user_config` | stesse variabili di `server.json`; obbligatorie e sensibili coincidono con `isRequired`/`isSecret`; ogni opzione facoltativa ha un default (stringa vuota o il default di `server.json`), altrimenti al server arriverebbe il letterale `${user_config.<chiave>}`; `unsafe_operations` facoltativa con default `none` |
 
 Smoke del bundle (`npm run smoke -- --bundle dist/mcp-zotero.mcpb`, in `test.yml` e `release.yml`): il .mcpb viene spacchettato
 fuori dal repository, comando/args/env vengono calcolati da `getMcpConfigForManifest` di `@anthropic-ai/mcpb` (come un client),
 poi gli stessi scenari utente e gruppo di `npm run smoke`; inoltre: nessuna variabile `${...}` irrisolta, solo `build/`,
 `node_modules/`, `manifest.json`, `package.json`, `LICENSE`, `README.md` al primo livello, nessun pacchetto solo-dev del lockfile,
-`tools/list` = `tools` del manifest.
+`tools/list` = `tools` del manifest e `prompts/list` = `prompts` del manifest. Ogni scenario verifica anche i prompt: `prompts/list` ha i 4 prompt attesi e `prompts/get` di `import_references` rende il testo con il DOI passato.
 
 ## E2E (`test/e2e/stdio-server.e2e.test.ts`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni (UNPAYWALL_EMAIL, regola UNSAFE_OPERATIONS, hint negli errori), 15 tool con schema object |
-| E2E-03 | argomenti non validi su 14 tool | isError con il campo, nessuna chiamata HTTP |
-| E2E-04..18 | una tools/call per ciascuno dei 15 tool (deletes con UNSAFE_OPERATIONS=all) | risultato atteso, richieste corrette alla FakeNet |
+| E2E-01/02 | initialize, tools/list | serverInfo "zotero", istruzioni (UNPAYWALL_EMAIL, regola UNSAFE_OPERATIONS, hint negli errori), 20 tool con schema object |
+| E2E-03 | argomenti non validi su ogni tool con campi obbligatori | isError con il campo, nessuna chiamata HTTP |
+| E2E-04..18 | una tools/call per ciascuno dei tool di lettura/scrittura, create_cited_document compreso (deletes con UNSAFE_OPERATIONS=all); E2E-17 delete_items nel cestino di default (POST `deleted:1`, `mode: "trash"`) poi `permanent: true` (DELETE, `mode: "permanent"`) | risultato atteso, richieste corrette alla FakeNet |
+| E2E-15b/15c/15d | find_duplicates: scan (gruppo per DOI e per titolo via `/items/top`) / modo dois / collezione inesistente | gruppi attesi con `scanned`/`truncated`; per DOI le voci già presenti (forma URL normalizzata); 404 → `status: "not_found"` con hint |
+| E2E-24/25 | update_item: version corretta → PATCH con If-Unmodified-Since-Version; version errata → version_conflict senza PATCH | nuova versione / `code: version_conflict` |
+| E2E-26 | create_note | POST `itemType: note` sotto il parent, HTML `<p>…</p>` |
+| E2E-27/28 | prompts/list e prompts/get | capability prompts, i 5 prompt (check_bibliography compreso); testo reso con gli argomenti (nessun `${arguments.}`) |
 | E2E-19 | 403 Zotero | isError al client |
 | E2E-20 | rete | nessuna richiesta del processo figlio senza route |
 | E2E-21/22 | UNSAFE_OPERATIONS assente / " ITEMS " | delete bloccati senza chiamate HTTP, con `hint` per l'utente / solo delete_items abilitato |
@@ -543,7 +749,7 @@ Server avviato con `ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID=777` (e `ZOTE
 | E2E-G01 | get_user_id | `library_type: "group"`, `library_path: "groups/777"`, `user_id` da `ZOTERO_USER_ID` |
 | E2E-G02/03 | lettura: search, collezioni, item, dettagli, fulltext | GET su `/groups/777/...` |
 | E2E-G04/05/06 | scrittura: create_collection, add_items, linked URL, import PDF, add_items_by_doi con PDF OA | POST item, auth/registrazione file e PUT fulltext su `/groups/777/...` |
-| E2E-G07 | delete_items, delete_collection | GET di verifica e DELETE su `/groups/777/...` |
+| E2E-G07 | delete_items (cestino), delete_collection | GET di verifica + POST `deleted:1` per il cestino (`mode: "trash"`) e DELETE della collezione su `/groups/777/...` |
 | E2E-G08 | inject_citations | URI `http://zotero.org/groups/777/items/{key}`, nessun `/users/` |
 | E2E-G09 | find_and_attach_pdfs dry_run | item e children dal gruppo |
 | E2E-G10 | tutte le richieste precedenti | solo path `/groups/777/`, nessuna richiesta senza route |
@@ -683,7 +889,7 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 
 | File | Casi |
 |---|---|
-| `get-user-id` | LIVE-GUI-01 libreria della chiave; 02 senza arguments / argomenti in più; 03 15 tool |
+| `get-user-id` | LIVE-GUI-01 libreria della chiave; 02 senza arguments / argomenti in più; 03 20 tool |
 | `search-library` | LIVE-SL-01 query sul titolo → solo quella voce; 02 sort title asc sul prefisso della run; 03 5 sort × 2 direzioni; 04 limit 500 → min(100, totale); 05 dateAdded desc ordinato; 06 nessun risultato senza isError; 07 argomenti non validi; 08 override utente, gruppo senza id, gruppo inesistente |
 | `get-collections` | LIVE-GC-01 collezione e sottocollezione con genitore; 02 include_trashed; 03 override e tipo sbagliato |
 | `get-collection-items` | LIVE-GCI-01 collezione con 3 voci note + inclusione delle fixture; 02 sottocollezione; 03 105 voci (paginazione >100); 04 allegato standalone escluso/incluso; 05 vuota; 06 inesistente / chiave mancante; 07 override |
@@ -693,12 +899,16 @@ gruppo `mzt-test…` quando è verificata (riga "pulizia avanzi gruppo"), perch�
 | `add-items` | LIVE-AI-01 8 tipi con collezione e tag, campi verificati via API; 02 55 voci in due POST; 03 tipo/campo/creatorType non validi, lista vuota; 04 collezione inesistente leggibile |
 | `add-items-by-doi` (soft) | LIVE-AID-01 metadati Crossref, nessun allegato; 02 DOI inesistente; 03 parziale; 04 forma URL `https://doi.org/…` risolta da doi.org, campo DOI senza prefisso; 05 DOI OA → PDF allegato; 06 lista vuota |
 | `add-linked-url-attachment` | LIVE-ALU-01 figlio con content_type e tag; 02 standalone in due collezioni; 03 override; 04 URL non valido, genitore inesistente |
+| `update-item` | LIVE-UI-01 campi + creators con la versione da get_items_details → salvati, versione aumentata; 02 versione stantia → version_conflict, item invariato; 03 title rimappato per tipo (case→caseName), campo non valido e campo protetto rifiutati |
+| `create-note` | LIVE-CN-01 nota figlia in testo semplice → `<p>`/`<br/>`, sotto il genitore col tag della run (verifica via rawChildren); 02 override library_id; 03 genitore inesistente, nota vuota, genitore allegato |
 | `import-pdf-to-zotero` | LIVE-IP-01 PDF figlio: size, md5, fulltext, verificati via API; 02 standalone con filename/titolo/collezioni; 03 nome da Content-Disposition; 04 HTML come PDF → not_pdf, nessun allegato; 05 text/html (LIVE-STALE-5); 06 404; 07 genitore inesistente, URL non valido; 08 override |
 | `find-and-attach-pdfs` (soft per 04/05) | LIVE-FA-01 entrambi/nessuno; 02 chiave sconosciuta e senza DOI; 03 skipped e skip_if_attachment_exists false; 04 collezione dry_run → processed = voci regolari create (LIVE-STALE-2); 05 collezione reale (LIVE-STALE-4); 06 override |
-| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci cancellate definitivamente (non nel cestino); 03 solo sconosciute (LIVE-STALE-1); 04 mista; 05 51/0 chiavi; 06 genitore → anche il figlio (ogni asserzione riporta il testo del risultato); 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione |
+| `find-duplicates` | LIVE-FD-01 collezione della run: gruppi per DOI e per titolo/anno, voce unica esclusa, note/allegati/cestino (voce cestinata stesso DOI) esclusi, `scanned`/`truncated`; 02 modo dois DOI presente/assente; 03 collezione pulita senza duplicati; 04 override library_type user; 05 dois stesso DOI due volte; 06 >100 voci (paginazione) su bulkCollection; 07 collezione inesistente → not_found |
+| `delete-items` | LIVE-DI-01 UNSAFE none rifiutato; 02 30 voci con `permanent: true` cancellate definitivamente (non nel cestino); 02b default → nel cestino (`mode: "trash"`, `deleted:1`, presente in `items/trash`), poi `permanent: true` sulla stessa chiave → via anche dal cestino; 03 solo sconosciute (LIVE-STALE-1); 04 mista (permanent); 05 51/0 chiavi; 06 genitore → anche il figlio (permanent; ogni asserzione riporta il testo del risultato); 07 override; 08 (solo account dedicato) chiavi malformate o di traversal → errore di validazione, nessuna cancellazione; 09 cestino di un genitore → genitore nel cestino, figlio NON cestinato (come il client), poi permanent → figlio sparisce; 10 voce già nel cestino + default → `already_in_trash`, `deleted_count` 0, resta, poi permanent la rimuove |
 | `delete-collection` | LIVE-DC-01 UNSAFE none/items rifiutato; 02-03 (solo fuori safe mode) cancellata con la voce che resta, chiave sconosciuta/vuota |
 | `inject-citations` | LIVE-IC-01 5 stili su voci reali: `expectValidDocx` + URI risolti via API (stessa chiave e titolo); 02 chiave inesistente (isError che la nomina, nessun output); 03 override |
 | `skill-inject` | LIVE-SK-01 apa/ieee: inject.js con metadati da get_items_details e library_path da get_user_id, docx valido, URI risolti, stesso JSON di inject_citations |
+| `check-retractions` (soft) | LIVE-CR-01 crea un ritirato vero (Wakefield, DOI 10.1016/S0140-6736(97)11096-0), uno normale e uno senza DOI (tag + collezione della run) → `retracted`/`ok`/`no_doi` via Crossref reale, nota di tipo retraction; 02 per `collection_key` sulla collezione della run |
 | `groups` | solo con gruppo `mzt-test…`: LIVE-GRP-01 server in modalità gruppo dall'ambiente (`ZOTERO_LIBRARY_TYPE=group`, `ZOTERO_LIBRARY_ID`): get_user_id → `groups/<id>` con lo user_id dell'utente (get_user_id descrive sempre la libreria dell'ambiente, gli argomenti per chiamata non si applicano); 02 create_collection, add_items, get_collection_items e inject nel gruppo per singola chiamata; 03 server in modalità gruppo senza argomenti di libreria: legge collezione e voce create in 02, override per chiamata verso la libreria utente |
 
 ### In CI (`.github/workflows/claude-agent-smoke.yml`, "Live tests + agent smoke")
@@ -783,22 +993,26 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
   `--mcp-config` così com'è: Claude Code espande `${VAR}`), `--tools "Skill,Read,Edit,Write,Bash"` (Write serve per
   creare file: con solo Edit l'agente non può crearli, provato), `--permission-mode dontAsk` (ciò che le regole non
   ammettono è negato senza chiedere) e gli hook di `.claude/agent-smoke/settings.json` (sulle PR `.claude/` viene dal
-  branch di base): PreToolUse su Bash che ammette solo le due forme esatte dei wrapper (niente concatenazioni, pipe,
+  branch di base): PreToolUse su Bash che ammette solo le forme esatte dei wrapper (make-docx, inject, prompts; niente concatenazioni, pipe,
   redirezioni, sostituzioni, variabili, altri interpreti, opzioni di node, percorsi fuori da `agent-out/`); PreToolUse
   sulle cancellazioni che ammette solo chiavi create dalla run (lette dall'audit) o inesistenti
   (`ZZZZZZZZ`/`YYYYYYYY`), mai delete_collection in safe mode; PostToolUse/PostToolUseFailure che scrive ogni chiamata
   Zotero e ogni comando Bash con il risultato in `agent-audit/audit.jsonl` (le negazioni in `denials.jsonl`), fuori
   da `agent-out/` dove l'agente scrive. Un errore dell'hook nega. Il contesto per gli hook (`agent-audit/context.json`)
   lo scrive prepare.mjs (in CI il job dell'agente lo copia prima di avviarlo).
-- **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e due soli
-  comandi, entrambi wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
-  docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata) e `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto). WebFetch/WebSearch
+- **Strumenti dell'agente**: `Skill`, `mcp__zotero__*`, `Read`/`Edit` (cioè anche Write) solo in `agent-out/`, e i soli
+  wrapper che accettano solo percorsi dentro `agent-out/`: `node test/live/agent/make-docx.mjs` (crea il
+  docx con i `<zcite>`, anche in linea nel testo o spezzati su tre run, più file con una sola chiamata), `node test/live/agent/inject.mjs` (chiama `inject.js` della skill prodotto) e `node test/live/agent/prompts.mjs` (sola lettura, elenca o rende i prompt MCP, che il client dell'agente non espone). WebFetch/WebSearch
   negati; 140 turni, tetto di 2 USD (`maxBudgetUsd`, `.github/agents/agent-smoke.json`; le run reali usano 65-98 turni), `MCP_TOOL_TIMEOUT` 120 s, step 45 min, job 55 min. La chiave Zotero sta solo nel file
   di config MCP in `$RUNNER_TEMP`, cancellato dopo lo step, mai nell'ambiente dell'agente. Gli artifact fra i job
   (repo pubblico) passano da `test/live/agent/redact.mjs`: user id e group id sostituiti da segnaposto numerici (ripristinati
   nel job successivo), username, nome del gruppo, chiave ed email rimossi; lo step fallisce, e non carica nulla, se ne
   resta uno (anche dentro i docx) o se c'è un gruppo senza il suo nome; conservazione 1 giorno. Ogni job che usa
-  l'account comincia mascherando il nome del gruppo (`mask-group-name.mjs`).
+  l'account comincia mascherando il nome del gruppo (`mask-group-name.mjs`). Redige allo stesso modo le parti XML dei
+  `.docx` e degli `.odt` (altrimenti l'id resterebbe compresso dentro l'odt), e una scansione finale fail-closed
+  decomprime ogni zip e controlla ogni file: se un identificatore sopravvive, non carica nulla. Test in
+  `test/utils/redact.test.ts` (RED): docx e odt (parti XML) con round trip redact/restore, un `.docx` non-zip redatto
+  come testo senza crash, file di testo, e la scansione che coglie un id in una parte compressa di uno zip qualsiasi.
 - **Riepilogo**: dopo lo scrub, `test/live/agent/summary.mjs` scrive il Job Summary (verdetto, problemi e avvisi,
   tabella degli scenari, esplorativi X1–X5 con le chiamate come le ha registrate l'audit, friction, turni e durata; il costo non compare nei testi pubblici)
   dalla copia scrubbata; non scrive nulla se nel testo, pubblicato o prima dell'escape, resta un segreto dell'ambiente,
@@ -883,20 +1097,26 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-04a | scritture su chiavi create prima, chiave finta, find_and_attach_pdfs in dry_run su chiave estranea | nessun problema |
 | VC-04b | delete_items su voce preesistente, allegato a voce preesistente, find_and_attach_pdfs reale su collezione estranea, chiave malformata a delete_items, scrittura nel gruppo in safe mode, delete_collection in safe mode | un problema per caso |
 | VC-04c | fuori safe mode, gruppo diverso da quello di test / uguale | problema / nessuno |
+| VC-04d | scrittura negata dall'hook (guard probe `update_item` su chiave non creata) / stessa chiamata eseguita | nessun problema (non eseguita) / problema |
+| VC-DEL-01..06 | `deletedClaimOutcome` (funzione pura): item 404 → ok; item nel cestino (200+`deleted:1`) senza `permanent` → ok; con `permanent:true` dichiarato → FALLISCE (impone 404); item presente non cestinato → fallisce; `permanent`+404 → ok; collezione solo 404 (200+`deleted:1` non basta, niente cestino per le collezioni) |
 | VC-05a | F9 e F10 completi con gli esiti attesi | nessun problema |
 | VC-05b | inject.js accetta la chiave malformata, nessun avviso per la chiave sconosciuta, documento senza zcite non provato, 51 chiavi accettate, 50 chiavi rifiutate, limit 101 con più di 100 voci, chiamata F10 mancante | un problema per caso |
 | VC-06a/b | esplorativi ok (ordine delle chiavi indifferente, comando Bash senza description), assenti, `unclear` | nessun problema; `unclear` = avviso |
 | VC-06c | verdetto `bug`, 6 scenari, id non valido o ripetuto, chiamata mai fatta, argomenti diversi, rationale mancante, verdetto non previsto, non array | problema |
 | VC-07 | make-docx: tag in linea e spezzato riconosciuti dal sorgente, `num` su ogni tag, spazi e chiave ripetuta (F9), percorso fuori agent-out e `"` nei valori rifiutati | caratteristiche lette correttamente; exit 2 |
+| VC-07p | sorgente Pandoc (docx e odt): marcatori tra parentesi e in linea dal solo testo visibile; conteggio delle citazioni per ramo (zcite esatto, Pandoc tra parentesi ≤ citazioni ≤ parentesi + in linea) | conteggi e messaggi attesi |
+| VC-07q | documento Pandoc iniettato da inject_citations con un @key in linea non risolto | il conteggio del verificatore torna (3 citazioni per 2 + 2 marcatori) |
 | VC-08 | 5 stili: inject_citations (server con Zotero finto) e inject.js (via inject.mjs, metadata da get_items_details) sul documento di parità | docx validi, 5 citazioni, impronte identiche, copertura istituzionale/senza metadati/non ASCII, testo attorno ai tag in linea e spezzato conservato, una bibliografia |
 | VC-08b | impronta alterata: citationID diverso / locator / testo visibile / bibliografia | nessuna differenza / percorso della prima differenza |
 | VC-08c | schema 3 con i due produttori reali: sorgente make-docx con preferenze `chicago` (stile sconosciuto → exit 2), iniettato in `apa` | entrambi avvisano e conservano `chicago` (valido con `documentPrefsStyle`, errore senza), stessa impronta con le preferenze; documenti di parità con le preferenze del loro stile; impronta schema 2 senza preferenze |
+| VC-08d | odt (apa, ieee): sorgente `make-docx --odt`, i due produttori su `.odt`; `docxFingerprint` sniffa l'odt | impronte identiche; bibliografia dal nome della sezione `ZOTERO_BIBL` (senza RND), preferenze `fieldType` ReferenceMark; il ramo docx resta invariato (paragrafi dai `w:t`, bibliografia dagli `ADDIN ZOTERO_BIBL`) |
 | VC-13a | `createdByCalls` | chiavi create con tipo, libreria (gruppo per chiamata), `call_no`, titolo o nome riportato dal tool |
 | VC-13b | `created[].call_no` giusto, di un'altra chiamata, mancante, inesistente, libreria diversa | titolo atteso dal risultato / un problema per caso |
 | VC-13c | chiavi create non dichiarate (né cancellate); cancellazione di un oggetto non "… to delete" | elencate / avviso |
 | VC-13d | `metadata[]`: file identico al risultato del suo `call_no`, non dichiarato ma usato da inject.mjs, `call_no` non get_items_details riuscito, contenuto diverso, file mancante | controllo / un problema per caso |
 | VC-13e | F1 saltato: nessun add_items_by_doi, 503 di doi.org, 404 | nessuna prova / prova / nessuna prova |
 | VC-13f | scenari T dal contesto: scelti per percorso e prefisso, mancante, saltato con motivo, fallito, `changed_files` assente | problema / avviso / nessun doppio problema / problema |
+| VC-13h | metadata di inject.js usato solo da inject falliti (error path), file assente / presente ma malformato / inject riuscito / usato anche da un inject riuscito | tollerato / tollerato / da dichiarare / da dichiarare |
 | VC-13g | F10 con la prima chiamata sbagliata e la seconda giusta | schema 2: problema; schema 3: nessuno, prova = la seconda |
 | VC-14/14b | script completo sullo stesso audit con claims schema 2 / 3 (riga T scelta, F1 saltato senza prova, cancellazione fuori da F8, metadati non dichiarati, F10 giusto solo alla seconda chiamata, niente F11) | schema 2: verdetto identico a quello del verificatore della 2.0.3 (problemi, avvisi, controlli); schema 3: i requisiti nuovi in più, il problema F10 in meno, l'avviso sulla cancellazione |
 | SC-01..04 | tabella degli scenari mirati (`test/utils/agent-scenarios.test.ts`): id unici e pattern esistenti; ogni sorgente di `src/` mappato; scelta per percorso, prefisso `/**`, ordine, docs/CI esclusi; SKILL.md rimanda a `agent-out/scenarios.json` e a `context.targeted`, senza ripetere la tabella | come atteso |
@@ -909,8 +1129,10 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 | VC-10b | chiamata Zotero della trascrizione assente da audit e negazioni / negata | problema / nessuno |
 | VC-10c | sonde F0 negate; altra negazione; nessuna negazione | nessun problema; avviso; due problemi |
 | VC-10d | numerazione dell'audit: assente, 1..3 in disordine, ripetuta, con un buco, voce senza numero | nessun problema / un problema per caso |
+| VC-10e | chiamata con input JSON non parsabile (`__unparsedToolInput`, es. `"permanent": yes`) assente da audit | NON è un buco (la chiamata non raggiunge il tool); una vera chiamata senza audit resta un problema |
 | VC-06d | esplorativi citati per `call_no` (tool con o senza prefisso, Bash, esito), argomento non ASCII mai ridigitato | nessun problema |
 | VC-06e | `call_no` inesistente o non intero, strumento diverso, Bash dichiarato come tool Zotero, `is_error` mancante o diverso, argomenti al posto di `call_no` con audit numerato | un problema per caso |
+| VC-06i | guard probe: negazione dell'hook come prova — scenario senza chiamate / chiamata senza `call_no` corrispondente a una negazione / senza negazioni / una F0 non vale | sostenuto / sostenuto / "no calls" / "no calls" |
 | VC-06f | audit senza numeri | confronto per argomenti (uguali / diversi), `call_no` non trovato |
 | VC-06g | stesso `call_no` in due scenari; `call_no` di una chiamata che prova un controllo fisso (F9/F10); input lungo e comando Bash | problema per i due casi; nel verdetto (`exploratory_calls`) ogni chiamata citata con l'input registrato dall'audit (solo il comando per Bash), troncato a 300 caratteri |
 | VC-06h | prova dei controlli fissi (`edgeCaseEvidence`) | la prima chiamata che soddisfa ogni riga F9/F10 |
@@ -918,19 +1140,23 @@ job fallito senza audit (nessuna chiamata registrata, ad esempio credito esaurit
 ### Hook dell'agente smoke (`test/utils/agent-hooks.test.ts`), template MCP (`test/utils/render-mcp.test.ts`) e guardia sugli output committati (`test/utils/check-tracked-artifacts.test.ts`, step di `test.yml`)
 | ID | Scenario | Atteso |
 |---|---|---|
-| AH-01a | make-docx con uno o più output e spec JSON (anche `../items` dentro lo spec), inject.mjs con `users/<id>`, `groups/<id>`, id numerico | ammessi |
+| AH-01a | make-docx con uno o più output e spec JSON (anche `../items` dentro lo spec), inject.mjs con `users/<id>`, `groups/<id>`, id numerico; make-docx `--odt` e output `.odt`, inject con `--format docx\|odt` | ammessi |
 | AH-01b | `;`, `&&`, `\|\|`, pipe, `>`, `<`, `2>&1`, `$( )`, backtick, `&` o backslash nello spec, a capo, virgolette doppie, prefisso di variabile, `node -e/--eval/--require/--import`, node con percorso assoluto, bash, altro script, `./`, doppio spazio, `agent-out/../`, percorso assoluto, metadata non json, opzione in più, stile o libreria non validi, commento, argomento dopo lo spec, spec senza virgolette, comando vuoto | negati |
 | AH-01c | `run_in_background`, input senza comando | negati |
 | AH-02a | delete_items di chiave creata, di 51 chiavi finte, di `[]` / di chiave non creata (sonda F0), malformata, delete_collection in safe mode, gruppo in safe mode | ammessi / negati con il motivo |
 | AH-02b | fuori safe mode: delete_collection di collezione creata, gruppo diverso da quello di test, contesto mancante | ammesso; negati |
 | AH-02c | chiavi create lette dall'audit (create_collection, add_items_by_doi con PDF; esclusi errori, tool di lettura, Bash) | solo le chiavi create |
 | AH-02d | testo dei risultati: stringa, blocchi MCP, `{content}`, Bash `{stdout, stderr}` | testo concatenato |
+| AH-02e | `create_note` tra le chiavi create (campo `note_key`/`item_key`/`key`) | chiave della nota registrata |
+| AH-05a | write-guard `update_item`/`create_note`: voce creata, voce non creata, chiave malformata, chiave finta (non ammessa per le scritture) | ammessi / negati con il motivo |
+| AH-05b | write-guard fuori/dentro safe mode, gruppo diverso da quello di test, contesto mancante | ammesso; negati |
 | AH-03a/b | bash-guard come processo: comando ammesso / negato / stdin non JSON | nessun output / `permissionDecision: deny` con motivo e riga in denials.jsonl / negato |
 | AH-03c | audit.mjs (PostToolUse, PostToolUseFailure, tool non registrato) poi delete-guard | audit con le due chiamate Zotero e `call_no` 1, 2, restituiti all'agente come `additionalContext` (nessun output per il tool non registrato); chiave creata ammessa, altra negata |
 | AH-03f | 12 hook di audit in parallelo | `call_no` 1..12 senza ripetizioni; il numero comunicato è quello della voce |
 | AH-03g | contratto dell'output di audit.mjs (PostToolUse e PostToolUseFailure) | exit 0, un solo oggetto JSON con solo `hookSpecificOutput` {`hookEventName` = evento, `additionalContext` "audit call_no N (…)"}; verificato una volta dal vero con `claude -p` e con l'Agent SDK (il modello cita la nota) |
 | AH-03d | delete-guard senza `agent-audit/context.json` | negato |
-| AH-03e | `.claude/agent-smoke/settings.json` | tre hook sugli eventi e matcher giusti, comandi via `$CLAUDE_PROJECT_DIR`, timeout |
+| AH-03e | `.claude/agent-smoke/settings.json` | hook sugli eventi e matcher giusti (Bash, delete, write, audit, Stop), comandi via `$CLAUDE_PROJECT_DIR`, timeout |
+| AH-03h | audit poi write-guard come processi | `update_item`/`create_note` sulla voce creata ammessi, su una non creata negati con il motivo |
 | TA-01 | percorsi tracciati sotto `agent-out/`, `agent-audit/`, `.vitest/`, `live-artifacts/` a qualunque profondità; file spostati: riga d'audit, contesto dell'agente, log delle negazioni (anche solo Bash), claims, trascrizione (`session_id` + tool Zotero), riepilogo e report dal vivo, forme con virgolette escape | segnalati (solo percorso e motivo) |
 | TA-02 | codice e test che costruiscono gli stessi campi come oggetti, esempio di claims nella skill, voce illeggibile | nessun problema |
 | WL-01 | condizioni dello step di verify-claims e dell'avviso "nessuna chiamata" (`test/utils/workflow-logic.test.ts`) | verify sempre dopo un agente riuscito, dopo un fallito solo con l'audit |

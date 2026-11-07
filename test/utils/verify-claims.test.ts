@@ -26,12 +26,15 @@ import {
   metadataFindings,
   f1SkipEvidence,
   targetedFindings,
+  deletedClaimOutcome,
+  citationCountProblem,
   // @ts-expect-error plain .mjs script without type declarations
 } from "../../test/live/verify-claims.mjs";
 import { startHarness } from "../helpers/mcp-harness.js";
 import { ZBASE, zLibraryQuery, zSingle, article, USER_ID } from "../helpers/zotero-fake.js";
 import { readDocumentXml, tempDir, TempDir } from "../helpers/fixtures.js";
 import { validateDocx, CitationStyle } from "../helpers/docx-validate.js";
+import { validateOdt } from "../helpers/citation-validate.js";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const TIMEOUT_MS = 20_000;
@@ -167,6 +170,14 @@ describe("verify-claims: scritture solo su oggetti della run (VC-04)", () => {
     expect(writeSafetyProblems(transcriptOf([call]), { safe_mode: false, group_id: "7" })).toEqual(["call #1 add_items: group 8 is not the test group"]);
     expect(writeSafetyProblems(transcriptOf([[call[0], { ...(call[1] as object), library_id: "7" }, call[2]]]), { safe_mode: false, group_id: "7" })).toEqual([]);
   });
+
+  it("VC-04d una scrittura negata dall'hook (guard probe su una chiave non creata) non è un problema: non è mai stata eseguita", () => {
+    const denied: Call = ["update_item", { item_key: "EXST2222", version: 1 }, "Denied by the agent smoke harness: EXST2222 was not created by this run. Write only to what this run created.", true];
+    expect(writeSafetyProblems(transcriptOf([denied]), ctx)).toEqual([]);
+    // la stessa chiamata eseguita (non negata) sarebbe un problema di sicurezza
+    const executed: Call = ["update_item", { item_key: "EXST2222", version: 1 }, { item_key: "EXST2222" }];
+    expect(writeSafetyProblems(transcriptOf([executed]), ctx).join("\n")).toMatch(/item_key EXST2222 was not created by this run/);
+  });
 });
 
 /** F9 + F10 completi, come li esegue l'agente seguendo la skill. */
@@ -184,7 +195,7 @@ function edgeCalls(): Call[] {
     ["delete_items", { item_keys: fifty }, { error: "No items found for the given keys" }, true],
     ["delete_items", { item_keys: [...fifty, "ZZZZZZZZ"] }, "MCP error -32602: Input validation error: too big", true],
     ["add_items", { items: [] }, "MCP error -32602: Input validation error: too small", true],
-    ["get_items_details", { item_keys: [] }, { message: "No items" }],
+    ["get_items_details", { item_keys: [] }, "MCP error -32602: Input validation error: too small", true],
     ["get_items_details", { item_keys: ["   "] }, "MCP error -32602: Input validation error: invalid key", true],
     ["search_library", { query: "   ", limit: 1 }, [{ title: "a", key: "ITEM2222" }]],
     ["search_library", { query: "mzt-x", limit: 1 }, [{ title: "a", key: "ITEM2222" }]],
@@ -271,6 +282,24 @@ describe("verify-claims: chiamate esplorative per call_no dell'audit (VC-06d)", 
       calls
     );
     expect(r).toMatchObject({ problems: [], warnings: [], checks: ["X1 ok", "X2 ok"] });
+  });
+
+  it("VC-06i guard probe: una negazione dell'hook vale come prova (scenario senza chiamate o chiamata senza call_no); le F0 no, e senza negazioni è un problema", () => {
+    const denial = { tool_name: "mcp__zotero__update_item", tool_input: { item_key: "XXXXXXXX" }, reason: "Denied by the agent smoke harness: XXXXXXXX was not created by this run" };
+    // scenario senza chiamate citabili (tutto negato dall'hook): la negazione lo sostiene
+    expect(exploratoryFindings([x([])], calls, new Set(), [denial])).toMatchObject({ problems: [], checks: ["X1: backed by a hook denial (guard probe, no audited call)", "X1 ok"] });
+    // senza negazioni → "no calls"
+    expect(exploratoryFindings([x([])], calls, new Set(), []).problems).toEqual(["X1: no calls"]);
+    // una chiamata citata senza call_no che corrisponde a una negazione dello stesso tool: valida
+    expect(exploratoryFindings([x([{ tool: "mcp__zotero__update_item" }])], calls, new Set(), [denial])).toMatchObject({
+      problems: [],
+      checks: ["X1: call 1 (update_item): denied by a hook (guard probe)", "X1 ok"],
+    });
+    // la stessa senza negazione: manca il call_no (l'audit numera ogni chiamata)
+    expect(exploratoryFindings([x([{ tool: "mcp__zotero__update_item" }])], calls, new Set(), []).problems.join("\n")).toMatch(/call 1 \(update_item\): no call_no/);
+    // una F0 probe (delete di XXXXXXXX) non è prova esplorativa → "no calls"
+    const f0 = { tool_name: "mcp__zotero__delete_items", tool_input: { item_keys: ["XXXXXXXX"] }, reason: "Denied…" };
+    expect(exploratoryFindings([x([])], calls, new Set(), [f0]).problems).toEqual(["X1: no calls"]);
   });
 
   it.each<[string, unknown, RegExp]>([
@@ -382,6 +411,50 @@ describe("verify-claims: documento di parità con i due produttori reali (VC-07,
     expect((await node(make, ["agent-out/bad.docx", '[[{"zcite": {"keys": "A\\"B"}}]]'], { cwd: dir.path })).code).toBe(2);
   });
 
+  it("VC-07p sorgente Pandoc: marcatori tra parentesi e in linea contati dal testo visibile (docx e odt); conteggio delle citazioni per ramo", async () => {
+    const text = "A [@RTCLQQRR] b [see @BKQQRRTT, p. 5] c -@RTCLQQRR, mail a@b.c, path x/@y, [no key], [@] and [@K1; @K2].";
+    const docx = `<w:body><w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p><w:p><w:r><w:instrText>@INSTR</w:instrText></w:r></w:p></w:body>`;
+    expect(sourceFeatures(docx)).toMatchObject({ zcites: 0, pandocBracket: 3, pandocInline: 1 });
+    const odt = `<office:text><text:p text:style-name="P1"><text:span>${text}</text:span></text:p></office:text>`;
+    expect(sourceFeatures(odt, true)).toMatchObject({ zcites: 0, pandocBracket: 3, pandocInline: 1 });
+    // zcite branch unchanged; a mixed document counts only its <zcite> tags
+    const mixed = sourceFeatures(`<w:p><w:r><w:t>&lt;zcite keys="RTCLQQRR"/&gt; and [@BKQQRRTT]</w:t></w:r></w:p>`);
+    expect(mixed).toMatchObject({ zcites: 1, pandocBracket: 1 });
+    expect(citationCountProblem(mixed, 1)).toBeNull();
+    expect(citationCountProblem(mixed, 2)).toBe("2 citations for 1 <zcite>");
+    const pandoc = { zcites: 0, pandocBracket: 2, pandocInline: 1 };
+    expect(citationCountProblem(pandoc, 2)).toBeNull();
+    expect(citationCountProblem(pandoc, 3)).toBeNull();
+    expect(citationCountProblem(pandoc, 1)).toBe("1 citations for 2 bracketed and 1 inline Pandoc markers");
+    expect(citationCountProblem(pandoc, 4)).toMatch(/^4 citations/);
+    expect(citationCountProblem({ zcites: 0, pandocBracket: 0, pandocInline: 0 }, 0)).toBeNull();
+    expect(citationCountProblem({ zcites: 0, pandocBracket: 0, pandocInline: 0 }, 1)).toBe("1 citations for 0 <zcite>");
+  });
+
+  it("VC-07q documento Pandoc iniettato da inject_citations: il conteggio del verificatore torna", async () => {
+    const make = join(ROOT, "test", "live", "agent", "make-docx.mjs");
+    const spec = JSON.stringify([["Bracketed [@RTCLQQRR], with locator [see @BKQQRRTT, p. 5] and inline @RTCLQQRR, unresolved @nobody."]]);
+    expect((await node(make, ["agent-out/pandoc.docx", spec], { cwd: dir.path })).code).toBe(0);
+    const h = await startHarness();
+    try {
+      h.net.on("GET", `${ZBASE}/items`, zLibraryQuery(ITEMS));
+      // the fallback scan for the unresolved inline @nobody
+      h.net.on("GET", `${ZBASE}/items/top`, zLibraryQuery(ITEMS));
+      for (const it of ITEMS) h.net.on("GET", `${ZBASE}/items/${it.key}`, zSingle(it));
+      const tool = await h.call("inject_citations", { file_path: join(out, "pandoc.docx"), style: "apa" });
+      expect(tool.isError, tool.text).toBe(false);
+      const report = await validateDocx(await readFile(tool.json.output_path), { style: "apa" });
+      expect(report.errors).toEqual([]);
+      const source = sourceFeatures(await readDocumentXml(await readFile(join(out, "pandoc.docx"))));
+      expect(source).toMatchObject({ zcites: 0, pandocBracket: 2, pandocInline: 2 });
+      expect(report.citations).toHaveLength(3);
+      expect(citationCountProblem(source, report.citations.length)).toBeNull();
+      expect(tool.text).toContain("@nobody");
+    } finally {
+      await h.close();
+    }
+  });
+
   it.each<CitationStyle>(["apa", "harvard", "chicago", "ieee", "vancouver"])(
     "VC-08 %s: inject_citations e inject.js sullo stesso sorgente → stessa impronta (campi senza citationID, testo, bibliografia)",
     async (style) => {
@@ -469,6 +542,44 @@ describe("verify-claims: documento di parità con i due produttori reali (VC-07,
     other.documentPrefs = null;
     expect(firstDifference(docxFingerprint(apa, { prefs: true }), other)).toBe(".documentPrefs");
   });
+
+  it.each<CitationStyle>(["apa", "ieee"])(
+    "VC-08d odt %s: docxFingerprint riconosce l'odt (sniff); inject_citations e inject.js danno la stessa impronta; le impronte docx restano invariate",
+    async (style) => {
+      const make = join(ROOT, "test", "live", "agent", "make-docx.mjs");
+      expect((await node(make, ["--odt", `agent-out/o-${style}.odt`, SPEC(style === "ieee")], { cwd: dir.path })).code).toBe(0);
+      const h = await startHarness();
+      try {
+        h.net.on("GET", `${ZBASE}/items`, zLibraryQuery(ITEMS));
+        for (const it of ITEMS) h.net.on("GET", `${ZBASE}/items/${it.key}`, zSingle(it));
+        const details = await h.call("get_items_details", { item_keys: ITEMS.map((i) => i.key) });
+        await writeFile(join(out, `meta-odt-${style}.json`), JSON.stringify(details.json));
+        const tool = await h.call("inject_citations", { file_path: join(out, `o-${style}.odt`), style });
+        expect(tool.isError, tool.text).toBe(false);
+        const skill = await node(
+          join(ROOT, "test", "live", "agent", "inject.mjs"),
+          [`agent-out/o-${style}.odt`, `agent-out/o-${style}_skill.odt`, `agent-out/meta-odt-${style}.json`, `users/${USER_ID}`, style],
+          { cwd: dir.path }
+        );
+        expect(skill.code, skill.stderr).toBe(0);
+        const a = await validateOdt(await readFile(tool.json.output_path), { style });
+        const b = await validateOdt(await readFile(join(out, `o-${style}_skill.odt`)), { style });
+        expect([...a.errors, ...b.errors]).toEqual([]);
+        expect(a.citations).toHaveLength(5);
+        // il fingerprint sniffa l'odt: niente campi w:fldChar, bibliografia dal nome della sezione ZOTERO_BIBL
+        const fp = docxFingerprint(a, { prefs: true });
+        expect(fp.bibliography).toEqual(["ZOTERO_BIBL {\"uncited\":[],\"omitted\":[],\"custom\":[]} CSL_BIBLIOGRAPHY"]);
+        expect(fp.documentPrefs?.fieldType).toBe("ReferenceMark");
+        expect(firstDifference(docxFingerprint(a, { prefs: true }), docxFingerprint(b, { prefs: true }))).toBeNull();
+        // le impronte docx non cambiano: il ramo docx legge ancora i paragrafi dai w:t
+        const docx = await validateDocx(await readFile(join(out, "p-apa_skill.docx")), { style: "apa" });
+        expect(docxFingerprint(docx).paragraphs[0]).toMatch(/^Single /);
+        expect(docxFingerprint(docx).bibliography[0]).toMatch(/^ADDIN ZOTERO_BIBL/);
+      } finally {
+        await h.close();
+      }
+    }
+  );
 });
 
 describe("verify-claims: script completo senza rete (VC-09)", () => {
@@ -654,6 +765,19 @@ describe("verify-claims: evidenza dagli hook (VC-10)", () => {
     ]);
   });
 
+  it("VC-10e chiamata con input JSON non parsabile (__unparsedToolInput) → non è un buco dell'audit", () => {
+    // il modello ha scritto `"permanent": yes` (JSON non valido): la chiamata non raggiunge il tool, quindi
+    // nessun hook la registra; non deve contare come audit gap. Una vera chiamata senza audit resta un problema.
+    const messages = transcriptOf([
+      ["delete_items", { __unparsedToolInput: { raw: '{"item_keys":["N7B99XBB"],"permanent": yes}', len: 43 } }, "invalid input", true],
+      ["delete_items", { item_keys: ["ITEM2222"] }, { deleted_keys: ["ITEM2222"] }],
+    ]);
+    // solo la seconda (vera) chiamata, assente da audit/negazioni, è un buco; la prima (non parsata) è ignorata
+    expect(auditGaps(messages, [], [])).toEqual([
+      "call #2 delete_items of the transcript has no audit entry (hooks not active, or no result)",
+    ]);
+  });
+
   it("VC-10c sonde F0 negate dagli hook → nessun problema; altre negazioni → avvisi; sonde assenti → problemi", () => {
     const probes = [
       { tool_name: "Bash", tool_input: { command: "node test/live/agent/make-docx.mjs agent-out/mzt-x-probe.docx '[[\"probe\"]]' && ls" }, reason: "Denied by the agent smoke harness (command not allowed). Only…" },
@@ -758,6 +882,26 @@ describe("verify-claims: claims schema 3 (VC-13)", () => {
     expect(f1SkipEvidence(notFound)).toBeNull();
   });
 
+  it("VC-13h metadata usato solo da inject.js falliti (error path) non va dichiarato, che il file esista o no; un inject riuscito lo deve dichiarare", () => {
+    const cmd = (m: string) => `node test/live/agent/inject.mjs agent-out/a.docx agent-out/b.docx ${m} users/1`;
+    const failed = auditCalls([entry(3, "Bash", { command: cmd("agent-out/bad.json") }, "Error: Unexpected token in JSON", true)]);
+    const check = "metadata agent-out/bad.json: not declared, used only by inject calls that failed (error-path test)";
+    // file assente: tollerato
+    expect(metadataFindings([], failed, () => null)).toEqual({ problems: [], checks: [check] });
+    // file presente ma malformato (il nuovo caso #56): comunque tollerato, l'inject è fallito
+    expect(metadataFindings([], failed, () => "{bad json")).toEqual({ problems: [], checks: [check] });
+    // un inject riuscito deve sempre dichiarare il suo metadata
+    const ok = auditCalls([entry(4, "Bash", { command: cmd("agent-out/s.json") }, '{"output":"agent-out/a_cited.docx","found":1,"injected":1}')]);
+    expect(metadataFindings([], ok, () => null).problems).toEqual([
+      "metadata agent-out/s.json: used by inject.js but not declared in claims.metadata with its call_no",
+    ]);
+    // e se lo stesso file è usato sia da un inject riuscito sia da uno fallito, va dichiarato
+    const both = auditCalls([entry(5, "Bash", { command: cmd("agent-out/m.json") }, "Error", true), entry(6, "Bash", { command: cmd("agent-out/m.json") }, '{"found":1,"injected":1}')]);
+    expect(metadataFindings([], both, () => "{}").problems).toEqual([
+      "metadata agent-out/m.json: used by inject.js but not declared in claims.metadata with its call_no",
+    ]);
+  });
+
   it("VC-13f scenari T scelti dai file cambiati del contesto fidato: mancante o senza esito → problema, saltato con motivo → avviso", () => {
     const table = { rows: [{ id: "T-search", files: ["src/tools/search-library.ts"], scenario: "s" }, { id: "T-inject", files: ["src/citation-injector/**"], scenario: "i" }, { id: "T-link", files: ["src/tools/add-linked-url-attachment.ts"], scenario: "l" }] };
     const ctx = { changed_files: ["src/citation-injector/injector.ts", "src/tools/search-library.ts", "README.md"] };
@@ -777,6 +921,26 @@ describe("verify-claims: claims schema 3 (VC-13)", () => {
     const v3 = edgeCaseEvidence(search, { anyCall: true });
     expect(v3.problems.filter(row)).toEqual([]);
     expect([...v3.evidence].map((c: { callNo: number }) => c.callNo)).toContain(2);
+  });
+
+  it("VC-13h create_note conta come chiave creata; update_item sostituisce il titolo atteso della chiave", () => {
+    const c = auditCalls([
+      entry(1, "add_items", { items: [{ title: "mzt-r1 a" }] }, { success: [{ index: 0, item_key: "ITEM2222", title: "mzt-r1 a" }] }),
+      entry(2, "update_item", { item_key: "ITEM2222", version: 7, fields: { title: "mzt-r1 a edited" } }, { item_key: "ITEM2222", version: 8, updated_fields: ["title"] }),
+      entry(3, "create_note", { parent_item_key: "ITEM2222", note: "a note" }, { item_key: "NTE23456", parent_item_key: "ITEM2222" }),
+    ]);
+    const m = createdByCalls(c, "users/1");
+    expect(m.get("NTE23456")).toMatchObject({ kind: "note", call_no: 3, tool: "create_note" });
+    const res = createdCallFindings(
+      [
+        { kind: "item", key: "ITEM2222", call_no: 1, library_path: "users/1" },
+        { kind: "note", key: "NTE23456", call_no: 3, library_path: "users/1" },
+      ],
+      c,
+      "users/1"
+    );
+    expect(res.problems).toEqual([]); // the note's creating call is recognized
+    expect(res.titles.get("ITEM2222")).toBe("mzt-r1 a edited"); // update_item supersedes the add_items title
   });
 });
 
@@ -862,5 +1026,35 @@ describe("verify-claims: claims schema 2 giudicati come prima (VC-14)", () => {
     ]);
     expect(BEFORE.problems.filter((p) => !v.problems.includes(p))).toEqual(["F10: search_library with limit 1: 2 results (expected at most 1)"]);
     expect(v.warnings).toEqual(['deletion outside F8: delete_items call_no 2 deleted ITEM2222, not created as "… to delete"']);
+  });
+});
+
+describe("deletedClaimOutcome (VC-DEL): 404 vs cestino, e il flag permanent", () => {
+  const item = (o: Record<string, unknown> = {}) => ({ kind: "item", key: "ITEM2222", library_path: "users/1", ...o });
+  const trashedResp = { status: 200, data: { data: { deleted: 1 } } };
+
+  it("VC-DEL-01 item 404 → ok (eliminato)", () => {
+    expect(deletedClaimOutcome(item(), { status: 404 }).ok).toBe(true);
+  });
+  it("VC-DEL-02 item nel cestino (200 + deleted:1), senza permanent → ok", () => {
+    const o = deletedClaimOutcome(item(), trashedResp);
+    expect(o.ok).toBe(true);
+    expect(o.message).toMatch(/trashed/);
+  });
+  it("VC-DEL-03 item nel cestino ma permanent:true dichiarato → FALLISCE", () => {
+    const o = deletedClaimOutcome(item({ permanent: true }), trashedResp);
+    expect(o.ok).toBe(false);
+    expect(o.message).toMatch(/permanent deletion was claimed/);
+  });
+  it("VC-DEL-04 item presente e non nel cestino (200 senza deleted) → fallisce", () => {
+    expect(deletedClaimOutcome(item(), { status: 200, data: { data: {} } }).ok).toBe(false);
+  });
+  it("VC-DEL-05 permanent:true + 404 → ok", () => {
+    expect(deletedClaimOutcome(item({ permanent: true }), { status: 404 }).ok).toBe(true);
+  });
+  it("VC-DEL-06 collezione: solo 404; 200 + deleted:1 non basta (niente cestino per le collezioni)", () => {
+    const coll = { kind: "collection", key: "CCCC2222", library_path: "users/1" };
+    expect(deletedClaimOutcome(coll, { status: 404 }).ok).toBe(true);
+    expect(deletedClaimOutcome(coll, trashedResp).ok).toBe(false);
   });
 });
