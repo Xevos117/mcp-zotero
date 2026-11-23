@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-23
+
 ### Dependencies
 
 - `zotero-api-client` 0.51.0 → 0.53.0
