@@ -1,5 +1,7 @@
 # MCP Zotero
 
+[![Xevos117/mcp-zotero MCP server](https://glama.ai/mcp/servers/Xevos117/mcp-zotero/badges/score.svg)](https://glama.ai/mcp/servers/Xevos117/mcp-zotero)
+
 > **Note:** This is an unofficial community project and is not affiliated with, endorsed by, or supported by the Zotero team or the Corporation for Digital Scholarship. "Zotero" is a registered trademark of the Corporation for Digital Scholarship.
 
 A Model Context Protocol server for Zotero integration. It gives any LLM full access to your Zotero library: search, organize, add papers by DOI, import PDFs, read full-text content, edit items and notes, check a bibliography for retractions and duplicates, and put live Zotero citations into Word and LibreOffice documents.
